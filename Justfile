@@ -19,7 +19,7 @@ build-frontend:
 
 # Build a production binary (handles frontend build internally)
 build:
-    wails build
+    wails build -tags webkit2_41
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 

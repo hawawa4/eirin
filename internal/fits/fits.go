@@ -141,7 +141,7 @@ var stretchPresets = []stretchPreset{
 
 func makeStretcher(level int) func([]float64) []float64 {
 	if level <= 0 {
-		return func(p []float64) []float64 { return p }
+		return linearAutoStretch
 	}
 	if level >= len(stretchPresets) {
 		level = len(stretchPresets) - 1
@@ -461,6 +461,59 @@ func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, ou
 		}
 	}
 	return
+}
+
+// linearAutoStretch applies the same shadow-clipping statistics as the normal
+// autoStretch preset but maps the result linearly (no MTF curve).
+// This is used for stretchLevel=0 ("no stretch") so the sky appears dark and
+// the pixel values are physically linear — unlike the raw normalizeToUnit output
+// which maps the sky background to ~90% brightness.
+func linearAutoStretch(pixels []float64) []float64 {
+	const shadowsFactor = -2.80
+
+	sample := pixels
+	if len(pixels) > 65536 {
+		step := len(pixels) / 65536
+		s := make([]float64, 0, 65536)
+		for i := 0; i < len(pixels); i += step {
+			s = append(s, pixels[i])
+		}
+		sample = s
+	}
+
+	sorted := make([]float64, len(sample))
+	copy(sorted, sample)
+	sort.Float64s(sorted)
+	median := sorted[len(sorted)/2]
+
+	devs := make([]float64, len(sorted))
+	for i, v := range sorted {
+		devs[i] = math.Abs(v - median)
+	}
+	sort.Float64s(devs)
+	sigma := devs[len(devs)/2] * 1.4826
+
+	shadowClip := median + shadowsFactor*sigma
+	if shadowClip < 0 {
+		shadowClip = 0
+	}
+	scale := 1.0 - shadowClip
+
+	out := make([]float64, len(pixels))
+	for i, p := range pixels {
+		x := p - shadowClip
+		if x < 0 {
+			x = 0
+		}
+		if scale > 0 {
+			x /= scale
+		}
+		if x > 1 {
+			x = 1
+		}
+		out[i] = x
+	}
+	return out
 }
 
 // autoStretch applies a Siril-compatible MTF autostretch to normalised [0,1] data.
