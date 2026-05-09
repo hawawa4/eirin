@@ -42,8 +42,8 @@ func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {
 	return fits.ReadHeader(path)
 }
 
-// GeneratePreview returns an autostretched PNG as a base64 data URL,
-// scaled to at most 1024 px on the longest side.
-func (a *App) GeneratePreview(path string) (string, error) {
-	return fits.GeneratePreview(path, 1024)
+// GeneratePreview returns a PNG preview as a base64 data URL, scaled to 1024 px.
+// stretchLevel: 0=none, 1=gentle, 2=normal, 3=strong
+func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
+	return fits.GeneratePreview(path, 1024, stretchLevel)
 }

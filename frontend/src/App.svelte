@@ -21,6 +21,17 @@
   let previewError = ''
   let fitsHeader = null
 
+  // ── Stretch controls ──────────────────────────────────────────────────────
+  let stretchEnabled = true
+  let stretchLevel = 2   // 1=gentle 2=normal 3=strong
+
+  // ── Header section collapse ───────────────────────────────────────────────
+  let basicCollapsed = false
+  let advancedCollapsed = true
+
+  // ── Preview request ID (stale cancellation) ───────────────────────────────
+  let previewReqId = 0
+
   // ── Pane resize ───────────────────────────────────────────────────────────
   let leftPct = 40       // left pane width as % of content area
   let collapsed = false  // left pane collapsed
@@ -130,11 +141,15 @@
     previewLoading = true
     resetView()
 
+    const id = ++previewReqId
+    const level = stretchEnabled ? stretchLevel : 0
+
     const [hdrResult, imgResult] = await Promise.allSettled([
       ReadFITSHeader(entry.path),
-      GeneratePreview(entry.path),
+      GeneratePreview(entry.path, level),
     ])
 
+    if (id !== previewReqId) return
     previewLoading = false
     if (hdrResult.status === 'fulfilled') fitsHeader = hdrResult.value
     if (imgResult.status === 'fulfilled') {
@@ -158,6 +173,29 @@
     previewError = ''
     fitsHeader = null
     resetView()
+  }
+
+  async function refreshPreview() {
+    if (!selectedEntry) return
+    const id = ++previewReqId
+    previewLoading = true
+    previewError = ''
+    const level = stretchEnabled ? stretchLevel : 0
+    try {
+      const result = await GeneratePreview(selectedEntry.path, level)
+      if (id !== previewReqId) return
+      previewDataUrl = result
+    } catch (e) {
+      if (id !== previewReqId) return
+      previewError = e?.toString() ?? 'Preview failed'
+    } finally {
+      if (id === previewReqId) previewLoading = false
+    }
+  }
+
+  function setStretch(level) {
+    stretchLevel = level
+    refreshPreview()
   }
 
   // ── Formatting helpers ────────────────────────────────────────────────────
@@ -184,23 +222,29 @@
     return '…/' + parts.slice(-2).join('/')
   }
 
-  function metaRows(h) {
+  function basicRows(h) {
     if (!h) return []
     const expStr = !h.exptime ? '—'
       : h.exptime >= 60 ? (h.exptime / 60).toFixed(1) + ' min'
       : h.exptime + ' s'
     return [
-      { key: 'Object',    val: h.object      || '—' },
-      { key: 'Filter',    val: h.filter       || '—' },
-      { key: 'Exposure',  val: expStr },
-      { key: 'Date',      val: h.dateObs      || '—' },
-      { key: 'Gain',      val: h.gain         || '—' },
-      { key: 'CCD Temp',  val: h.ccdTemp ? h.ccdTemp + ' °C' : '—' },
-      { key: 'Telescope', val: h.telescope    || '—' },
-      { key: 'Camera',    val: h.instrument   || '—' },
-      { key: 'Size',      val: h.width && h.height
+      { key: 'Object',   val: h.object  || '—' },
+      { key: 'Filter',   val: h.filter  || '—' },
+      { key: 'Exposure', val: expStr },
+      { key: 'Date',     val: h.dateObs || '—' },
+      { key: 'Size',     val: h.width && h.height
           ? `${h.width} × ${h.height}${h.channels > 1 ? ` × ${h.channels}` : ''}`
           : '—' },
+    ]
+  }
+
+  function advancedRows(h) {
+    if (!h) return []
+    return [
+      { key: 'Gain',      val: h.gain       || '—' },
+      { key: 'CCD Temp',  val: h.ccdTemp ? h.ccdTemp + ' °C' : '—' },
+      { key: 'Telescope', val: h.telescope  || '—' },
+      { key: 'Camera',    val: h.instrument || '—' },
       { key: 'Binning',   val: h.xbinning ? `${h.xbinning} × ${h.ybinning}` : '—' },
     ]
   }
@@ -298,6 +342,19 @@
             <div class="preview-controls">
               <span class="zoom-label">{Math.round(zoom * 100)}%</span>
               <button class="tool-btn" on:click={resetView} title="Fit to window (or double-click image)">Fit</button>
+              <div class="stretch-group">
+                <button
+                  class="tool-btn"
+                  class:active={stretchEnabled}
+                  on:click={() => { stretchEnabled = !stretchEnabled; refreshPreview() }}
+                  title="Toggle autostretch"
+                >Stretch</button>
+                {#if stretchEnabled}
+                  <button class="tool-btn preset" class:active={stretchLevel === 1} on:click={() => setStretch(1)}>Gentle</button>
+                  <button class="tool-btn preset" class:active={stretchLevel === 2} on:click={() => setStretch(2)}>Normal</button>
+                  <button class="tool-btn preset" class:active={stretchLevel === 3} on:click={() => setStretch(3)}>Strong</button>
+                {/if}
+              </div>
               <button class="btn-icon small" on:click={clearPreview} title="Close preview">✕</button>
             </div>
           </div>
@@ -332,13 +389,34 @@
 
           {#if fitsHeader}
             <div class="preview-meta">
-              <div class="meta-title">FITS Header</div>
-              {#each metaRows(fitsHeader) as row}
-                <div class="meta-row">
-                  <span class="meta-key">{row.key}</span>
-                  <span class="meta-val">{row.val}</span>
-                </div>
-              {/each}
+              <div class="meta-section">
+                <button class="meta-section-hdr" on:click={() => basicCollapsed = !basicCollapsed}>
+                  <span>Basic</span>
+                  <span class="meta-caret">{basicCollapsed ? '›' : '⌄'}</span>
+                </button>
+                {#if !basicCollapsed}
+                  {#each basicRows(fitsHeader) as row}
+                    <div class="meta-row">
+                      <span class="meta-key">{row.key}</span>
+                      <span class="meta-val">{row.val}</span>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+              <div class="meta-section">
+                <button class="meta-section-hdr" on:click={() => advancedCollapsed = !advancedCollapsed}>
+                  <span>Advanced</span>
+                  <span class="meta-caret">{advancedCollapsed ? '›' : '⌄'}</span>
+                </button>
+                {#if !advancedCollapsed}
+                  {#each advancedRows(fitsHeader) as row}
+                    <div class="meta-row">
+                      <span class="meta-key">{row.key}</span>
+                      <span class="meta-val">{row.val}</span>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
             </div>
           {/if}
 
@@ -450,6 +528,14 @@
     transition: color 0.15s, border-color 0.15s;
   }
   .tool-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .tool-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .tool-btn.preset { padding: 2px 6px; }
+
+  .stretch-group {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
 
   /* ── Two-pane content area ───────────────────────────────────────────────── */
 
@@ -666,14 +752,26 @@
   .preview-meta::-webkit-scrollbar { width: 4px; }
   .preview-meta::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 2px; }
 
-  .meta-title {
+  .meta-section { border-bottom: 1px solid var(--border); }
+
+  .meta-section-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 5px 0 3px;
+    color: var(--text-dim);
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--text-dim);
-    padding: 6px 0 4px;
   }
+
+  .meta-section-hdr:hover { color: var(--accent); }
+  .meta-caret { font-size: 0.8rem; opacity: 0.6; }
 
   .meta-row {
     display: flex;
