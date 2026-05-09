@@ -1,5 +1,5 @@
 <script>
-  import { SelectRootFolder, ListDirectory } from '../wailsjs/go/main/App.js'
+  import { SelectRootFolder, ListDirectory } from '../wailsjs/go/app/App.js'
 
   let rootFolder = ''
   let currentPath = ''

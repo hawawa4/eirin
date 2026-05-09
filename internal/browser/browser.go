@@ -1,17 +1,10 @@
-package main
+package browser
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-type App struct {
-	ctx context.Context
-}
 
 type FileEntry struct {
 	Name    string    `json:"name"`
@@ -21,25 +14,7 @@ type FileEntry struct {
 	Size    int64     `json:"size"`
 }
 
-func NewApp() *App {
-	return &App{}
-}
-
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-}
-
-func (a *App) SelectRootFolder() string {
-	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Astrophotography Root Folder",
-	})
-	if err != nil {
-		return ""
-	}
-	return path
-}
-
-func (a *App) ListDirectory(path string) ([]FileEntry, error) {
+func ListDirectory(path string) ([]FileEntry, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
