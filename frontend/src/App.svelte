@@ -1,10 +1,20 @@
 <script>
+  import { onMount } from 'svelte'
   import {
     SelectRootFolder,
     ListDirectory,
     GeneratePreview,
     ReadFITSHeader,
+    LoadPrefs,
+    SetPref,
   } from '../wailsjs/go/app/App.js'
+
+  // Preference keys — mirrors internal/prefs/prefs.go constants.
+  const PREF_ROOT_FOLDER        = 'root_folder'
+  const PREF_BASIC_COLLAPSED    = 'basic_collapsed'
+  const PREF_ADVANCED_COLLAPSED = 'advanced_collapsed'
+  const PREF_STRETCH_ENABLED    = 'stretch_enabled'
+  const PREF_STRETCH_LEVEL      = 'stretch_level'
 
   // ── File browser state ────────────────────────────────────────────────────
   let rootFolder = ''
@@ -31,6 +41,30 @@
 
   // ── Preview request ID (stale cancellation) ───────────────────────────────
   let previewReqId = 0
+
+  // ── Preference persistence ────────────────────────────────────────────────
+  // Guard: reactive saves only fire AFTER the initial load from the DB.
+  let prefsLoaded = false
+
+  onMount(async () => {
+    const p = await LoadPrefs()
+    // Seed all preference-backed state from the DB before marking as loaded.
+    stretchEnabled    = p.stretchEnabled
+    stretchLevel      = p.stretchLevel
+    basicCollapsed    = p.basicCollapsed
+    advancedCollapsed = p.advancedCollapsed
+    if (p.rootFolder) {
+      rootFolder = p.rootFolder
+      await loadDirectory(p.rootFolder)
+    }
+    prefsLoaded = true
+  })
+
+  // Auto-save each preference when it changes (guarded by prefsLoaded).
+  $: if (prefsLoaded) SetPref(PREF_STRETCH_ENABLED,    String(stretchEnabled))
+  $: if (prefsLoaded) SetPref(PREF_STRETCH_LEVEL,      String(stretchLevel))
+  $: if (prefsLoaded) SetPref(PREF_BASIC_COLLAPSED,    String(basicCollapsed))
+  $: if (prefsLoaded) SetPref(PREF_ADVANCED_COLLAPSED, String(advancedCollapsed))
 
   // ── Pane resize ───────────────────────────────────────────────────────────
   let leftPct = 40       // left pane width as % of content area
@@ -99,6 +133,7 @@
     const path = await SelectRootFolder()
     if (path) {
       rootFolder = path
+      if (prefsLoaded) SetPref(PREF_ROOT_FOLDER, path)
       pathHistory = []
       clearPreview()
       await loadDirectory(path)
