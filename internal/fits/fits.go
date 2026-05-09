@@ -232,35 +232,55 @@ func openFITS(path string) (*fitsio.File, error) {
 }
 
 // readPixelsAsFloat64 reads all FITS pixels into float64 and applies BSCALE/BZERO.
+//
+// fitsio.Image.Read calls reflect.Value.SetLen(n) on the slice we pass in, which
+// panics when n > cap (i.e. for any nil/var-declared slice).  Pre-allocating with
+// make avoids the panic.
 func readPixelsAsFloat64(img fitsio.Image, bscale, bzero float64) ([]float64, error) {
-	bitpix := img.Header().Bitpix()
+	hdr := img.Header()
+	bitpix := hdr.Bitpix()
+
+	n := 1
+	for _, dim := range hdr.Axes() {
+		n *= dim
+	}
+	if n <= 0 {
+		return nil, fmt.Errorf("image has zero pixels")
+	}
+
 	switch bitpix {
 	case 8:
-		var raw []int8
+		raw := make([]int8, n)
 		if err := img.Read(&raw); err != nil {
 			return nil, err
 		}
 		return applyScale8(raw, bscale, bzero), nil
 	case 16:
-		var raw []int16
+		raw := make([]int16, n)
 		if err := img.Read(&raw); err != nil {
 			return nil, err
 		}
 		return applyScale16(raw, bscale, bzero), nil
 	case 32:
-		var raw []int32
+		raw := make([]int32, n)
 		if err := img.Read(&raw); err != nil {
 			return nil, err
 		}
 		return applyScale32(raw, bscale, bzero), nil
+	case 64:
+		raw := make([]int64, n)
+		if err := img.Read(&raw); err != nil {
+			return nil, err
+		}
+		return applyScale64(raw, bscale, bzero), nil
 	case -32:
-		var raw []float32
+		raw := make([]float32, n)
 		if err := img.Read(&raw); err != nil {
 			return nil, err
 		}
 		return applyScaleF32(raw, bscale, bzero), nil
 	case -64:
-		var raw []float64
+		raw := make([]float64, n)
 		if err := img.Read(&raw); err != nil {
 			return nil, err
 		}
@@ -285,6 +305,13 @@ func applyScale16(src []int16, s, z float64) []float64 {
 	return out
 }
 func applyScale32(src []int32, s, z float64) []float64 {
+	out := make([]float64, len(src))
+	for i, v := range src {
+		out[i] = s*float64(v) + z
+	}
+	return out
+}
+func applyScale64(src []int64, s, z float64) []float64 {
 	out := make([]float64, len(src))
 	for i, v := range src {
 		out[i] = s*float64(v) + z
