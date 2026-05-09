@@ -159,12 +159,27 @@ func GeneratePreview(path string, maxSize int) (string, error) {
 		return "", fmt.Errorf("read pixels: %w", err)
 	}
 
-	planeSize := w * h
-	channelData := make([][]float64, channels)
-	for c := 0; c < channels; c++ {
-		plane := make([]float64, planeSize)
-		copy(plane, pixels[c*planeSize:(c+1)*planeSize])
-		channelData[c] = autoStretch(normalizeToUnit(plane))
+	var channelData [][]float64
+
+	bayerpat := cardStr(hdr, "BAYERPAT", "COLORTYP")
+	if bayerpat != "" && channels == 1 {
+		// Single-plane Bayer mosaic: demosaic into R/G/B planes (half resolution).
+		rCh, gCh, bCh, dw, dh := debayerBlocks(pixels, w, h, bayerpat)
+		w, h = dw, dh
+		channels = 3
+		channelData = [][]float64{
+			autoStretch(normalizeToUnit(rCh)),
+			autoStretch(normalizeToUnit(gCh)),
+			autoStretch(normalizeToUnit(bCh)),
+		}
+	} else {
+		planeSize := w * h
+		channelData = make([][]float64, channels)
+		for c := 0; c < channels; c++ {
+			plane := make([]float64, planeSize)
+			copy(plane, pixels[c*planeSize:(c+1)*planeSize])
+			channelData[c] = autoStretch(normalizeToUnit(plane))
+		}
 	}
 
 	// Compute output dimensions preserving aspect ratio
@@ -365,6 +380,58 @@ func normalizeToUnit(pixels []float64) []float64 {
 		out[i] = v
 	}
 	return out
+}
+
+// debayerBlocks demosaics a single-plane Bayer image using 2×2 block averaging.
+// Each 2×2 super-pixel becomes one RGB output pixel (output is w/2 × h/2).
+// Supported patterns: RGGB, BGGR, GRBG, GBRG (defaults to RGGB).
+func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, outW, outH int) {
+	outW, outH = w/2, h/2
+	size := outW * outH
+	r = make([]float64, size)
+	g = make([]float64, size)
+	b = make([]float64, size)
+
+	for by := 0; by < outH; by++ {
+		y0 := by * 2
+		y1 := y0 + 1
+		if y1 >= h {
+			y1 = y0
+		}
+		for bx := 0; bx < outW; bx++ {
+			x0 := bx * 2
+			x1 := x0 + 1
+			if x1 >= w {
+				x1 = x0
+			}
+			// 2×2 block: a=top-left, b_=top-right, c=bottom-left, d=bottom-right
+			a := bayer[y0*w+x0]
+			bv := bayer[y0*w+x1]
+			c := bayer[y1*w+x0]
+			d := bayer[y1*w+x1]
+
+			idx := by*outW + bx
+			switch pat {
+			case "BGGR": // B G / G R
+				b[idx] = a
+				g[idx] = (bv + c) / 2
+				r[idx] = d
+			case "GRBG": // G R / B G
+				g[idx] = (a + d) / 2
+				r[idx] = bv
+				b[idx] = c
+			case "GBRG": // G B / R G
+				g[idx] = (a + d) / 2
+				b[idx] = bv
+				r[idx] = c
+			default: // RGGB: R G / G B
+				r[idx] = a
+				g[idx] = (bv + c) / 2
+				b[idx] = d
+			}
+		}
+	}
+	return
 }
 
 // autoStretch applies a Siril-compatible MTF autostretch to normalised [0,1] data.

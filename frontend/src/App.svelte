@@ -6,6 +6,7 @@
     ReadFITSHeader,
   } from '../wailsjs/go/app/App.js'
 
+  // ── File browser state ────────────────────────────────────────────────────
   let rootFolder = ''
   let currentPath = ''
   let pathHistory = []
@@ -13,12 +14,71 @@
   let error = ''
   let loading = false
 
+  // ── Preview state ─────────────────────────────────────────────────────────
   let selectedEntry = null
   let previewDataUrl = ''
   let previewLoading = false
   let previewError = ''
   let fitsHeader = null
 
+  // ── Pane resize ───────────────────────────────────────────────────────────
+  let leftPct = 40       // left pane width as % of content area
+  let collapsed = false  // left pane collapsed
+
+  function onDividerMouseDown(e) {
+    e.preventDefault()
+    const contentArea = document.querySelector('.content-area')
+
+    function onMove(e) {
+      const rect = contentArea.getBoundingClientRect()
+      const pct = ((e.clientX - rect.left) / rect.width) * 100
+      leftPct = Math.max(15, Math.min(75, pct))
+      if (collapsed) collapsed = false
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // ── Zoom / pan ────────────────────────────────────────────────────────────
+  let zoom = 1
+  let panX = 0
+  let panY = 0
+  let isPanning = false
+  let panStartX = 0
+  let panStartY = 0
+
+  function resetView() { zoom = 1; panX = 0; panY = 0 }
+
+  function onWheel(e) {
+    e.preventDefault()
+    const factor = e.deltaY < 0 ? 1.15 : 0.87
+    const newZoom = Math.max(0.25, Math.min(20, zoom * factor))
+    const rect = e.currentTarget.getBoundingClientRect()
+    const mx = e.clientX - rect.left - rect.width / 2
+    const my = e.clientY - rect.top - rect.height / 2
+    panX = mx - (mx - panX) * newZoom / zoom
+    panY = my - (my - panY) * newZoom / zoom
+    zoom = newZoom
+  }
+
+  function onPanStart(e) {
+    if (e.button !== 0) return
+    isPanning = true
+    panStartX = e.clientX - panX
+    panStartY = e.clientY - panY
+  }
+  function onPanMove(e) {
+    if (!isPanning) return
+    panX = e.clientX - panStartX
+    panY = e.clientY - panStartY
+  }
+  function onPanEnd() { isPanning = false }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
   function isFits(name) {
     const l = name.toLowerCase()
     return l.endsWith('.fits') || l.endsWith('.fit')
@@ -68,6 +128,7 @@
     previewError = ''
     fitsHeader = null
     previewLoading = true
+    resetView()
 
     const [hdrResult, imgResult] = await Promise.allSettled([
       ReadFITSHeader(entry.path),
@@ -75,7 +136,6 @@
     ])
 
     previewLoading = false
-
     if (hdrResult.status === 'fulfilled') fitsHeader = hdrResult.value
     if (imgResult.status === 'fulfilled') {
       previewDataUrl = imgResult.value
@@ -97,8 +157,10 @@
     previewDataUrl = ''
     previewError = ''
     fitsHeader = null
+    resetView()
   }
 
+  // ── Formatting helpers ────────────────────────────────────────────────────
   function formatDate(dateStr) {
     const d = new Date(dateStr)
     return d.toLocaleDateString('en-US', {
@@ -122,27 +184,32 @@
     return '…/' + parts.slice(-2).join('/')
   }
 
-  function formatExpTime(sec) {
-    if (!sec) return '—'
-    if (sec >= 60) return (sec / 60).toFixed(1) + ' min'
-    return sec + ' s'
-  }
-
   function metaRows(h) {
     if (!h) return []
+    const expStr = !h.exptime ? '—'
+      : h.exptime >= 60 ? (h.exptime / 60).toFixed(1) + ' min'
+      : h.exptime + ' s'
     return [
-      { key: 'Object',       val: h.object      || '—' },
-      { key: 'Filter',       val: h.filter       || '—' },
-      { key: 'Exposure',     val: formatExpTime(h.exptime) },
-      { key: 'Date',         val: h.dateObs      || '—' },
-      { key: 'Gain',         val: h.gain         ? h.gain  : '—' },
-      { key: 'CCD Temp',     val: h.ccdTemp      ? h.ccdTemp + ' °C' : '—' },
-      { key: 'Telescope',    val: h.telescope    || '—' },
-      { key: 'Camera',       val: h.instrument   || '—' },
-      { key: 'Size',         val: h.width && h.height ? `${h.width} × ${h.height}${h.channels > 1 ? ` × ${h.channels}` : ''}` : '—' },
-      { key: 'Binning',      val: h.xbinning     ? `${h.xbinning} × ${h.ybinning}` : '—' },
+      { key: 'Object',    val: h.object      || '—' },
+      { key: 'Filter',    val: h.filter       || '—' },
+      { key: 'Exposure',  val: expStr },
+      { key: 'Date',      val: h.dateObs      || '—' },
+      { key: 'Gain',      val: h.gain         || '—' },
+      { key: 'CCD Temp',  val: h.ccdTemp ? h.ccdTemp + ' °C' : '—' },
+      { key: 'Telescope', val: h.telescope    || '—' },
+      { key: 'Camera',    val: h.instrument   || '—' },
+      { key: 'Size',      val: h.width && h.height
+          ? `${h.width} × ${h.height}${h.channels > 1 ? ` × ${h.channels}` : ''}`
+          : '—' },
+      { key: 'Binning',   val: h.xbinning ? `${h.xbinning} × ${h.ybinning}` : '—' },
     ]
   }
+
+  $: leftStyle = selectedEntry
+    ? collapsed
+      ? 'flex: 0 0 0px; min-width: 0; overflow: hidden;'
+      : `flex: 0 0 ${leftPct}%;`
+    : 'flex: 1;'
 </script>
 
 <div class="layout">
@@ -169,12 +236,12 @@
     </div>
 
     <div class="content-area">
-      <!-- ── File list ─────────────────────────────────────────────────────── -->
-      <div class="file-list-pane" class:narrowed={selectedEntry}>
+
+      <!-- ── Left: file list ───────────────────────────────────────────────── -->
+      <div class="file-list-pane" style={leftStyle}>
         {#if error}
           <div class="error-bar">{error}</div>
         {/if}
-
         {#if loading}
           <div class="status-row">Loading…</div>
         {:else if files.length === 0}
@@ -198,9 +265,7 @@
                   on:click={() => onRowClick(entry)}
                 >
                   <td class="col-name">
-                    <span class="file-icon">
-                      {entry.isDir ? '📁' : isFits(entry.name) ? '🔭' : '🗒'}
-                    </span>
+                    <span class="file-icon">{entry.isDir ? '📁' : isFits(entry.name) ? '🔭' : '🗒'}</span>
                     <span class="file-name">{entry.name}</span>
                   </td>
                   <td class="col-date">{formatDate(entry.modTime)}</td>
@@ -212,24 +277,56 @@
         {/if}
       </div>
 
-      <!-- ── Preview panel ──────────────────────────────────────────────────── -->
+      <!-- ── Divider ───────────────────────────────────────────────────────── -->
+      {#if selectedEntry}
+        <div class="divider" on:mousedown={onDividerMouseDown}>
+          <button
+            class="collapse-btn"
+            on:mousedown|stopPropagation
+            on:click={() => collapsed = !collapsed}
+            title={collapsed ? 'Expand file list' : 'Collapse file list'}
+          >{collapsed ? '›' : '‹'}</button>
+        </div>
+      {/if}
+
+      <!-- ── Right: preview ────────────────────────────────────────────────── -->
       {#if selectedEntry}
         <div class="preview-pane">
+
           <div class="preview-titlebar">
             <span class="preview-filename" title={selectedEntry.path}>{selectedEntry.name}</span>
-            <button class="btn-icon" on:click={clearPreview} title="Close preview">✕</button>
+            <div class="preview-controls">
+              <span class="zoom-label">{Math.round(zoom * 100)}%</span>
+              <button class="tool-btn" on:click={resetView} title="Fit to window (or double-click image)">Fit</button>
+              <button class="btn-icon small" on:click={clearPreview} title="Close preview">✕</button>
+            </div>
           </div>
 
-          <div class="preview-image-area">
+          <!-- Image viewport: overflow hidden, zoom/pan via transform -->
+          <div
+            class="image-viewport"
+            class:panning={isPanning}
+            on:wheel|preventDefault={onWheel}
+            on:mousedown={onPanStart}
+            on:mousemove={onPanMove}
+            on:mouseup={onPanEnd}
+            on:mouseleave={onPanEnd}
+            on:dblclick={resetView}
+          >
             {#if previewLoading}
               <div class="preview-status">
-                <span class="spinner">◌</span>
-                Generating preview…
+                <span class="spinner">◌</span> Generating preview…
               </div>
             {:else if previewError}
               <div class="preview-error">{previewError}</div>
             {:else if previewDataUrl}
-              <img class="preview-img" src={previewDataUrl} alt={selectedEntry.name} />
+              <img
+                class="preview-img"
+                src={previewDataUrl}
+                alt={selectedEntry.name}
+                style="transform: translate({panX}px, {panY}px) scale({zoom});"
+                draggable="false"
+              />
             {/if}
           </div>
 
@@ -244,8 +341,10 @@
               {/each}
             </div>
           {/if}
+
         </div>
       {/if}
+
     </div>
 
     <footer>
@@ -261,6 +360,8 @@
     flex-direction: column;
     height: 100vh;
   }
+
+  /* ── Header / toolbar ────────────────────────────────────────────────────── */
 
   header {
     display: flex;
@@ -281,9 +382,28 @@
     letter-spacing: 0.05em;
   }
 
-  .header-right {
-    -webkit-app-region: no-drag;
+  .header-right { -webkit-app-region: no-drag; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
+
+  .path-display {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    font-family: 'Consolas', 'Fira Code', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
   .btn-primary {
     background: var(--accent-dim);
@@ -296,26 +416,8 @@
     transition: background 0.15s;
   }
 
-  .btn-primary:hover {
-    background: var(--accent);
-    color: #0f111a;
-  }
-
-  .btn-large {
-    padding: 10px 28px;
-    font-size: 1rem;
-    margin-top: 16px;
-  }
-
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 16px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
+  .btn-primary:hover { background: var(--accent); color: #0f111a; }
+  .btn-large { padding: 10px 28px; font-size: 1rem; margin-top: 16px; }
 
   .btn-icon {
     background: transparent;
@@ -329,28 +431,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.15s, border-color 0.15s;
     flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
   }
 
-  .btn-icon:hover:not(:disabled) {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
+  .btn-icon.small { width: 22px; height: 22px; font-size: 0.8rem; }
+  .btn-icon:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  .btn-icon:disabled { opacity: 0.3; cursor: default; }
 
-  .btn-icon:disabled {
-    opacity: 0.3;
-    cursor: default;
-  }
-
-  .path-display {
-    font-size: 0.82rem;
+  .tool-btn {
+    background: transparent;
     color: var(--text-secondary);
-    font-family: 'Consolas', 'Fira Code', monospace;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
   }
+  .tool-btn:hover { color: var(--accent); border-color: var(--accent); }
 
   /* ── Two-pane content area ───────────────────────────────────────────────── */
 
@@ -361,32 +460,52 @@
   }
 
   .file-list-pane {
-    flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    transition: flex 0.2s ease;
+    transition: flex 0.18s ease;
+    min-width: 0;
   }
 
-  .file-list-pane.narrowed {
-    flex: 0 0 42%;
-    border-right: 1px solid var(--border);
+  .file-list-pane::-webkit-scrollbar { width: 6px; }
+  .file-list-pane::-webkit-scrollbar-track { background: var(--bg-base); }
+  .file-list-pane::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 3px; }
+
+  /* ── Resize divider ──────────────────────────────────────────────────────── */
+
+  .divider {
+    width: 5px;
+    flex-shrink: 0;
+    background: var(--border);
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: background 0.15s;
   }
 
-  .file-list-pane::-webkit-scrollbar,
-  .preview-pane::-webkit-scrollbar {
-    width: 6px;
+  .divider:hover { background: var(--accent-dim); }
+
+  .collapse-btn {
+    position: absolute;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    padding: 0;
+    line-height: 1;
+    z-index: 10;
+    transition: color 0.15s, border-color 0.15s;
   }
 
-  .file-list-pane::-webkit-scrollbar-track,
-  .preview-pane::-webkit-scrollbar-track {
-    background: var(--bg-base);
-  }
-
-  .file-list-pane::-webkit-scrollbar-thumb,
-  .preview-pane::-webkit-scrollbar-thumb {
-    background: var(--border-accent);
-    border-radius: 3px;
-  }
+  .collapse-btn:hover { color: var(--accent); border-color: var(--accent); }
 
   /* ── File table ──────────────────────────────────────────────────────────── */
 
@@ -420,48 +539,20 @@
     color: var(--text-primary);
   }
 
-  .file-row:hover td {
-    background: var(--bg-row-hover);
-  }
-
-  .file-row.is-dir { cursor: pointer; }
+  .file-row:hover td { background: var(--bg-row-hover); }
+  .file-row.is-dir  { cursor: pointer; }
   .file-row.is-fits { cursor: pointer; }
 
-  .file-row.is-dir td {
-    background: var(--bg-row-dir);
-    color: var(--accent);
-  }
-
+  .file-row.is-dir td { background: var(--bg-row-dir); color: var(--accent); }
   .file-row.is-dir:hover td,
-  .file-row.is-fits:hover td {
-    background: var(--bg-row-hover);
-  }
+  .file-row.is-fits:hover td { background: var(--bg-row-hover); }
 
-  .file-row.selected td {
-    background: var(--accent-dim) !important;
-    color: var(--text-primary);
-  }
+  .file-row.selected td { background: var(--accent-dim) !important; color: var(--text-primary); }
 
   .col-name { width: 55%; }
-
-  .col-date {
-    width: 30%;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .col-size {
-    width: 15%;
-    text-align: right;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-    padding-right: 24px !important;
-  }
-
+  .col-date { width: 30%; color: var(--text-secondary); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+  .col-size { width: 15%; text-align: right; color: var(--text-secondary); font-size: 0.82rem; font-variant-numeric: tabular-nums; padding-right: 24px !important; }
   .file-icon { margin-right: 8px; font-size: 0.9em; }
-  .file-name { vertical-align: middle; }
 
   /* ── Preview pane ────────────────────────────────────────────────────────── */
 
@@ -469,44 +560,69 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    background: var(--bg-base);
+    overflow: hidden;
+    min-width: 0;
   }
 
   .preview-titlebar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 14px;
+    gap: 8px;
+    padding: 6px 12px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
   .preview-filename {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-family: 'Consolas', 'Fira Code', monospace;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
   }
 
-  .preview-image-area {
+  .preview-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     flex-shrink: 0;
+  }
+
+  .zoom-label {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* ── Image viewport (zoom/pan container) ─────────────────────────────────── */
+
+  .image-viewport {
+    flex: 1;
+    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
-    min-height: 200px;
+    cursor: grab;
+    position: relative;
+    background: #08090f;
   }
+
+  .image-viewport.panning { cursor: grabbing; }
 
   .preview-img {
     max-width: 100%;
-    max-height: 55vh;
+    max-height: 100%;
     object-fit: contain;
-    border-radius: 4px;
-    border: 1px solid var(--border);
+    user-select: none;
+    pointer-events: none;
+    transform-origin: center;
+    will-change: transform;
     display: block;
   }
 
@@ -525,10 +641,7 @@
     font-size: 1.2rem;
   }
 
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
-  }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
   .preview-error {
     color: var(--danger);
@@ -537,42 +650,40 @@
     border: 1px solid var(--danger);
     border-radius: 4px;
     padding: 10px 14px;
-    width: 100%;
+    max-width: 80%;
   }
 
-  /* ── FITS metadata ───────────────────────────────────────────────────────── */
+  /* ── FITS metadata (scrollable strip at bottom) ───────────────────────────── */
 
   .preview-meta {
-    padding: 0 16px 16px;
     flex-shrink: 0;
+    padding: 0 14px 10px;
+    overflow-y: auto;
+    max-height: 220px;
+    border-top: 1px solid var(--border);
   }
 
+  .preview-meta::-webkit-scrollbar { width: 4px; }
+  .preview-meta::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 2px; }
+
   .meta-title {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-dim);
-    margin-bottom: 8px;
-    padding-top: 4px;
-    border-top: 1px solid var(--border);
+    padding: 6px 0 4px;
   }
 
   .meta-row {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    padding: 3px 0;
-    font-size: 0.8rem;
+    padding: 2px 0;
+    font-size: 0.79rem;
     border-bottom: 1px solid var(--border);
   }
 
-  .meta-key {
-    color: var(--text-dim);
-    flex-shrink: 0;
-    width: 90px;
-  }
-
+  .meta-key { color: var(--text-dim); width: 80px; flex-shrink: 0; }
   .meta-val {
     color: var(--text-primary);
     text-align: right;
@@ -580,7 +691,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: calc(100% - 98px);
   }
 
   /* ── Misc ────────────────────────────────────────────────────────────────── */
@@ -592,34 +702,13 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    color: var(--text-secondary);
   }
 
-  .empty-icon {
-    font-size: 3rem;
-    color: var(--accent-dim);
-    margin-bottom: 8px;
-  }
+  .empty-icon { font-size: 3rem; color: var(--accent-dim); margin-bottom: 8px; }
+  .empty-title { font-size: 1.1rem; font-weight: 500; color: var(--text-primary); }
+  .empty-sub { font-size: 0.875rem; color: var(--text-secondary); max-width: 340px; text-align: center; }
 
-  .empty-title {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .empty-sub {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    max-width: 340px;
-    text-align: center;
-  }
-
-  .status-row {
-    padding: 32px;
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 0.875rem;
-  }
+  .status-row { padding: 32px; text-align: center; color: var(--text-dim); font-size: 0.875rem; }
 
   .error-bar {
     background: #2a1020;
@@ -643,8 +732,5 @@
     flex-shrink: 0;
   }
 
-  .root-tag {
-    font-family: 'Consolas', 'Fira Code', monospace;
-    color: var(--text-dim);
-  }
+  .root-tag { font-family: 'Consolas', 'Fira Code', monospace; color: var(--text-dim); }
 </style>
