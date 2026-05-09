@@ -1,5 +1,10 @@
 <script>
-  import { SelectRootFolder, ListDirectory } from '../wailsjs/go/app/App.js'
+  import {
+    SelectRootFolder,
+    ListDirectory,
+    GeneratePreview,
+    ReadFITSHeader,
+  } from '../wailsjs/go/app/App.js'
 
   let rootFolder = ''
   let currentPath = ''
@@ -8,11 +13,23 @@
   let error = ''
   let loading = false
 
+  let selectedEntry = null
+  let previewDataUrl = ''
+  let previewLoading = false
+  let previewError = ''
+  let fitsHeader = null
+
+  function isFits(name) {
+    const l = name.toLowerCase()
+    return l.endsWith('.fits') || l.endsWith('.fit')
+  }
+
   async function selectFolder() {
     const path = await SelectRootFolder()
     if (path) {
       rootFolder = path
       pathHistory = []
+      clearPreview()
       await loadDirectory(path)
     }
   }
@@ -35,27 +52,58 @@
     }
   }
 
-  async function navigateInto(entry) {
-    if (!entry.isDir) return
-    pathHistory = [...pathHistory, currentPath]
-    await loadDirectory(entry.path)
+  async function onRowClick(entry) {
+    if (entry.isDir) {
+      clearPreview()
+      pathHistory = [...pathHistory, currentPath]
+      await loadDirectory(entry.path)
+    } else if (isFits(entry.name)) {
+      await openPreview(entry)
+    }
+  }
+
+  async function openPreview(entry) {
+    selectedEntry = entry
+    previewDataUrl = ''
+    previewError = ''
+    fitsHeader = null
+    previewLoading = true
+
+    const [hdrResult, imgResult] = await Promise.allSettled([
+      ReadFITSHeader(entry.path),
+      GeneratePreview(entry.path),
+    ])
+
+    previewLoading = false
+
+    if (hdrResult.status === 'fulfilled') fitsHeader = hdrResult.value
+    if (imgResult.status === 'fulfilled') {
+      previewDataUrl = imgResult.value
+    } else {
+      previewError = imgResult.reason?.toString() ?? 'Preview failed'
+    }
   }
 
   async function navigateBack() {
     if (pathHistory.length === 0) return
     const prev = pathHistory[pathHistory.length - 1]
     pathHistory = pathHistory.slice(0, -1)
+    clearPreview()
     await loadDirectory(prev)
+  }
+
+  function clearPreview() {
+    selectedEntry = null
+    previewDataUrl = ''
+    previewError = ''
+    fitsHeader = null
   }
 
   function formatDate(dateStr) {
     const d = new Date(dateStr)
     return d.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
     })
   }
 
@@ -73,13 +121,33 @@
     if (parts.length <= 2) return '…' + path.slice(-(maxLen - 1))
     return '…/' + parts.slice(-2).join('/')
   }
+
+  function formatExpTime(sec) {
+    if (!sec) return '—'
+    if (sec >= 60) return (sec / 60).toFixed(1) + ' min'
+    return sec + ' s'
+  }
+
+  function metaRows(h) {
+    if (!h) return []
+    return [
+      { key: 'Object',       val: h.object      || '—' },
+      { key: 'Filter',       val: h.filter       || '—' },
+      { key: 'Exposure',     val: formatExpTime(h.exptime) },
+      { key: 'Date',         val: h.dateObs      || '—' },
+      { key: 'Gain',         val: h.gain         ? h.gain  : '—' },
+      { key: 'CCD Temp',     val: h.ccdTemp      ? h.ccdTemp + ' °C' : '—' },
+      { key: 'Telescope',    val: h.telescope    || '—' },
+      { key: 'Camera',       val: h.instrument   || '—' },
+      { key: 'Size',         val: h.width && h.height ? `${h.width} × ${h.height}${h.channels > 1 ? ` × ${h.channels}` : ''}` : '—' },
+      { key: 'Binning',      val: h.xbinning     ? `${h.xbinning} × ${h.ybinning}` : '—' },
+    ]
+  }
 </script>
 
 <div class="layout">
   <header>
-    <div class="header-left">
-      <span class="logo">✦ Eirin</span>
-    </div>
+    <span class="logo">✦ Eirin</span>
     <div class="header-right">
       <button class="btn-primary" on:click={selectFolder}>
         {rootFolder ? 'Change Root Folder' : 'Select Root Folder'}
@@ -96,51 +164,87 @@
     </div>
   {:else}
     <div class="toolbar">
-      <button
-        class="btn-icon"
-        on:click={navigateBack}
-        disabled={pathHistory.length === 0}
-        title="Go back"
-      >←</button>
+      <button class="btn-icon" on:click={navigateBack} disabled={pathHistory.length === 0} title="Go back">←</button>
       <span class="path-display" title={currentPath}>{truncatePath(currentPath)}</span>
     </div>
 
-    <div class="file-list-container">
-      {#if error}
-        <div class="error-bar">{error}</div>
-      {/if}
+    <div class="content-area">
+      <!-- ── File list ─────────────────────────────────────────────────────── -->
+      <div class="file-list-pane" class:narrowed={selectedEntry}>
+        {#if error}
+          <div class="error-bar">{error}</div>
+        {/if}
 
-      {#if loading}
-        <div class="status-row">Loading…</div>
-      {:else if files.length === 0}
-        <div class="status-row">This folder is empty</div>
-      {:else}
-        <table class="file-table">
-          <thead>
-            <tr>
-              <th class="col-name">Name</th>
-              <th class="col-date">Date Modified</th>
-              <th class="col-size">Size</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each files as entry (entry.path)}
-              <tr
-                class="file-row"
-                class:is-dir={entry.isDir}
-                on:click={() => navigateInto(entry)}
-                style={entry.isDir ? 'cursor:pointer' : 'cursor:default'}
-              >
-                <td class="col-name">
-                  <span class="file-icon">{entry.isDir ? '📁' : '🗒'}</span>
-                  <span class="file-name">{entry.name}</span>
-                </td>
-                <td class="col-date">{formatDate(entry.modTime)}</td>
-                <td class="col-size">{formatSize(entry.size, entry.isDir)}</td>
+        {#if loading}
+          <div class="status-row">Loading…</div>
+        {:else if files.length === 0}
+          <div class="status-row">This folder is empty</div>
+        {:else}
+          <table class="file-table">
+            <thead>
+              <tr>
+                <th class="col-name">Name</th>
+                <th class="col-date">Date Modified</th>
+                <th class="col-size">Size</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {#each files as entry (entry.path)}
+                <tr
+                  class="file-row"
+                  class:is-dir={entry.isDir}
+                  class:is-fits={!entry.isDir && isFits(entry.name)}
+                  class:selected={selectedEntry && selectedEntry.path === entry.path}
+                  on:click={() => onRowClick(entry)}
+                >
+                  <td class="col-name">
+                    <span class="file-icon">
+                      {entry.isDir ? '📁' : isFits(entry.name) ? '🔭' : '🗒'}
+                    </span>
+                    <span class="file-name">{entry.name}</span>
+                  </td>
+                  <td class="col-date">{formatDate(entry.modTime)}</td>
+                  <td class="col-size">{formatSize(entry.size, entry.isDir)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+
+      <!-- ── Preview panel ──────────────────────────────────────────────────── -->
+      {#if selectedEntry}
+        <div class="preview-pane">
+          <div class="preview-titlebar">
+            <span class="preview-filename" title={selectedEntry.path}>{selectedEntry.name}</span>
+            <button class="btn-icon" on:click={clearPreview} title="Close preview">✕</button>
+          </div>
+
+          <div class="preview-image-area">
+            {#if previewLoading}
+              <div class="preview-status">
+                <span class="spinner">◌</span>
+                Generating preview…
+              </div>
+            {:else if previewError}
+              <div class="preview-error">{previewError}</div>
+            {:else if previewDataUrl}
+              <img class="preview-img" src={previewDataUrl} alt={selectedEntry.name} />
+            {/if}
+          </div>
+
+          {#if fitsHeader}
+            <div class="preview-meta">
+              <div class="meta-title">FITS Header</div>
+              {#each metaRows(fitsHeader) as row}
+                <div class="meta-row">
+                  <span class="meta-key">{row.key}</span>
+                  <span class="meta-val">{row.val}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
     </div>
 
@@ -226,6 +330,7 @@
     align-items: center;
     justify-content: center;
     transition: color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
   }
 
   .btn-icon:hover:not(:disabled) {
@@ -247,24 +352,43 @@
     white-space: nowrap;
   }
 
-  .file-list-container {
+  /* ── Two-pane content area ───────────────────────────────────────────────── */
+
+  .content-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .file-list-pane {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    transition: flex 0.2s ease;
   }
 
-  .file-list-container::-webkit-scrollbar {
+  .file-list-pane.narrowed {
+    flex: 0 0 42%;
+    border-right: 1px solid var(--border);
+  }
+
+  .file-list-pane::-webkit-scrollbar,
+  .preview-pane::-webkit-scrollbar {
     width: 6px;
   }
 
-  .file-list-container::-webkit-scrollbar-track {
+  .file-list-pane::-webkit-scrollbar-track,
+  .preview-pane::-webkit-scrollbar-track {
     background: var(--bg-base);
   }
 
-  .file-list-container::-webkit-scrollbar-thumb {
+  .file-list-pane::-webkit-scrollbar-thumb,
+  .preview-pane::-webkit-scrollbar-thumb {
     background: var(--border-accent);
     border-radius: 3px;
   }
+
+  /* ── File table ──────────────────────────────────────────────────────────── */
 
   .file-table {
     width: 100%;
@@ -300,18 +424,25 @@
     background: var(--bg-row-hover);
   }
 
+  .file-row.is-dir { cursor: pointer; }
+  .file-row.is-fits { cursor: pointer; }
+
   .file-row.is-dir td {
     background: var(--bg-row-dir);
     color: var(--accent);
   }
 
-  .file-row.is-dir:hover td {
+  .file-row.is-dir:hover td,
+  .file-row.is-fits:hover td {
     background: var(--bg-row-hover);
   }
 
-  .col-name {
-    width: 55%;
+  .file-row.selected td {
+    background: var(--accent-dim) !important;
+    color: var(--text-primary);
   }
+
+  .col-name { width: 55%; }
 
   .col-date {
     width: 30%;
@@ -329,14 +460,130 @@
     padding-right: 24px !important;
   }
 
-  .file-icon {
-    margin-right: 8px;
-    font-size: 0.9em;
+  .file-icon { margin-right: 8px; font-size: 0.9em; }
+  .file-name { vertical-align: middle; }
+
+  /* ── Preview pane ────────────────────────────────────────────────────────── */
+
+  .preview-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--bg-base);
   }
 
-  .file-name {
-    vertical-align: middle;
+  .preview-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
+
+  .preview-filename {
+    font-size: 0.82rem;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .preview-image-area {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    min-height: 200px;
+  }
+
+  .preview-img {
+    max-width: 100%;
+    max-height: 55vh;
+    object-fit: contain;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+
+  .preview-status {
+    color: var(--text-dim);
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .spinner {
+    display: inline-block;
+    animation: spin 1.2s linear infinite;
+    color: var(--accent);
+    font-size: 1.2rem;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .preview-error {
+    color: var(--danger);
+    font-size: 0.82rem;
+    background: #2a1020;
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    padding: 10px 14px;
+    width: 100%;
+  }
+
+  /* ── FITS metadata ───────────────────────────────────────────────────────── */
+
+  .preview-meta {
+    padding: 0 16px 16px;
+    flex-shrink: 0;
+  }
+
+  .meta-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 3px 0;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .meta-key {
+    color: var(--text-dim);
+    flex-shrink: 0;
+    width: 90px;
+  }
+
+  .meta-val {
+    color: var(--text-primary);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: calc(100% - 98px);
+  }
+
+  /* ── Misc ────────────────────────────────────────────────────────────────── */
 
   .empty-state {
     flex: 1;
