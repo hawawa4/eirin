@@ -2,7 +2,10 @@ module github.com/TaruDesigns/eirin
 
 go 1.24.4
 
-require github.com/wailsapp/wails/v2 v2.12.0
+require (
+	codeberg.org/astrogo/fitsio v0.4.0
+	github.com/wailsapp/wails/v2 v2.12.0
+)
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect

@@ -1,4 +1,4 @@
-export namespace main {
+export namespace browser {
 	
 	export class FileEntry {
 	    name: string;
@@ -38,6 +38,65 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace fits {
+	
+	export class FITSHeader {
+	    width: number;
+	    height: number;
+	    channels: number;
+	    bitpix: number;
+	    object: string;
+	    telescope: string;
+	    instrument: string;
+	    filter: string;
+	    exptime: number;
+	    dateObs: string;
+	    gain: number;
+	    offset: number;
+	    ccdTemp: number;
+	    ra: number;
+	    dec: number;
+	    xbinning: number;
+	    ybinning: number;
+	    focalLen: number;
+	    siteElev: number;
+	    siteLat: number;
+	    siteLong: number;
+	    extra: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new FITSHeader(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.channels = source["channels"];
+	        this.bitpix = source["bitpix"];
+	        this.object = source["object"];
+	        this.telescope = source["telescope"];
+	        this.instrument = source["instrument"];
+	        this.filter = source["filter"];
+	        this.exptime = source["exptime"];
+	        this.dateObs = source["dateObs"];
+	        this.gain = source["gain"];
+	        this.offset = source["offset"];
+	        this.ccdTemp = source["ccdTemp"];
+	        this.ra = source["ra"];
+	        this.dec = source["dec"];
+	        this.xbinning = source["xbinning"];
+	        this.ybinning = source["ybinning"];
+	        this.focalLen = source["focalLen"];
+	        this.siteElev = source["siteElev"];
+	        this.siteLat = source["siteLat"];
+	        this.siteLong = source["siteLong"];
+	        this.extra = source["extra"];
+	    }
 	}
 
 }

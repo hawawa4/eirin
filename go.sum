@@ -1,3 +1,5 @@
+codeberg.org/astrogo/fitsio v0.4.0 h1:ATDKD8+cDIi9VJ609JbnPGnJblJPV59iojHGL377Ur0=
+codeberg.org/astrogo/fitsio v0.4.0/go.mod h1:MlK0U74YrpQ6WGly5Zw2vHvu74YtzWhi4fUY1oDDvWY=
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 h1:N3IGoHHp9pb6mj1cbXbuaSXV/UMKwmbKLf53nQmtqMA=
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3/go.mod h1:QtOLZGz8olr4qH2vWK0QH0w0O4T9fEIjMuWpKUsH7nc=
 github.com/bep/debounce v1.2.1 h1:v67fRdBA9UQu2NhLFXrSg0Brw7CexQekrBwDMM8bzeY=
