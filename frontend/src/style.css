@@ -1,0 +1,37 @@
+:root {
+  --bg-base: #0f111a;
+  --bg-panel: #161825;
+  --bg-row: #1a1d2e;
+  --bg-row-hover: #21253a;
+  --bg-row-dir: #1e2138;
+  --accent: #7c9ef5;
+  --accent-dim: #3d5aa8;
+  --text-primary: #e0e4f0;
+  --text-secondary: #8892b0;
+  --text-dim: #4a5270;
+  --border: #252840;
+  --border-accent: #3a4070;
+  --danger: #e05c7e;
+  --success: #5cb8a0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
