@@ -124,7 +124,35 @@ func ReadHeader(path string) (*FITSHeader, error) {
 
 // GeneratePreview reads a FITS file, applies autostretch, and returns a
 // base64-encoded PNG data URL scaled to maxSize pixels on the longest side.
-func GeneratePreview(path string, maxSize int) (string, error) {
+// StretchLevel controls autostretch aggressiveness:
+//
+//	0 = none (linear normalisation only)
+//	1 = gentle   (shadows −1.25σ, target background 0.10)
+//	2 = normal   (shadows −2.80σ, target background 0.25 — Siril default)
+//	3 = strong   (shadows −4.00σ, target background 0.40)
+type stretchPreset struct{ shadows, targetBG float64 }
+
+var stretchPresets = []stretchPreset{
+	{0, 0},         // 0: identity (unused — handled separately)
+	{-1.25, 0.10},  // 1: gentle
+	{-2.80, 0.25},  // 2: normal
+	{-4.00, 0.40},  // 3: strong
+}
+
+func makeStretcher(level int) func([]float64) []float64 {
+	if level <= 0 {
+		return func(p []float64) []float64 { return p }
+	}
+	if level >= len(stretchPresets) {
+		level = len(stretchPresets) - 1
+	}
+	pr := stretchPresets[level]
+	return func(p []float64) []float64 { return autoStretch(p, pr.shadows, pr.targetBG) }
+}
+
+// GeneratePreview reads a FITS file, applies autostretch, and returns a
+// base64-encoded PNG data URL scaled to maxSize pixels on the longest side.
+func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 	f, err := openFITS(path)
 	if err != nil {
 		return "", err
@@ -159,6 +187,7 @@ func GeneratePreview(path string, maxSize int) (string, error) {
 		return "", fmt.Errorf("read pixels: %w", err)
 	}
 
+	stretch := makeStretcher(stretchLevel)
 	var channelData [][]float64
 
 	bayerpat := cardStr(hdr, "BAYERPAT", "COLORTYP")
@@ -168,9 +197,9 @@ func GeneratePreview(path string, maxSize int) (string, error) {
 		w, h = dw, dh
 		channels = 3
 		channelData = [][]float64{
-			autoStretch(normalizeToUnit(rCh)),
-			autoStretch(normalizeToUnit(gCh)),
-			autoStretch(normalizeToUnit(bCh)),
+			stretch(normalizeToUnit(rCh)),
+			stretch(normalizeToUnit(gCh)),
+			stretch(normalizeToUnit(bCh)),
 		}
 	} else {
 		planeSize := w * h
@@ -178,7 +207,7 @@ func GeneratePreview(path string, maxSize int) (string, error) {
 		for c := 0; c < channels; c++ {
 			plane := make([]float64, planeSize)
 			copy(plane, pixels[c*planeSize:(c+1)*planeSize])
-			channelData[c] = autoStretch(normalizeToUnit(plane))
+			channelData[c] = stretch(normalizeToUnit(plane))
 		}
 	}
 
@@ -435,19 +464,9 @@ func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, ou
 }
 
 // autoStretch applies a Siril-compatible MTF autostretch to normalised [0,1] data.
-//
-// Algorithm:
-//  1. Compute median and MAD of a sample of pixels.
-//  2. Estimate sigma = MAD × 1.4826 (Gaussian-consistent estimator).
-//  3. Shadow clipping: shadowClip = median − 2.8 × sigma  (clamped ≥ 0).
-//  4. Compute MTF midtones parameter m so that the new median maps to
-//     targetBackground = 0.25 (Siril default).
-//  5. For every pixel: x = (p − shadowClip) / (1 − shadowClip); apply MTF(m, x).
-func autoStretch(pixels []float64) []float64 {
-	const (
-		shadowsFactor    = -2.80
-		targetBackground = 0.25
-	)
+// shadowsFactor controls shadow clipping aggressiveness (e.g. −2.80 is Siril default).
+// targetBG is the desired output brightness of the background midtone (e.g. 0.25).
+func autoStretch(pixels []float64, shadowsFactor, targetBG float64) []float64 {
 
 	// Sub-sample for statistics on very large images (65k pixels is enough)
 	sample := pixels
@@ -481,7 +500,7 @@ func autoStretch(pixels []float64) []float64 {
 	var m float64
 	if scale > 0 {
 		newMedian := math.Max(0, median-shadowClip) / scale
-		m = mtfMidtone(targetBackground, newMedian)
+		m = mtfMidtone(targetBG, newMedian)
 	}
 
 	out := make([]float64, len(pixels))
