@@ -10,10 +10,18 @@ export function ListDirectory(arg1) {
   return window['go']['app']['App']['ListDirectory'](arg1);
 }
 
+export function LoadPrefs() {
+  return window['go']['app']['App']['LoadPrefs']();
+}
+
 export function ReadFITSHeader(arg1) {
   return window['go']['app']['App']['ReadFITSHeader'](arg1);
 }
 
 export function SelectRootFolder() {
   return window['go']['app']['App']['SelectRootFolder']();
+}
+
+export function SetPref(arg1, arg2) {
+  return window['go']['app']['App']['SetPref'](arg1, arg2);
 }

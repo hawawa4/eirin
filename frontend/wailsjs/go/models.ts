@@ -101,3 +101,28 @@ export namespace fits {
 
 }
 
+export namespace prefs {
+	
+	export class Prefs {
+	    rootFolder: string;
+	    basicCollapsed: boolean;
+	    advancedCollapsed: boolean;
+	    stretchEnabled: boolean;
+	    stretchLevel: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Prefs(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rootFolder = source["rootFolder"];
+	        this.basicCollapsed = source["basicCollapsed"];
+	        this.advancedCollapsed = source["advancedCollapsed"];
+	        this.stretchEnabled = source["stretchEnabled"];
+	        this.stretchLevel = source["stretchLevel"];
+	    }
+	}
+
+}
+
