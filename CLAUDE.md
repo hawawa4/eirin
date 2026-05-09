@@ -1,5 +1,5 @@
 This project is a Golang project that aims to create a simple but powerful library manager for astrophotography. 
-The project uses Go with Wails for the frontend.
+The project uses Go for the backend part, which in turn will use Siril for the ACTUAL astro processing, with Wails as a bridge to use Svelte for the frontend display part.
 
 The main features of the application are:
 
