@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { untrack } from "svelte";
-  import type { browser, fits } from "../../wailsjs/go/models";
+  import type { app } from "../../wailsjs/go/models";
   import { GeneratePreviewRaw, ReadFITSHeader } from "../../wailsjs/go/app/App.js";
   import { basicRows, advancedRows } from "../lib/utils";
 
   interface Props {
-    entry: browser.EnrichedFileEntry;
+    entry: app.EnrichedFileEntry;
     stretchEnabled: boolean;
     stretchLevel: number;
     basicCollapsed: boolean;
@@ -26,7 +26,7 @@
   // ── Preview load state ───────────────────────────────────────────────────
   let previewLoading = $state(false);
   let previewError = $state("");
-  let fitsHeader = $state<fits.FITSHeader | null>(null);
+  let fitsHeader = $state<app.FITSHeader | null>(null);
   let previewReqId = 0;
   let hasImage = $state(false);
 
@@ -60,7 +60,7 @@
     width: number;
     height: number;
     channels: number;
-    stats: fits.ChannelStats[];
+    stats: app.ChannelStats[];
   } | null = null;
 
   // ── GLSL shaders ──────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ void main() {
   }
 
   function computeUniforms(
-    stats: fits.ChannelStats[],
+    stats: app.ChannelStats[],
     enabled: boolean,
     level: number,
   ): StretchUniforms[] {
@@ -322,7 +322,7 @@ void main() {
 
   // renderGLWith is a version of renderGL that takes explicit params so we can
   // call it safely before the reactive `stretchEnabled/stretchLevel` settle.
-  function renderGLWith(stats: fits.ChannelStats[], enabled: boolean, level: number) {
+  function renderGLWith(stats: app.ChannelStats[], enabled: boolean, level: number) {
     if (!gl || !program || !glTex || !glU || !rawInfo) return;
     const uniforms = computeUniforms(stats, enabled, level);
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };

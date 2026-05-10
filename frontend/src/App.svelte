@@ -12,9 +12,10 @@
     SetPref,
   } from "../wailsjs/go/app/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
-  import type { browser } from "../wailsjs/go/models";
+  import type { app } from "../wailsjs/go/models";
   import {
     DEFAULT_COLUMNS,
+    DEFAULT_LIBRARY_COLUMNS,
     type AppMode,
     type ColumnDef,
     type CtxMenuState,
@@ -37,6 +38,7 @@
   const PREF_STRETCH_ENABLED = "stretch_enabled";
   const PREF_STRETCH_LEVEL = "stretch_level";
   const PREF_COLUMN_CONFIG = "column_config";
+  const PREF_LIBRARY_COLUMN_CONFIG = "library_column_config";
 
   // ── App mode ──────────────────────────────────────────────────────────────
   let appMode = $state<AppMode>("browser");
@@ -45,12 +47,13 @@
   let rootFolder = $state("");
   let currentPath = $state("");
   let pathHistory = $state<string[]>([]);
-  let files = $state<browser.EnrichedFileEntry[]>([]);
+  let files = $state<app.EnrichedFileEntry[]>([]);
   let error = $state("");
   let loading = $state(false);
 
-  // ── Column config ─────────────────────────────────────────────────────────
+  // ── Column configs ────────────────────────────────────────────────────────
   let columns = $state<ColumnDef[]>(DEFAULT_COLUMNS.map((c) => ({ ...c })));
+  let libraryColumns = $state<ColumnDef[]>(DEFAULT_LIBRARY_COLUMNS.map((c) => ({ ...c })));
 
   // ── Index builder state ───────────────────────────────────────────────────
   let indexProgress = $state<IndexProgress | null>(null);
@@ -63,7 +66,7 @@
   let confirmDel = $state<{ path: string; name: string } | null>(null);
 
   // ── Selected file / preview ───────────────────────────────────────────────
-  let selectedEntry = $state<browser.EnrichedFileEntry | null>(null);
+  let selectedEntry = $state<app.EnrichedFileEntry | null>(null);
   let libraryPreviewPath = $state<string | null>(null);
 
   // ── Stretch / section collapse (persisted) ────────────────────────────────
@@ -108,6 +111,18 @@
       }
     }
 
+    if (p.libraryColumnConfig) {
+      try {
+        const saved = JSON.parse(p.libraryColumnConfig) as ColumnDef[];
+        libraryColumns = DEFAULT_LIBRARY_COLUMNS.map((def) => {
+          const s = saved.find((x) => x.id === def.id);
+          return s ? { ...def, ...s } : { ...def };
+        });
+      } catch {
+        /* keep defaults */
+      }
+    }
+
     if (p.rootFolder) {
       rootFolder = p.rootFolder;
       await loadDirectory(p.rootFolder);
@@ -139,6 +154,11 @@
   function saveColumnConfig() {
     if (!prefsLoaded) return;
     SetPref(PREF_COLUMN_CONFIG, JSON.stringify(columns));
+  }
+
+  function saveLibraryColumnConfig() {
+    if (!prefsLoaded) return;
+    SetPref(PREF_LIBRARY_COLUMN_CONFIG, JSON.stringify(libraryColumns));
   }
 
   // ── Index ─────────────────────────────────────────────────────────────────
@@ -193,7 +213,7 @@
     await loadDirectory(prev);
   }
 
-  async function onRowClick(entry: browser.EnrichedFileEntry) {
+  async function onRowClick(entry: app.EnrichedFileEntry) {
     if (entry.isDir) {
       clearPreview();
       pathHistory = [...pathHistory, currentPath];
@@ -209,19 +229,19 @@
   }
 
   // ── File operations ───────────────────────────────────────────────────────
-  async function rejectFile(entry: browser.EnrichedFileEntry) {
+  async function rejectFile(entry: { path: string; isRejected: boolean }) {
     ctxMenu = null;
     await RejectFile(entry.path);
     entry.isRejected = true;
   }
 
-  async function restoreFile(entry: browser.EnrichedFileEntry) {
+  async function restoreFile(entry: { path: string; isRejected: boolean }) {
     ctxMenu = null;
     await UnrejectFile(entry.path);
     entry.isRejected = false;
   }
 
-  function openHardDeleteConfirm(entry: browser.EnrichedFileEntry) {
+  function openHardDeleteConfirm(entry: { path: string; name: string }) {
     ctxMenu = null;
     confirmDel = { path: entry.path, name: entry.name };
   }
@@ -257,7 +277,7 @@
       hasMeta: true,
       isRejected: false,
       rejectionReason: "",
-    } as browser.EnrichedFileEntry;
+    } as app.EnrichedFileEntry;
   }
 
   // ── Pane resize ───────────────────────────────────────────────────────────
@@ -375,7 +395,10 @@
         <LibraryView
           bind:this={libraryView}
           {rootFolder}
+          columns={libraryColumns}
+          selectedNasPath={selectedEntry?.path ?? null}
           onfileclick={onLibraryFileClick}
+          onsavecolumns={saveLibraryColumnConfig}
         />
       </div>
 

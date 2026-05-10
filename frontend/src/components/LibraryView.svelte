@@ -1,30 +1,53 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { GetLibraryFrames, SetFrameType } from "../../wailsjs/go/app/App.js";
+  import {
+    GetLibraryFrames,
+    SetFrameType,
+    RejectFile,
+    UnrejectFile,
+    HardDeleteFile,
+  } from "../../wailsjs/go/app/App.js";
   import type { app } from "../../wailsjs/go/models";
-  import type { LibraryGroup, LibraryGroupBy, FrameType } from "../lib/types";
-  import { formatSize } from "../lib/utils";
+  import type { ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy } from "../lib/types";
+  import { getLibraryCellValue } from "../lib/utils";
+  import ContextMenu from "./ContextMenu.svelte";
+  import HardDeleteModal from "./HardDeleteModal.svelte";
 
   interface Props {
     rootFolder: string;
+    columns: ColumnDef[];
+    selectedNasPath: string | null;
     onfileclick: (nasPath: string) => void;
+    onsavecolumns: () => void;
   }
 
-  let { rootFolder, onfileclick }: Props = $props();
+  let { rootFolder, columns, selectedNasPath, onfileclick, onsavecolumns }: Props = $props();
 
+  // ── Data ─────────────────────────────────────────────────────────────────
   let frames = $state<app.LibraryFrame[]>([]);
   let loading = $state(false);
   let error = $state("");
-  let search = $state("");
+
+  // ── Toolbar state ─────────────────────────────────────────────────────────
+  let showRejected = $state(false);
   let groupBy = $state<LibraryGroupBy>("object");
-  let expandedGroups = $state<Set<string>>(new Set());
   let typeFilter = $state<FrameType | "all">("all");
+  let search = $state("");
+  let showColumnMenu = $state(false);
+
+  // ── Column drag ───────────────────────────────────────────────────────────
+  let dragSourceId = "";
+  let dragOverIndex = $state(-1);
+
+  // ── Context menu / delete modal ───────────────────────────────────────────
+  let ctxMenu = $state<CtxMenuState | null>(null);
+  let confirmDel = $state<{ path: string; name: string } | null>(null);
 
   const GROUP_BY_OPTIONS: { value: LibraryGroupBy; label: string }[] = [
     { value: "object", label: "Object" },
     { value: "date", label: "Date" },
     { value: "filter", label: "Filter" },
-    { value: "frameType", label: "Frame Type" },
+    { value: "frameType", label: "Type" },
   ];
 
   const FRAME_TYPE_META: Record<
@@ -57,11 +80,20 @@
     }
   }
 
-  // Expose reload so parent can trigger it after index completes
   export { reload };
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+  let visibleColumns = $derived(
+    [...columns].filter((c) => c.visible).sort((a, b) => a.order - b.order),
+  );
+
+  let totalColWidth = $derived(visibleColumns.reduce((s, c) => s + c.width, 0));
+
+  let rejectedCount = $derived(frames.filter((f) => f.isRejected).length);
 
   let filtered = $derived(
     frames.filter((f) => {
+      if (showRejected ? !f.isRejected : f.isRejected) return false;
       if (typeFilter !== "all" && f.frameType !== typeFilter) return false;
       if (!search) return true;
       const q = search.toLowerCase();
@@ -73,12 +105,18 @@
     }),
   );
 
-  let groups = $derived<LibraryGroup[]>(buildGroups(filtered, groupBy));
+  interface LibGroup {
+    key: string;
+    label: string;
+    frames: app.LibraryFrame[];
+  }
 
-  function buildGroups(items: app.LibraryFrame[], by: LibraryGroupBy): LibraryGroup[] {
+  let groups = $derived<LibGroup[]>(buildGroups(filtered));
+
+  function buildGroups(items: app.LibraryFrame[]): LibGroup[] {
     const map = new Map<string, app.LibraryFrame[]>();
     for (const f of items) {
-      const key = groupKey(f, by);
+      const key = groupKeyFor(f);
       const bucket = map.get(key);
       if (bucket) {
         bucket.push(f);
@@ -86,16 +124,16 @@
         map.set(key, [f]);
       }
     }
-    const result: LibraryGroup[] = [];
-    for (const [key, groupFrames] of map) {
-      result.push({ key, label: groupLabel(key, by, groupFrames), frames: groupFrames });
+    const result: LibGroup[] = [];
+    for (const [key, gFrames] of map) {
+      result.push({ key, label: labelForKey(key), frames: gFrames });
     }
     result.sort((a, b) => a.key.localeCompare(b.key));
     return result;
   }
 
-  function groupKey(f: app.LibraryFrame, by: LibraryGroupBy): string {
-    switch (by) {
+  function groupKeyFor(f: app.LibraryFrame): string {
+    switch (groupBy) {
       case "object":
         return f.object || "(unknown object)";
       case "date":
@@ -107,192 +145,342 @@
     }
   }
 
-  function groupLabel(key: string, by: LibraryGroupBy, items: app.LibraryFrame[]): string {
-    if (by === "frameType") {
-      return FRAME_TYPE_META[key]?.label ?? key;
-    }
+  function labelForKey(key: string): string {
+    if (groupBy === "frameType") return FRAME_TYPE_META[key]?.label ?? key;
     return key;
   }
 
-  function toggleGroup(key: string) {
-    const next = new Set(expandedGroups);
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    expandedGroups = next;
-  }
-
-  function isExpanded(key: string): boolean {
-    return expandedGroups.has(key);
-  }
-
   function frameTypeMeta(type: string) {
-    return FRAME_TYPE_META[type] ?? { label: type, short: type.toUpperCase(), color: "#9ca3af", bg: "#1f2937" };
+    return (
+      FRAME_TYPE_META[type] ?? {
+        label: type,
+        short: type.toUpperCase(),
+        color: "#9ca3af",
+        bg: "#1f2937",
+      }
+    );
   }
 
-  function formatDate(dateObs: string): string {
-    if (!dateObs) return "—";
-    return dateObs.slice(0, 16).replace("T", " ");
+  // ── Column resize ─────────────────────────────────────────────────────────
+  function startColResize(e: MouseEvent, colId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const col = columns.find((c) => c.id === colId)!;
+    const startWidth = col.width;
+
+    function onMove(ev: MouseEvent) {
+      col.width = Math.max(48, startWidth + ev.clientX - startX);
+    }
+    function onUp() {
+      onsavecolumns();
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }
 
-  function formatExp(expTime: number): string {
-    if (!expTime) return "—";
-    if (expTime >= 60) return `${(expTime / 60).toFixed(1)}m`;
-    return `${expTime}s`;
+  // ── Column drag-reorder ───────────────────────────────────────────────────
+  function onColDragStart(e: DragEvent, visIdx: number) {
+    dragSourceId = visibleColumns[visIdx].id;
+    e.dataTransfer!.effectAllowed = "move";
   }
 
-  async function changeFrameType(nasPath: string, newType: string) {
+  function onColDragOver(e: DragEvent, visIdx: number) {
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    dragOverIndex = visIdx;
+  }
+
+  function onColDrop(e: DragEvent, targetVisIdx: number) {
+    e.preventDefault();
+    dragOverIndex = -1;
+    if (!dragSourceId) return;
+    const srcVisIdx = visibleColumns.findIndex((c) => c.id === dragSourceId);
+    dragSourceId = "";
+    if (srcVisIdx === -1 || srcVisIdx === targetVisIdx) return;
+    const newVis = [...visibleColumns];
+    const [moved] = newVis.splice(srcVisIdx, 1);
+    newVis.splice(targetVisIdx, 0, moved);
+    let order = 0;
+    for (const col of newVis) columns.find((c) => c.id === col.id)!.order = order++;
+    for (const col of columns.filter((c) => !c.visible))
+      columns.find((c) => c.id === col.id)!.order = order++;
+    onsavecolumns();
+  }
+
+  function onColDragEnd() {
+    dragSourceId = "";
+    dragOverIndex = -1;
+  }
+
+  function toggleColumn(colId: string) {
+    const col = columns.find((c) => c.id === colId)!;
+    col.visible = !col.visible;
+    onsavecolumns();
+  }
+
+  // Close column menu on outside click
+  $effect(() => {
+    if (!showColumnMenu) return;
+    function onDoc(e: MouseEvent) {
+      const el = document.getElementById("lib-col-menu-root");
+      if (el && !el.contains(e.target as Node)) showColumnMenu = false;
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  });
+
+  // ── Frame type change ─────────────────────────────────────────────────────
+  async function changeFrameType(nasPath: string, newType: string, e: Event) {
+    e.stopPropagation();
     await SetFrameType(nasPath, newType);
     frames = frames.map((f) => (f.nasPath === nasPath ? { ...f, frameType: newType } : f));
   }
 
-  let totalCount = $derived(filtered.length);
-  let lightCount = $derived(filtered.filter((f) => f.frameType === "light").length);
-  let stackedCount = $derived(filtered.filter((f) => f.frameType === "stacked").length);
+  // ── Reject / restore / hard delete ───────────────────────────────────────
+  function openCtxMenu(e: MouseEvent, frame: app.LibraryFrame) {
+    e.preventDefault();
+    ctxMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      entry: { path: frame.nasPath, name: frame.fileName, isRejected: frame.isRejected },
+    };
+  }
+
+  async function onCtxReject(entry: CtxEntry) {
+    ctxMenu = null;
+    await RejectFile(entry.path);
+    frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: true } : f));
+  }
+
+  async function onCtxRestore(entry: CtxEntry) {
+    ctxMenu = null;
+    await UnrejectFile(entry.path);
+    frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: false } : f));
+  }
+
+  function onCtxHardDelete(entry: CtxEntry) {
+    ctxMenu = null;
+    confirmDel = { path: entry.path, name: entry.name };
+  }
+
+  async function doHardDelete() {
+    if (!confirmDel) return;
+    const { path } = confirmDel;
+    confirmDel = null;
+    await HardDeleteFile(path);
+    frames = frames.filter((f) => f.nasPath !== path);
+  }
 </script>
 
-<div class="library">
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <span class="label">Group by</span>
-      <div class="segmented">
-        {#each GROUP_BY_OPTIONS as opt}
-          <button
-            class="seg-btn"
-            class:active={groupBy === opt.value}
-            onclick={() => {
-              groupBy = opt.value;
-            }}>{opt.label}</button
-          >
-        {/each}
-      </div>
-    </div>
-    <div class="toolbar-right">
-      <select
-        class="type-filter"
-        bind:value={typeFilter}
+<!-- ── Toolbar ───────────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <div class="toolbar-left">
+    <div class="view-tabs">
+      <button
+        class="view-tab"
+        class:active={!showRejected}
+        onclick={() => {
+          showRejected = false;
+        }}>Frames</button
       >
-        <option value="all">All types</option>
-        {#each Object.entries(FRAME_TYPE_META) as [val, meta]}
-          <option value={val}>{meta.label}</option>
+      <button
+        class="view-tab"
+        class:active={showRejected}
+        onclick={() => {
+          showRejected = true;
+        }}
+      >
+        Rejected
+        {#if rejectedCount > 0}<span class="tab-badge">{rejectedCount}</span>{/if}
+      </button>
+    </div>
+
+    {#if !showRejected}
+      <div class="group-by">
+        <span class="label">Group</span>
+        <div class="segmented">
+          {#each GROUP_BY_OPTIONS as opt}
+            <button
+              class="seg-btn"
+              class:active={groupBy === opt.value}
+              onclick={() => {
+                groupBy = opt.value;
+              }}>{opt.label}</button
+            >
+          {/each}
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <div class="toolbar-right">
+    <select class="type-filter" bind:value={typeFilter}>
+      <option value="all">All types</option>
+      {#each Object.entries(FRAME_TYPE_META) as [val, meta]}
+        <option value={val}>{meta.label}</option>
+      {/each}
+    </select>
+    <input class="search-input" type="search" placeholder="Search…" bind:value={search} />
+    <div class="column-selector" id="lib-col-menu-root">
+      <button
+        class="tool-btn"
+        onclick={() => (showColumnMenu = !showColumnMenu)}
+        title="Show/hide columns">Cols ▾</button
+      >
+      {#if showColumnMenu}
+        <div class="column-menu">
+          {#each [...columns].sort((a, b) => a.order - b.order) as col (col.id)}
+            {#if col.id !== "frameType" && col.id !== "name"}
+              <label class="column-menu-item">
+                <input type="checkbox" checked={col.visible} onchange={() => toggleColumn(col.id)} />
+                {col.label}
+              </label>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    </div>
+  </div>
+</div>
+
+<!-- ── Table ──────────────────────────────────────────────────────────────── -->
+{#if loading}
+  <div class="status-row">Loading library…</div>
+{:else if error}
+  <div class="status-row error">{error}</div>
+{:else if groups.length === 0}
+  <div class="status-row">
+    {#if showRejected}
+      No rejected frames.
+    {:else if frames.filter((f) => !f.isRejected).length === 0}
+      No indexed frames found. Run Build Index first.
+    {:else}
+      No frames match the current filter.
+    {/if}
+  </div>
+{:else}
+  <div class="table-scroll-wrapper">
+    <table class="lib-table" style="width: {Math.max(totalColWidth, 100)}px; min-width: 100%">
+      <colgroup>
+        {#each visibleColumns as col (col.id)}
+          <col style="width: {col.width}px" />
         {/each}
-      </select>
-      <input class="search" type="search" placeholder="Search…" bind:value={search} />
-    </div>
-  </div>
-
-  <!-- Stats bar -->
-  <div class="stats-bar">
-    <span>{totalCount} frames</span>
-    {#if lightCount > 0}<span class="stat-chip light">{lightCount} lights</span>{/if}
-    {#if stackedCount > 0}<span class="stat-chip stacked">{stackedCount} stacked</span>{/if}
-  </div>
-
-  <!-- Content -->
-  {#if loading}
-    <div class="state-msg">Loading library…</div>
-  {:else if error}
-    <div class="state-msg error">{error}</div>
-  {:else if groups.length === 0}
-    <div class="state-msg">
-      {frames.length === 0
-        ? "No indexed frames found. Run Build Index first."
-        : "No frames match the current filter."}
-    </div>
-  {:else}
-    <div class="groups-list">
-      {#each groups as group}
-        {@const expanded = isExpanded(group.key)}
-        <div class="group">
-          <!-- Group header -->
-          <button class="group-header" onclick={() => toggleGroup(group.key)}>
-            <span class="group-chevron">{expanded ? "▼" : "▶"}</span>
-            <span class="group-name">{group.label}</span>
-            <span class="group-count">{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span>
-            <!-- Type distribution pills -->
-            <span class="group-types">
-              {#each Object.entries( group.frames.reduce( (acc, f) => { acc[f.frameType] = (acc[f.frameType] ?? 0) + 1; return acc; }, {} as Record<string, number>, ), ) as [type, count]}
-                {@const meta = frameTypeMeta(type)}
-                <span class="type-pill" style="color:{meta.color};background:{meta.bg}">
-                  {meta.short} {count}
-                </span>
-              {/each}
-            </span>
-          </button>
+      </colgroup>
+      <thead>
+        <tr>
+          {#each visibleColumns as col, i (col.id)}
+            <th
+              class:drag-over={dragOverIndex === i}
+              draggable={col.id !== "frameType" && col.id !== "name"}
+              ondragstart={(e) => onColDragStart(e, i)}
+              ondragover={(e) => onColDragOver(e, i)}
+              ondrop={(e) => onColDrop(e, i)}
+              ondragend={onColDragEnd}
+              ondragleave={() => {
+                if (dragOverIndex === i) dragOverIndex = -1;
+              }}
+            >
+              <span class="th-text">{col.label}</span>
+              <span
+                class="resize-handle"
+                onmousedown={(e) => startColResize(e, col.id)}
+                role="separator"
+                aria-label="Resize column"
+              ></span>
+            </th>
+          {/each}
+        </tr>
+      </thead>
+      <tbody>
+        {#each groups as group (group.key)}
+          <!-- Group header row -->
+          <tr class="group-header-row">
+            <td colspan={visibleColumns.length}>
+              <span class="group-label">{group.label}</span>
+              <span class="group-count"
+                >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
+              >
+            </td>
+          </tr>
 
           <!-- Frame rows -->
-          {#if expanded}
-            <div class="frame-rows">
-              {#each group.frames as frame}
-                {@const meta = frameTypeMeta(frame.frameType)}
-                <div
-                  class="frame-row"
-                  class:rejected={frame.isRejected}
-                  role="button"
-                  tabindex="0"
-                  onclick={() => onfileclick(frame.nasPath)}
-                  onkeydown={(e) => e.key === "Enter" && onfileclick(frame.nasPath)}
-                >
-                  <span
-                    class="type-badge"
-                    style="color:{meta.color};background:{meta.bg}"
-                    title="Change frame type"
-                    role="button"
-                    tabindex="0"
-                    onclick={(e) => e.stopPropagation()}
-                    onkeydown={(e) => e.stopPropagation()}
-                  >
-                    <!-- Type change popover via select on the badge itself -->
+          {#each group.frames as frame (frame.nasPath)}
+            <tr
+              class="frame-row"
+              class:selected={selectedNasPath === frame.nasPath}
+              onclick={() => onfileclick(frame.nasPath)}
+              oncontextmenu={(e) => openCtxMenu(e, frame)}
+            >
+              {#each visibleColumns as col (col.id)}
+                <td class="col-{col.id}">
+                  {#if col.id === "frameType"}
+                    {@const meta = frameTypeMeta(frame.frameType)}
                     <select
                       class="type-select"
                       value={frame.frameType}
-                      style="color:{meta.color}"
+                      style="color:{meta.color};background:{meta.bg}"
                       onclick={(e) => e.stopPropagation()}
-                      onchange={(e) => {
-                        e.stopPropagation();
-                        changeFrameType(frame.nasPath, (e.target as HTMLSelectElement).value);
-                      }}
+                      onchange={(e) =>
+                        changeFrameType(
+                          frame.nasPath,
+                          (e.target as HTMLSelectElement).value,
+                          e,
+                        )}
                     >
                       {#each Object.entries(FRAME_TYPE_META) as [val, m]}
                         <option value={val}>{m.short}</option>
                       {/each}
                     </select>
-                  </span>
-
-                  <span class="frame-name" title={frame.nasPath}>{frame.fileName}</span>
-                  <span class="frame-cell filter">{frame.filter || "—"}</span>
-                  <span class="frame-cell date">{formatDate(frame.dateObs)}</span>
-                  <span class="frame-cell exp">{formatExp(frame.expTime)}</span>
-                  <span class="frame-cell size">{formatSize(frame.fileSize, false)}</span>
-                </div>
+                  {:else if col.id === "name"}
+                    <span class="file-icon">🔭</span>
+                    <span class="file-name">{frame.fileName}</span>
+                  {:else}
+                    {getLibraryCellValue(frame, col.id)}
+                  {/if}
+                </td>
               {/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    </div>
-  {/if}
-</div>
+            </tr>
+          {/each}
+        {/each}
+      </tbody>
+    </table>
+  </div>
+{/if}
+
+{#if ctxMenu}
+  <ContextMenu
+    menu={ctxMenu}
+    onclose={() => {
+      ctxMenu = null;
+    }}
+    onreject={onCtxReject}
+    onrestore={onCtxRestore}
+    onharddelete={onCtxHardDelete}
+  />
+{/if}
+
+{#if confirmDel}
+  <HardDeleteModal
+    target={confirmDel}
+    onconfirm={doHardDelete}
+    oncancel={() => {
+      confirmDel = null;
+    }}
+  />
+{/if}
 
 <style>
-  .library {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-  }
-
   /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 
   .toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 5px 8px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -302,12 +490,62 @@
   .toolbar-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+  }
+
+  /* ── View tabs ───────────────────────────────────────────────────────────── */
+
+  .view-tabs {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .view-tab {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .view-tab:hover {
+    color: var(--text-secondary);
+  }
+  .view-tab.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .tab-badge {
+    background: var(--danger);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 5px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 14px;
+  }
+
+  /* ── Group by ────────────────────────────────────────────────────────────── */
+
+  .group-by {
+    display: flex;
+    align-items: center;
+    gap: 5px;
   }
 
   .label {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
+    font-size: 0.75rem;
+    color: var(--text-dim);
   }
 
   .segmented {
@@ -318,8 +556,8 @@
   }
 
   .seg-btn {
-    padding: 3px 10px;
-    font-size: 0.78rem;
+    padding: 2px 8px;
+    font-size: 0.75rem;
     background: transparent;
     border: none;
     color: var(--text-secondary);
@@ -342,65 +580,73 @@
     color: var(--accent);
   }
 
+  /* ── Right side toolbar ──────────────────────────────────────────────────── */
+
   .type-filter {
     font-size: 0.78rem;
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-primary);
-    padding: 3px 6px;
+    padding: 2px 6px;
     cursor: pointer;
+    max-width: 100px;
   }
 
-  .search {
-    font-size: 0.78rem;
+  .search-input {
+    font-size: 0.8rem;
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-primary);
     padding: 3px 8px;
-    width: 160px;
+    width: 150px;
     outline: none;
   }
-
-  .search:focus {
-    border-color: var(--accent-dim);
+  .search-input:focus {
+    border-color: var(--accent);
   }
 
-  /* ── Stats bar ───────────────────────────────────────────────────────────── */
-
-  .stats-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 16px;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--bg-base);
-    border-bottom: 1px solid var(--border);
+  .column-selector {
+    position: relative;
     flex-shrink: 0;
   }
 
-  .stat-chip {
-    padding: 1px 7px;
-    border-radius: 10px;
-    font-size: 0.72rem;
-    font-weight: 500;
+  .column-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 5px;
+    padding: 5px 0;
+    z-index: 200;
+    min-width: 130px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
   }
 
-  .stat-chip.light {
-    color: #60a5fa;
-    background: #1e3a5f;
+  .column-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .column-menu-item:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
+  .column-menu-item input {
+    accent-color: var(--accent);
+    cursor: pointer;
   }
 
-  .stat-chip.stacked {
-    color: #34d399;
-    background: #0d3a2a;
-  }
+  /* ── Status ──────────────────────────────────────────────────────────────── */
 
-  /* ── State messages ──────────────────────────────────────────────────────── */
-
-  .state-msg {
+  .status-row {
     flex: 1;
     display: flex;
     align-items: center;
@@ -408,104 +654,165 @@
     font-size: 0.875rem;
     color: var(--text-secondary);
   }
-
-  .state-msg.error {
-    color: var(--color-danger, #f87171);
+  .status-row.error {
+    color: var(--danger);
   }
 
-  /* ── Groups ──────────────────────────────────────────────────────────────── */
+  /* ── Table ───────────────────────────────────────────────────────────────── */
 
-  .groups-list {
+  .table-scroll-wrapper {
     flex: 1;
-    overflow-y: auto;
+    overflow: auto;
+  }
+  .table-scroll-wrapper::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .table-scroll-wrapper::-webkit-scrollbar-track {
+    background: var(--bg-base);
+  }
+  .table-scroll-wrapper::-webkit-scrollbar-thumb {
+    background: var(--border-accent);
+    border-radius: 3px;
   }
 
-  .group {
-    border-bottom: 1px solid var(--border);
+  .lib-table {
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    table-layout: fixed;
   }
 
-  .group-header {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
+  .lib-table thead tr {
     background: var(--bg-panel);
-    border: none;
-    cursor: pointer;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .lib-table th {
+    padding: 7px 10px 7px 8px;
     text-align: left;
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    font-weight: 500;
-    transition: background 0.12s;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: none;
   }
 
-  .group-header:hover {
-    background: var(--bg-row-hover);
+  .lib-table th.drag-over {
+    border-left: 2px solid var(--accent);
   }
 
-  .group-chevron {
-    font-size: 0.65rem;
-    color: var(--text-secondary);
-    width: 10px;
-    flex-shrink: 0;
+  .th-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 6px;
   }
 
-  .group-name {
-    flex: 1;
-    color: var(--text-primary);
+  .resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    background: transparent;
+    transition: background 0.1s;
+  }
+  .resize-handle:hover {
+    background: var(--accent);
+    opacity: 0.5;
+  }
+
+  /* ── Group header row ────────────────────────────────────────────────────── */
+
+  .group-header-row td {
+    background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent) 15%);
+    border-top: 1px solid var(--border-accent);
+    border-bottom: 1px solid var(--border-accent);
+    padding: 4px 10px;
+  }
+
+  .group-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
   }
 
   .group-count {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-
-  .group-types {
-    display: flex;
-    gap: 4px;
-  }
-
-  .type-pill {
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    font-family: "Consolas", "Fira Code", monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-left: 8px;
   }
 
   /* ── Frame rows ──────────────────────────────────────────────────────────── */
 
-  .frame-rows {
-    background: var(--bg-base);
-  }
-
   .frame-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 16px 5px 32px;
-    font-size: 0.8rem;
     cursor: pointer;
-    border-top: 1px solid var(--border);
-    color: var(--text-primary);
-    transition: background 0.1s;
-    outline: none;
   }
 
-  .frame-row:hover {
+  .frame-row td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .frame-row:hover td {
     background: var(--bg-row-hover);
   }
 
-  .frame-row.rejected {
-    opacity: 0.45;
-    text-decoration: line-through;
+  .frame-row.selected td {
+    background: var(--accent-dim) !important;
   }
 
-  .type-badge {
-    position: relative;
-    flex-shrink: 0;
+  /* ── Column-specific styles ──────────────────────────────────────────────── */
+
+  .col-frameType {
+    padding: 4px 6px !important;
+    width: 70px;
   }
+
+  .col-expTime,
+  .col-size,
+  .col-gain,
+  .col-ccdTemp {
+    text-align: right;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .col-dateObs {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .col-filter,
+  .col-object {
+    font-size: 0.83rem;
+  }
+
+  .file-icon {
+    margin-right: 6px;
+    font-size: 0.9em;
+  }
+
+  .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Type select badge ───────────────────────────────────────────────────── */
 
   .type-select {
     appearance: none;
@@ -517,8 +824,7 @@
     font-family: "Consolas", "Fira Code", monospace;
     padding: 2px 5px;
     cursor: pointer;
-    background: inherit;
-    min-width: 44px;
+    width: 100%;
     text-align: center;
     outline: none;
   }
@@ -527,41 +833,5 @@
     background: var(--bg-panel);
     color: var(--text-primary);
     font-weight: normal;
-  }
-
-  .frame-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: "Consolas", "Fira Code", monospace;
-    font-size: 0.78rem;
-  }
-
-  .frame-cell {
-    flex-shrink: 0;
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    white-space: nowrap;
-  }
-
-  .frame-cell.filter {
-    width: 70px;
-    text-align: left;
-  }
-
-  .frame-cell.date {
-    width: 130px;
-    text-align: left;
-  }
-
-  .frame-cell.exp {
-    width: 55px;
-    text-align: right;
-  }
-
-  .frame-cell.size {
-    width: 65px;
-    text-align: right;
   }
 </style>

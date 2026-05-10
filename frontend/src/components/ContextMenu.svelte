@@ -1,13 +1,12 @@
 <script lang="ts">
-  import type { browser } from "../../wailsjs/go/models";
-  import type { CtxMenuState } from "../lib/types";
+  import type { CtxEntry, CtxMenuState } from "../lib/types";
 
   interface Props {
     menu: CtxMenuState;
     onclose: () => void;
-    onreject: (entry: browser.EnrichedFileEntry) => void;
-    onrestore: (entry: browser.EnrichedFileEntry) => void;
-    onharddelete: (entry: browser.EnrichedFileEntry) => void;
+    onreject: (entry: CtxEntry) => void;
+    onrestore: (entry: CtxEntry) => void;
+    onharddelete: (entry: CtxEntry) => void;
   }
 
   let { menu, onclose, onreject, onrestore, onharddelete }: Props = $props();

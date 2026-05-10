@@ -1,4 +1,4 @@
-import type { browser, app } from "../../wailsjs/go/models";
+import type { app } from "../../wailsjs/go/models";
 
 export interface ColumnDef {
   id: string;
@@ -12,7 +12,7 @@ export interface FileGroup {
   key: string;
   object: string;
   date: string;
-  files: browser.EnrichedFileEntry[];
+  files: app.EnrichedFileEntry[];
 }
 
 export interface IndexProgress {
@@ -24,10 +24,17 @@ export interface IndexProgress {
   current: string;
 }
 
+// Minimal interface both EnrichedFileEntry and LibraryFrame satisfy (via mapping).
+export interface CtxEntry {
+  path: string;
+  name: string;
+  isRejected: boolean;
+}
+
 export interface CtxMenuState {
   x: number;
   y: number;
-  entry: browser.EnrichedFileEntry;
+  entry: CtxEntry;
 }
 
 export type ViewMode = "files" | "rejected";
@@ -43,6 +50,20 @@ export interface LibraryGroup {
   label: string;
   frames: app.LibraryFrame[];
 }
+
+export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [
+  { id: "frameType", label: "Type", visible: true, width: 70, order: 0 },
+  { id: "name", label: "Name", visible: true, width: 210, order: 1 },
+  { id: "object", label: "Object", visible: true, width: 120, order: 2 },
+  { id: "filter", label: "Filter", visible: true, width: 70, order: 3 },
+  { id: "dateObs", label: "Date", visible: true, width: 130, order: 4 },
+  { id: "expTime", label: "Exp", visible: true, width: 65, order: 5 },
+  { id: "size", label: "Size", visible: false, width: 75, order: 6 },
+  { id: "gain", label: "Gain", visible: false, width: 60, order: 7 },
+  { id: "ccdTemp", label: "Temp", visible: false, width: 75, order: 8 },
+  { id: "telescope", label: "Telescope", visible: false, width: 120, order: 9 },
+  { id: "instrument", label: "Camera", visible: false, width: 120, order: 10 },
+];
 
 export const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: "name", label: "Name", visible: true, width: 160, order: 0 },
