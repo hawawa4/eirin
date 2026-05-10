@@ -15,7 +15,10 @@ The main features of the application are:
 
 We are currently in an unreleased version. Any data in the SQLite database does NOT need to be migrated and it's perfectly fine to assume we can throw it away. Making the code simpler and not dealing with sequential migrations for now is better.
 
+Do not put all the code into one file. Prefer a cleaner approach.
+
 
 ## Tool notes
 
 Don't try and find the go binary in path. Only use the `just` commands to interact with the go binary. In general, prefer using the `just` commands over messing with "find stuff on path or other user folders"
+
