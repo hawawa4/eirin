@@ -6,6 +6,7 @@
     RejectFile,
     UnrejectFile,
     HardDeleteFile,
+    OpenWithSiril,
   } from "../../wailsjs/go/app/App.js";
   import type { app } from "../../wailsjs/go/models";
   import type { ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy } from "../lib/types";
@@ -17,11 +18,12 @@
     rootFolder: string;
     columns: ColumnDef[];
     selectedNasPath: string | null;
+    sirilAvailable: boolean;
     onfileclick: (nasPath: string) => void;
     onsavecolumns: () => void;
   }
 
-  let { rootFolder, columns, selectedNasPath, onfileclick, onsavecolumns }: Props = $props();
+  let { rootFolder, columns, selectedNasPath, sirilAvailable, onfileclick, onsavecolumns }: Props = $props();
 
   // ── Data ─────────────────────────────────────────────────────────────────
   let frames = $state<app.LibraryFrame[]>([]);
@@ -42,6 +44,24 @@
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ path: string; name: string } | null>(null);
+
+  // ── Group collapse — empty set = all collapsed (default) ─────────────────
+  let expandedGroups = $state<Set<string>>(new Set());
+
+  function toggleGroup(key: string) {
+    const next = new Set(expandedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    expandedGroups = next;
+  }
+
+  function expandAll() {
+    expandedGroups = new Set(groups.map((g) => g.key));
+  }
+
+  function collapseAll() {
+    expandedGroups = new Set();
+  }
 
   const GROUP_BY_OPTIONS: { value: LibraryGroupBy; label: string }[] = [
     { value: "object", label: "Object" },
@@ -161,6 +181,20 @@
     );
   }
 
+  const TYPE_ORDER = ["light", "stacked", "processed", "flat", "dark", "bias"];
+
+  function groupTypeBreakdown(frames: app.LibraryFrame[]) {
+    const counts = new Map<string, number>();
+    for (const f of frames) counts.set(f.frameType, (counts.get(f.frameType) ?? 0) + 1);
+    return [...counts.entries()]
+      .sort((a, b) => {
+        const ai = TYPE_ORDER.indexOf(a[0]);
+        const bi = TYPE_ORDER.indexOf(b[0]);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      })
+      .map(([type, count]) => ({ type, count, meta: frameTypeMeta(type) }));
+  }
+
   // ── Column resize ─────────────────────────────────────────────────────────
   function startColResize(e: MouseEvent, colId: string) {
     e.preventDefault();
@@ -246,7 +280,13 @@
       x: e.clientX,
       y: e.clientY,
       entry: { path: frame.nasPath, name: frame.fileName, isRejected: frame.isRejected },
+      sirilAvailable,
     };
+  }
+
+  async function onCtxOpenWithSiril(entry: CtxEntry) {
+    ctxMenu = null;
+    await OpenWithSiril(entry.path);
   }
 
   async function onCtxReject(entry: CtxEntry) {
@@ -317,6 +357,8 @@
   </div>
 
   <div class="toolbar-right">
+    <button class="tool-btn" onclick={expandAll} title="Expand all groups">⊞</button>
+    <button class="tool-btn" onclick={collapseAll} title="Collapse all groups">⊟</button>
     <select class="type-filter" bind:value={typeFilter}>
       <option value="all">All types</option>
       {#each Object.entries(FRAME_TYPE_META) as [val, meta]}
@@ -397,16 +439,25 @@
       <tbody>
         {#each groups as group (group.key)}
           <!-- Group header row -->
-          <tr class="group-header-row">
+          <tr class="group-header-row" onclick={() => toggleGroup(group.key)}>
             <td colspan={visibleColumns.length}>
+              <span class="group-chevron">{expandedGroups.has(group.key) ? "▼" : "▶"}</span>
               <span class="group-label">{group.label}</span>
               <span class="group-count"
                 >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
               >
+              <span class="group-type-breakdown">
+                {#each groupTypeBreakdown(group.frames) as { count, meta }}
+                  <span class="group-type-badge" style="color:{meta.color};background:{meta.bg}">
+                    {meta.short} {count}
+                  </span>
+                {/each}
+              </span>
             </td>
           </tr>
 
-          <!-- Frame rows -->
+          <!-- Frame rows — only rendered when group is expanded -->
+          {#if expandedGroups.has(group.key)}
           {#each group.frames as frame (frame.nasPath)}
             <tr
               class="frame-row"
@@ -444,6 +495,7 @@
               {/each}
             </tr>
           {/each}
+          {/if}
         {/each}
       </tbody>
     </table>
@@ -459,6 +511,7 @@
     onreject={onCtxReject}
     onrestore={onCtxRestore}
     onharddelete={onCtxHardDelete}
+    onopensiril={onCtxOpenWithSiril}
   />
 {/if}
 
@@ -503,7 +556,7 @@
 
   .view-tab {
     background: transparent;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     border: 1px solid transparent;
     border-radius: 4px;
     padding: 2px 10px;
@@ -517,7 +570,7 @@
     gap: 5px;
   }
   .view-tab:hover {
-    color: var(--text-secondary);
+    color: var(--text-primary);
   }
   .view-tab.active {
     color: var(--accent);
@@ -545,7 +598,7 @@
 
   .label {
     font-size: 0.75rem;
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 
   .segmented {
@@ -560,7 +613,7 @@
     font-size: 0.75rem;
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     cursor: pointer;
     border-right: 1px solid var(--border);
     transition: background 0.12s, color 0.12s;
@@ -696,7 +749,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     border-bottom: 1px solid var(--border);
     position: relative;
     overflow: hidden;
@@ -732,6 +785,15 @@
 
   /* ── Group header row ────────────────────────────────────────────────────── */
 
+  .group-header-row {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .group-header-row:hover td {
+    background: color-mix(in srgb, var(--bg-panel) 70%, var(--accent) 30%);
+  }
+
   .group-header-row td {
     background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent) 15%);
     border-top: 1px solid var(--border-accent);
@@ -739,16 +801,42 @@
     padding: 4px 10px;
   }
 
+  .group-chevron {
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    margin-right: 6px;
+    display: inline-block;
+    width: 10px;
+  }
+
   .group-label {
     font-size: 0.78rem;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--text-primary);
   }
 
   .group-count {
     font-size: 0.72rem;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     margin-left: 8px;
+  }
+
+  .group-type-breakdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 10px;
+  }
+
+  .group-type-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.66rem;
+    font-weight: 700;
+    font-family: monospace;
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
   }
 
   /* ── Frame rows ──────────────────────────────────────────────────────────── */

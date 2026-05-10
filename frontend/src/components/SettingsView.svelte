@@ -1,5 +1,11 @@
 <script lang="ts">
-  import type { AppInfo, IndexProgress } from "../lib/types";
+  import { onMount } from "svelte";
+  import {
+    CheckSiril,
+    SelectSirilExecutable,
+    SetSirilPath,
+  } from "../../wailsjs/go/app/App.js";
+  import type { AppInfo, IndexProgress, SirilInfo } from "../lib/types";
 
   interface Props {
     rootFolder: string;
@@ -8,23 +14,72 @@
     indexProgress: IndexProgress | null;
     onselectfolder: () => void;
     onbuildindex: () => void;
+    onsirilchange: (info: SirilInfo) => void;
   }
 
-  let { rootFolder, appInfo, indexRunning, indexProgress, onselectfolder, onbuildindex }: Props =
-    $props();
+  let {
+    rootFolder,
+    appInfo,
+    indexRunning,
+    indexProgress,
+    onselectfolder,
+    onbuildindex,
+    onsirilchange,
+  }: Props = $props();
 
+  // ── Clipboard copy ────────────────────────────────────────────────────────
   let copied = $state("");
 
   async function copyToClipboard(text: string, key: string) {
     try {
       await navigator.clipboard.writeText(text);
       copied = key;
-      setTimeout(() => {
-        copied = "";
-      }, 1500);
+      setTimeout(() => (copied = ""), 1500);
     } catch {
       /* clipboard not available */
     }
+  }
+
+  // ── Siril ─────────────────────────────────────────────────────────────────
+  let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
+  let sirilChecking = $state(false);
+  let sirilPathInput = $state("");
+  let sirilPathDirty = $state(false);
+
+  onMount(async () => {
+    await refreshSiril();
+  });
+
+  async function refreshSiril() {
+    sirilChecking = true;
+    try {
+      sirilInfo = await CheckSiril();
+      sirilPathInput = sirilInfo.executable;
+      sirilPathDirty = false;
+      onsirilchange(sirilInfo);
+    } finally {
+      sirilChecking = false;
+    }
+  }
+
+  async function browseSiril() {
+    const path = await SelectSirilExecutable();
+    if (!path) return;
+    await SetSirilPath(path);
+    await refreshSiril();
+  }
+
+  async function saveSirilPath() {
+    await SetSirilPath(sirilPathInput);
+    sirilPathDirty = false;
+    await refreshSiril();
+  }
+
+  async function resetSirilPath() {
+    sirilPathInput = "siril";
+    await SetSirilPath("");
+    sirilPathDirty = false;
+    await refreshSiril();
   }
 </script>
 
@@ -59,6 +114,64 @@
       {/if}
     </section>
 
+    <!-- ── Siril ─────────────────────────────────────────────────────────── -->
+    <section class="card">
+      <h2 class="section-title">Siril</h2>
+      <p class="section-desc">
+        Siril is used for astrophotography processing. Eirin can open files directly in Siril
+        from the right-click context menu.
+      </p>
+
+      <div class="siril-status">
+        <span class="status-dot" class:dot-ok={sirilInfo.available} class:dot-err={!sirilInfo.available}
+        ></span>
+        <span class="status-version">
+          {#if sirilChecking}
+            Checking…
+          {:else}
+            {sirilInfo.version}
+          {/if}
+        </span>
+        <button class="btn-ghost" onclick={refreshSiril} disabled={sirilChecking} title="Re-check">
+          ↺
+        </button>
+      </div>
+
+      <div class="path-row">
+        <input
+          class="path-input"
+          type="text"
+          bind:value={sirilPathInput}
+          oninput={() => (sirilPathDirty = true)}
+          placeholder="siril"
+          spellcheck="false"
+        />
+        <button class="btn-secondary" onclick={browseSiril}>Browse…</button>
+      </div>
+
+      {#if sirilPathDirty}
+        <div class="action-row">
+          <button class="btn-primary" onclick={saveSirilPath}>Save</button>
+          <button
+            class="btn-ghost"
+            onclick={() => {
+              sirilPathInput = sirilInfo.executable;
+              sirilPathDirty = false;
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      {:else if sirilInfo.executable !== "siril" && sirilInfo.executable !== ""}
+        <button class="btn-ghost reset-btn" onclick={resetSirilPath}>Reset to default</button>
+      {/if}
+
+      <p class="action-hint">
+        Leave blank or set to <code>siril</code> to use the system PATH. Use Browse to locate a
+        custom binary.
+      </p>
+    </section>
+
     <!-- ── Database ──────────────────────────────────────────────────────── -->
     <section class="card">
       <h2 class="section-title">Database</h2>
@@ -72,10 +185,8 @@
         <button
           class="btn-ghost"
           onclick={() => copyToClipboard(appInfo.dbPath, "db")}
-          title="Copy path"
+          title="Copy path">{copied === "db" ? "✓" : "⎘"}</button
         >
-          {copied === "db" ? "✓" : "⎘"}
-        </button>
       </div>
     </section>
 
@@ -93,10 +204,8 @@
         <button
           class="btn-ghost"
           onclick={() => copyToClipboard(appInfo.serverUrl, "url")}
-          title="Copy URL"
+          title="Copy URL">{copied === "url" ? "✓" : "⎘"}</button
         >
-          {copied === "url" ? "✓" : "⎘"}
-        </button>
       </div>
 
       <div class="info-row">
@@ -169,7 +278,7 @@
     line-height: 1.5;
   }
 
-  /* ── Path / action rows ──────────────────────────────────────────────── */
+  /* ── Path rows ───────────────────────────────────────────────────────── */
 
   .path-row {
     display: flex;
@@ -178,7 +287,7 @@
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 5px;
-    padding: 8px 12px;
+    padding: 6px 12px;
   }
 
   .path-value {
@@ -192,10 +301,27 @@
     min-width: 0;
   }
 
+  .path-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: monospace;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    min-width: 0;
+  }
+
+  .path-input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  /* ── Action rows ─────────────────────────────────────────────────────── */
+
   .action-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   }
 
   .action-hint {
@@ -203,6 +329,51 @@
     color: var(--text-secondary);
     margin: 0;
     line-height: 1.4;
+  }
+
+  .action-hint code {
+    font-family: monospace;
+    background: var(--bg-base);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 0.78rem;
+    color: var(--accent-dim);
+  }
+
+  /* ── Siril status ────────────────────────────────────────────────────── */
+
+  .siril-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-ok {
+    background: #5fba7d;
+    box-shadow: 0 0 4px #5fba7d88;
+  }
+
+  .dot-err {
+    background: var(--danger, #e06c75);
+  }
+
+  .status-version {
+    flex: 1;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    font-family: monospace;
+  }
+
+  .reset-btn {
+    align-self: flex-start;
+    font-size: 0.75rem;
   }
 
   /* ── Info rows ───────────────────────────────────────────────────────── */
@@ -298,5 +469,10 @@
   .btn-ghost:hover {
     color: var(--text-primary);
     border-color: var(--accent-dim);
+  }
+
+  .btn-ghost:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 </style>

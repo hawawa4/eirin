@@ -10,6 +10,10 @@ export function CancelIndex() {
   return window['go']['app']['App']['CancelIndex']();
 }
 
+export function CheckSiril() {
+  return window['go']['app']['App']['CheckSiril']();
+}
+
 export function GeneratePreview(arg1, arg2) {
   return window['go']['app']['App']['GeneratePreview'](arg1, arg2);
 }
@@ -42,6 +46,10 @@ export function LoadPrefs() {
   return window['go']['app']['App']['LoadPrefs']();
 }
 
+export function OpenWithSiril(arg1) {
+  return window['go']['app']['App']['OpenWithSiril'](arg1);
+}
+
 export function ReadFITSHeader(arg1) {
   return window['go']['app']['App']['ReadFITSHeader'](arg1);
 }
@@ -58,6 +66,10 @@ export function SelectRootFolder() {
   return window['go']['app']['App']['SelectRootFolder']();
 }
 
+export function SelectSirilExecutable() {
+  return window['go']['app']['App']['SelectSirilExecutable']();
+}
+
 export function SelectSourceFolder() {
   return window['go']['app']['App']['SelectSourceFolder']();
 }
@@ -68,6 +80,10 @@ export function SetFrameType(arg1, arg2) {
 
 export function SetPref(arg1, arg2) {
   return window['go']['app']['App']['SetPref'](arg1, arg2);
+}
+
+export function SetSirilPath(arg1) {
+  return window['go']['app']['App']['SetSirilPath'](arg1);
 }
 
 export function StartImport(arg1) {
