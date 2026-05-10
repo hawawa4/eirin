@@ -1,12 +1,12 @@
 <script lang="ts">
   interface Props {
-    rootFolder:    string
-    indexRunning:  boolean
-    onselectfolder: () => void
-    onbuildindex:   () => void
+    rootFolder: string;
+    indexRunning: boolean;
+    onselectfolder: () => void;
+    onbuildindex: () => void;
   }
 
-  let { rootFolder, indexRunning, onselectfolder, onbuildindex }: Props = $props()
+  let { rootFolder, indexRunning, onselectfolder, onbuildindex }: Props = $props();
 </script>
 
 <header>
@@ -19,11 +19,11 @@
         disabled={indexRunning}
         title="Scan all subfolders and index FITS headers. Re-run to pick up new files."
       >
-        {indexRunning ? 'Indexing…' : 'Build Index'}
+        {indexRunning ? "Indexing…" : "Build Index"}
       </button>
     {/if}
     <button class="btn-primary" onclick={onselectfolder}>
-      {rootFolder ? 'Change Root Folder' : 'Select Root Folder'}
+      {rootFolder ? "Change Root Folder" : "Select Root Folder"}
     </button>
   </div>
 </header>

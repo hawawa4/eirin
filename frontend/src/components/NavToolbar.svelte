@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { truncatePath } from '../lib/utils'
+  import { truncatePath } from "../lib/utils";
 
   interface Props {
-    currentPath:    string
-    canGoBack:      boolean
-    onnavigateBack: () => void
+    currentPath: string;
+    canGoBack: boolean;
+    onnavigateBack: () => void;
   }
 
-  let { currentPath, canGoBack, onnavigateBack }: Props = $props()
+  let { currentPath, canGoBack, onnavigateBack }: Props = $props();
 </script>
 
 <div class="toolbar">
@@ -29,7 +29,7 @@
   .path-display {
     font-size: 0.82rem;
     color: var(--text-secondary);
-    font-family: 'Consolas', 'Fira Code', monospace;
+    font-family: "Consolas", "Fira Code", monospace;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

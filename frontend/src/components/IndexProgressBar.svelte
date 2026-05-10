@@ -1,17 +1,17 @@
 <script lang="ts">
-  import type { IndexProgress } from '../lib/types'
+  import type { IndexProgress } from "../lib/types";
 
   interface Props {
-    progress: IndexProgress
-    oncancel:  () => void
+    progress: IndexProgress;
+    oncancel: () => void;
   }
 
-  let { progress, oncancel }: Props = $props()
+  let { progress, oncancel }: Props = $props();
 </script>
 
 <div class="index-bar">
   <span class="index-phase">
-    {#if progress.phase === 'scanning'}
+    {#if progress.phase === "scanning"}
       Scanning directories…
     {:else}
       Indexing {progress.done} / {progress.total}
@@ -23,7 +23,7 @@
   <div class="index-track">
     <div
       class="index-fill"
-      style="width: {progress.total > 0 ? (progress.done / progress.total * 100).toFixed(1) : 0}%"
+      style="width: {progress.total > 0 ? ((progress.done / progress.total) * 100).toFixed(1) : 0}%"
     ></div>
   </div>
   <span class="index-file" title={progress.current}>{progress.current}</span>
@@ -72,7 +72,7 @@
 
   .index-file {
     color: var(--text-dim);
-    font-family: 'Consolas', 'Fira Code', monospace;
+    font-family: "Consolas", "Fira Code", monospace;
     font-size: 0.72rem;
     max-width: 240px;
     overflow: hidden;

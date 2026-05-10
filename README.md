@@ -48,11 +48,18 @@ Select **Select Root Folder** and point Eirin at your NAS mount or local astroph
 | Go | 1.25+ |
 | Node.js | 22+ |
 | Wails CLI | v2.12.0 |
+| staticcheck | v0.7.0+ |
 | just | any recent |
 
-Install Wails once:
+Install Go tools once:
 ```
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install honnef.co/go/tools/cmd/staticcheck@latest
+```
+
+Install frontend dependencies:
+```
+just install
 ```
 
 ### Running in dev mode
@@ -82,12 +89,18 @@ Produces a statically-linked Linux binary at `dist/eirin`.
 ### All Justfile commands
 
 ```
-just dev            # live-reload dev mode
-just build          # production binary
-just build-frontend # Svelte only (fast, for UI-only iteration)
-just install        # npm install for the frontend
-just clean          # remove all build artefacts
-just docker-build   # build via Docker
+just dev             # live-reload dev mode
+just build           # production binary
+just build-frontend  # Svelte only (fast, for UI-only iteration)
+just build-backend   # Go only
+just check           # type-check Go + TypeScript without producing binaries
+just lint            # run all linters (staticcheck + ESLint/Prettier)
+just lint-go         # staticcheck on Go source
+just lint-frontend   # ESLint + Prettier check on frontend source
+just format          # format frontend source with Prettier
+just install         # npm install for the frontend
+just clean           # remove all build artefacts
+just docker-build    # build via Docker
 ```
 
 ## Project structure
