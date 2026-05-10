@@ -35,3 +35,90 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* ── Shared buttons ───────────────────────────────────────────────────────── */
+
+.btn-primary {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover { background: var(--accent); color: #0f111a; }
+.btn-large { padding: 10px 28px; font-size: 1rem; margin-top: 16px; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 13px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-right: 6px;
+}
+.btn-secondary:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.btn-secondary:disabled { opacity: 0.45; cursor: default; }
+
+.btn-icon {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-icon.small { width: 22px; height: 22px; font-size: 0.8rem; }
+.btn-icon:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.btn-icon:disabled { opacity: 0.3; cursor: default; }
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-danger:hover { opacity: 0.85; }
+
+.tool-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.tool-btn:hover { color: var(--accent); border-color: var(--accent); }
+.tool-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.tool-btn.preset { padding: 2px 6px; }
+
+.error-bar {
+  background: #2a1020;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  border-radius: 4px;
+  margin: 8px 16px;
+}
+
+.status-row { padding: 32px; text-align: center; color: var(--text-dim); font-size: 0.875rem; }
