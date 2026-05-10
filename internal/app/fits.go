@@ -1,4 +1,4 @@
-package fits
+package app
 
 import (
 	"bytes"
@@ -39,11 +39,49 @@ type FITSHeader struct {
 	SiteElev   float64                `json:"siteElev"`
 	SiteLat    float64                `json:"siteLat"`
 	SiteLong   float64                `json:"siteLong"`
-	Extra      map[string]interface{} `json:"extra"`
+	Extra      map[string]any `json:"extra"`
 }
 
-// ReadHeader returns the parsed FITS header for the given file path.
-func ReadHeader(path string) (*FITSHeader, error) {
+// ChannelStats holds per-channel statistics needed by the frontend to compute
+// MTF stretch uniforms without a second backend round-trip.
+type ChannelStats struct {
+	Median float64 `json:"median"`
+	Sigma  float64 `json:"sigma"`
+}
+
+// RawPreviewData is returned by GeneratePreviewRaw. The pixel data is a
+// base64-encoded little-endian float32 array in RGBA interleaved order
+// (R,G,B,1.0 per pixel, row-major, top-left origin). All channels are
+// globally normalised to [0,1] so that colour balance is preserved; the
+// frontend applies the MTF stretch in a WebGL shader using the Stats.
+type RawPreviewData struct {
+	Data     string         `json:"data"`
+	Width    int            `json:"width"`
+	Height   int            `json:"height"`
+	Channels int            `json:"channels"` // 1 = mono, 3 = colour
+	Stats    []ChannelStats `json:"stats"`
+}
+
+func (a *App) ReadFITSHeader(path string) (*FITSHeader, error) {
+	return readFITSHeader(path)
+}
+
+// GeneratePreview returns a PNG preview as a base64 data URL, scaled to 1024 px.
+// stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong
+func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
+	return generatePreview(path, 1024, stretchLevel)
+}
+
+// GeneratePreviewRaw returns raw float32 RGBA pixel data (base64-encoded) plus
+// per-channel statistics for WebGL-based MTF rendering on the frontend.
+// All channels are globally normalised so colour balance is preserved.
+func (a *App) GeneratePreviewRaw(path string) (RawPreviewData, error) {
+	return generatePreviewRaw(path, 1024)
+}
+
+// ── Implementation ────────────────────────────────────────────────────────────
+
+func readFITSHeader(path string) (*FITSHeader, error) {
 	f, err := openFITS(path)
 	if err != nil {
 		return nil, err
@@ -72,7 +110,6 @@ func ReadHeader(path string) (*FITSHeader, error) {
 		ch = axes[2]
 	}
 
-	// Collect all keys not explicitly parsed into Extra
 	knownKeys := map[string]bool{
 		"SIMPLE": true, "BITPIX": true, "NAXIS": true,
 		"NAXIS1": true, "NAXIS2": true, "NAXIS3": true,
@@ -86,7 +123,7 @@ func ReadHeader(path string) (*FITSHeader, error) {
 		"XBINNING": true, "YBINNING": true,
 		"FOCALLEN": true, "SITEELEV": true, "SITELAT": true, "SITELONG": true,
 	}
-	extra := make(map[string]interface{})
+	extra := make(map[string]any)
 	for _, key := range hdr.Keys() {
 		if knownKeys[key] {
 			continue
@@ -122,20 +159,12 @@ func ReadHeader(path string) (*FITSHeader, error) {
 	}, nil
 }
 
-// GeneratePreview reads a FITS file, applies autostretch, and returns a
-// base64-encoded PNG data URL scaled to maxSize pixels on the longest side.
-// StretchLevel controls autostretch aggressiveness:
-//
-//	0 = none (linear normalisation only)
-//	1 = gentle   (shadows −1.25σ, target background 0.10)
-//	2 = normal   (shadows −2.80σ, target background 0.25 — Siril default)
-//	3 = strong   (shadows −4.00σ, target background 0.40)
 type stretchPreset struct{ shadows, targetBG float64 }
 
 var stretchPresets = []stretchPreset{
 	{0, 0},         // 0: identity (unused — handled separately)
 	{-1.25, 0.10},  // 1: gentle
-	{-2.80, 0.25},  // 2: normal
+	{-2.80, 0.25},  // 2: normal (Siril default)
 	{-4.00, 0.40},  // 3: strong
 }
 
@@ -150,9 +179,7 @@ func makeStretcher(level int) func([]float64) []float64 {
 	return func(p []float64) []float64 { return autoStretch(p, pr.shadows, pr.targetBG) }
 }
 
-// GeneratePreview reads a FITS file, applies autostretch, and returns a
-// base64-encoded PNG data URL scaled to maxSize pixels on the longest side.
-func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
+func generatePreview(path string, maxSize, stretchLevel int) (string, error) {
 	f, err := openFITS(path)
 	if err != nil {
 		return "", err
@@ -192,7 +219,6 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 
 	bayerpat := cardStr(hdr, "BAYERPAT", "COLORTYP")
 	if bayerpat != "" && channels == 1 {
-		// Single-plane Bayer mosaic: demosaic into R/G/B planes (half resolution).
 		rCh, gCh, bCh, dw, dh := debayerBlocks(pixels, w, h, bayerpat)
 		w, h = dw, dh
 		channels = 3
@@ -211,7 +237,6 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 		}
 	}
 
-	// Compute output dimensions preserving aspect ratio
 	outW, outH := w, h
 	if w > maxSize || h > maxSize {
 		if w >= h {
@@ -223,7 +248,7 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 		}
 	}
 
-	// FITS pixel (0,0) is bottom-left; Go image (0,0) is top-left — flip Y
+	// FITS pixel (0,0) is bottom-left; Go image (0,0) is top-left — flip Y.
 	var outImg image.Image
 	if channels == 3 {
 		rgba := image.NewRGBA(image.Rect(0, 0, outW, outH))
@@ -260,33 +285,7 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
-// ── Raw preview for WebGL rendering ──────────────────────────────────────────
-
-// ChannelStats holds per-channel statistics needed by the frontend to compute
-// MTF stretch uniforms without a second backend round-trip.
-type ChannelStats struct {
-	Median float64 `json:"median"`
-	Sigma  float64 `json:"sigma"`
-}
-
-// RawPreviewData is returned by GeneratePreviewRaw.  The pixel data is a
-// base64-encoded little-endian float32 array in RGBA interleaved order
-// (R,G,B,1.0 per pixel, row-major, top-left origin).  All channels are
-// globally normalised to [0,1] so that colour balance is preserved; the
-// frontend applies the MTF stretch in a WebGL shader using the Stats.
-type RawPreviewData struct {
-	Data     string         `json:"data"`
-	Width    int            `json:"width"`
-	Height   int            `json:"height"`
-	Channels int            `json:"channels"` // 1 = mono, 3 = colour
-	Stats    []ChannelStats `json:"stats"`
-}
-
-// GeneratePreviewRaw reads a FITS file, debayers if needed, globally
-// normalises all channels together (preserving colour balance), resizes to
-// maxSize on the longest side, and returns raw float32 RGBA data + per-channel
-// statistics for WebGL-based MTF rendering on the frontend.
-func GeneratePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
+func generatePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
 	f, err := openFITS(path)
 	if err != nil {
 		return RawPreviewData{}, err
@@ -340,17 +339,15 @@ func GeneratePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
 	}
 
 	// Normalise ALL channels with the same global percentile range so that
-	// the relative colour balance between channels is preserved.
+	// colour balance is preserved.
 	channelData = globalNormalize(channelData)
 
-	// Compute per-channel statistics on the normalised data for the shader.
 	stats := make([]ChannelStats, channels)
 	for c := 0; c < channels; c++ {
 		med, sig := channelMedianSigma(channelData[c])
 		stats[c] = ChannelStats{Median: med, Sigma: sig}
 	}
 
-	// Compute output dimensions preserving aspect ratio.
 	outW, outH := w, h
 	if w > maxSize || h > maxSize {
 		if w >= h {
@@ -397,95 +394,7 @@ func GeneratePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
 	}, nil
 }
 
-func packF32(dst []byte, offset int, v float32) {
-	bits := math.Float32bits(v)
-	dst[offset+0] = byte(bits)
-	dst[offset+1] = byte(bits >> 8)
-	dst[offset+2] = byte(bits >> 16)
-	dst[offset+3] = byte(bits >> 24)
-}
-
-// globalNormalize maps all channels to [0,1] using a SHARED percentile range
-// computed across all channels combined.  This preserves colour balance —
-// unlike per-channel normalisation which amplifies dim channels independently.
-func globalNormalize(channels [][]float64) [][]float64 {
-	if len(channels) == 0 {
-		return channels
-	}
-
-	totalLen := 0
-	for _, ch := range channels {
-		totalLen += len(ch)
-	}
-
-	// Sub-sample for statistics (65 k points per channel is plenty).
-	maxSamples := 65536 * len(channels)
-	step := max(1, totalLen/maxSamples)
-	sample := make([]float64, 0, min(totalLen, maxSamples))
-	i := 0
-	for _, ch := range channels {
-		for _, v := range ch {
-			if i%step == 0 {
-				sample = append(sample, v)
-			}
-			i++
-		}
-	}
-
-	sort.Float64s(sample)
-	lo := sample[0]
-	hiIdx := int(float64(len(sample)) * 0.999)
-	hi := sample[hiIdx]
-
-	if hi <= lo {
-		return channels
-	}
-	rng := hi - lo
-
-	out := make([][]float64, len(channels))
-	for c, ch := range channels {
-		norm := make([]float64, len(ch))
-		for j, v := range ch {
-			nv := (v - lo) / rng
-			if nv < 0 {
-				nv = 0
-			} else if nv > 1 {
-				nv = 1
-			}
-			norm[j] = nv
-		}
-		out[c] = norm
-	}
-	return out
-}
-
-// channelMedianSigma returns the median and MAD-based sigma for a pixel array.
-func channelMedianSigma(pixels []float64) (median, sigma float64) {
-	sample := pixels
-	if len(pixels) > 65536 {
-		step := len(pixels) / 65536
-		s := make([]float64, 0, 65536)
-		for i := 0; i < len(pixels); i += step {
-			s = append(s, pixels[i])
-		}
-		sample = s
-	}
-
-	sorted := make([]float64, len(sample))
-	copy(sorted, sample)
-	sort.Float64s(sorted)
-	median = sorted[len(sorted)/2]
-
-	devs := make([]float64, len(sorted))
-	for i, v := range sorted {
-		devs[i] = math.Abs(v - median)
-	}
-	sort.Float64s(devs)
-	sigma = devs[len(devs)/2] * 1.4826
-	return
-}
-
-// ── internal helpers ──────────────────────────────────────────────────────────
+// ── Pixel readers ─────────────────────────────────────────────────────────────
 
 func openFITS(path string) (*fitsio.File, error) {
 	r, err := os.Open(path)
@@ -494,7 +403,7 @@ func openFITS(path string) (*fitsio.File, error) {
 	}
 	f, err := fitsio.Open(r)
 	if err != nil {
-		r.Close()
+		_ = r.Close()
 		return nil, fmt.Errorf("parse FITS %s: %w", path, err)
 	}
 	return f, nil
@@ -503,7 +412,7 @@ func openFITS(path string) (*fitsio.File, error) {
 // readPixelsAsFloat64 reads all FITS pixels into float64 and applies BSCALE/BZERO.
 //
 // fitsio.Image.Read calls reflect.Value.SetLen(n) on the slice we pass in, which
-// panics when n > cap (i.e. for any nil/var-declared slice).  Pre-allocating with
+// panics when n > cap (i.e. for any nil/var-declared slice). Pre-allocating with
 // make avoids the panic.
 func readPixelsAsFloat64(img fitsio.Image, bscale, bzero float64) ([]float64, error) {
 	hdr := img.Header()
@@ -605,6 +514,8 @@ func applyScaleF64(src []float64, s, z float64) []float64 {
 	return out
 }
 
+// ── Image processing ──────────────────────────────────────────────────────────
+
 // normalizeToUnit maps pixel values to [0,1].
 // The white point is set at the 99.9th percentile to clip hot pixels.
 func normalizeToUnit(pixels []float64) []float64 {
@@ -636,6 +547,86 @@ func normalizeToUnit(pixels []float64) []float64 {
 	return out
 }
 
+// globalNormalize maps all channels to [0,1] using a SHARED percentile range
+// computed across all channels combined. This preserves colour balance —
+// unlike per-channel normalisation which amplifies dim channels independently.
+func globalNormalize(channels [][]float64) [][]float64 {
+	if len(channels) == 0 {
+		return channels
+	}
+
+	totalLen := 0
+	for _, ch := range channels {
+		totalLen += len(ch)
+	}
+
+	// Sub-sample for statistics (65k points per channel is plenty).
+	maxSamples := 65536 * len(channels)
+	step := max(1, totalLen/maxSamples)
+	sample := make([]float64, 0, min(totalLen, maxSamples))
+	i := 0
+	for _, ch := range channels {
+		for _, v := range ch {
+			if i%step == 0 {
+				sample = append(sample, v)
+			}
+			i++
+		}
+	}
+
+	sort.Float64s(sample)
+	lo := sample[0]
+	hiIdx := int(float64(len(sample)) * 0.999)
+	hi := sample[hiIdx]
+
+	if hi <= lo {
+		return channels
+	}
+	rng := hi - lo
+
+	out := make([][]float64, len(channels))
+	for c, ch := range channels {
+		norm := make([]float64, len(ch))
+		for j, v := range ch {
+			nv := (v - lo) / rng
+			if nv < 0 {
+				nv = 0
+			} else if nv > 1 {
+				nv = 1
+			}
+			norm[j] = nv
+		}
+		out[c] = norm
+	}
+	return out
+}
+
+// channelMedianSigma returns the median and MAD-based sigma for a pixel array.
+func channelMedianSigma(pixels []float64) (median, sigma float64) {
+	sample := pixels
+	if len(pixels) > 65536 {
+		step := len(pixels) / 65536
+		s := make([]float64, 0, 65536)
+		for i := 0; i < len(pixels); i += step {
+			s = append(s, pixels[i])
+		}
+		sample = s
+	}
+
+	sorted := make([]float64, len(sample))
+	copy(sorted, sample)
+	sort.Float64s(sorted)
+	median = sorted[len(sorted)/2]
+
+	devs := make([]float64, len(sorted))
+	for i, v := range sorted {
+		devs[i] = math.Abs(v - median)
+	}
+	sort.Float64s(devs)
+	sigma = devs[len(devs)/2] * 1.4826
+	return
+}
+
 // debayerBlocks demosaics a single-plane Bayer image using 2×2 block averaging.
 // Each 2×2 super-pixel becomes one RGB output pixel (output is w/2 × h/2).
 // Supported patterns: RGGB, BGGR, GRBG, GBRG (defaults to RGGB).
@@ -658,7 +649,7 @@ func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, ou
 			if x1 >= w {
 				x1 = x0
 			}
-			// 2×2 block: a=top-left, b_=top-right, c=bottom-left, d=bottom-right
+			// 2×2 block: a=top-left, bv=top-right, c=bottom-left, d=bottom-right
 			a := bayer[y0*w+x0]
 			bv := bayer[y0*w+x1]
 			c := bayer[y1*w+x0]
@@ -690,9 +681,7 @@ func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, ou
 
 // linearAutoStretch applies the same shadow-clipping statistics as the normal
 // autoStretch preset but maps the result linearly (no MTF curve).
-// This is used for stretchLevel=0 ("no stretch") so the sky appears dark and
-// the pixel values are physically linear — unlike the raw normalizeToUnit output
-// which maps the sky background to ~90% brightness.
+// Used for stretchLevel=0 so the sky appears dark and values stay physically linear.
 func linearAutoStretch(pixels []float64) []float64 {
 	const shadowsFactor = -2.80
 
@@ -745,8 +734,6 @@ func linearAutoStretch(pixels []float64) []float64 {
 // shadowsFactor controls shadow clipping aggressiveness (e.g. −2.80 is Siril default).
 // targetBG is the desired output brightness of the background midtone (e.g. 0.25).
 func autoStretch(pixels []float64, shadowsFactor, targetBG float64) []float64 {
-
-	// Sub-sample for statistics on very large images (65k pixels is enough)
 	sample := pixels
 	if len(pixels) > 65536 {
 		step := len(pixels) / 65536
@@ -825,9 +812,8 @@ func mtfMidtone(target, x float64) float64 {
 	return x * (1 - target) / d
 }
 
-// ── header card helpers ───────────────────────────────────────────────────────
+// ── Header card helpers ───────────────────────────────────────────────────────
 
-// cardStr returns the string value of the first matching keyword, or "".
 func cardStr(hdr *fitsio.Header, keys ...string) string {
 	for _, k := range keys {
 		if c := hdr.Get(k); c != nil {
@@ -839,7 +825,6 @@ func cardStr(hdr *fitsio.Header, keys ...string) string {
 	return ""
 }
 
-// cardF64 returns the float64 value of the first matching keyword, or defaultVal.
 func cardF64(hdr *fitsio.Header, defaultVal float64, keys ...string) float64 {
 	for _, k := range keys {
 		c := hdr.Get(k)
@@ -860,7 +845,6 @@ func cardF64(hdr *fitsio.Header, defaultVal float64, keys ...string) float64 {
 	return defaultVal
 }
 
-// cardInt returns the int value of the first matching keyword, or defaultVal.
 func cardInt(hdr *fitsio.Header, defaultVal int, keys ...string) int {
 	for _, k := range keys {
 		c := hdr.Get(k)
@@ -877,6 +861,16 @@ func cardInt(hdr *fitsio.Header, defaultVal int, keys ...string) int {
 		}
 	}
 	return defaultVal
+}
+
+// ── Misc helpers ──────────────────────────────────────────────────────────────
+
+func packF32(dst []byte, offset int, v float32) {
+	bits := math.Float32bits(v)
+	dst[offset+0] = byte(bits)
+	dst[offset+1] = byte(bits >> 8)
+	dst[offset+2] = byte(bits >> 16)
+	dst[offset+3] = byte(bits >> 24)
 }
 
 func toU8(v float64) uint8 {
