@@ -10,6 +10,10 @@ export function ListDirectory(arg1) {
   return window['go']['app']['App']['ListDirectory'](arg1);
 }
 
+export function ListDirectoryEnriched(arg1) {
+  return window['go']['app']['App']['ListDirectoryEnriched'](arg1);
+}
+
 export function LoadPrefs() {
   return window['go']['app']['App']['LoadPrefs']();
 }
