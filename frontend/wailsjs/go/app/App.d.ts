@@ -10,6 +10,8 @@ export function CancelIndex():Promise<void>;
 
 export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
+export function HardDeleteFile(arg1:string):Promise<void>;
+
 export function ListDirectory(arg1:string):Promise<Array<browser.FileEntry>>;
 
 export function ListDirectoryEnriched(arg1:string):Promise<Array<browser.EnrichedFileEntry>>;
@@ -18,6 +20,10 @@ export function LoadPrefs():Promise<prefs.Prefs>;
 
 export function ReadFITSHeader(arg1:string):Promise<fits.FITSHeader>;
 
+export function RejectFile(arg1:string):Promise<void>;
+
 export function SelectRootFolder():Promise<string>;
 
 export function SetPref(arg1:string,arg2:string):Promise<void>;
+
+export function UnrejectFile(arg1:string):Promise<void>;

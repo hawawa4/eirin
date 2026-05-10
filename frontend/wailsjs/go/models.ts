@@ -16,6 +16,7 @@ export namespace browser {
 	    telescope: string;
 	    instrument: string;
 	    hasMeta: boolean;
+	    isRejected: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new EnrichedFileEntry(source);
@@ -37,6 +38,7 @@ export namespace browser {
 	        this.telescope = source["telescope"];
 	        this.instrument = source["instrument"];
 	        this.hasMeta = source["hasMeta"];
+	        this.isRejected = source["isRejected"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
