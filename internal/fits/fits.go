@@ -260,6 +260,231 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
+// ── Raw preview for WebGL rendering ──────────────────────────────────────────
+
+// ChannelStats holds per-channel statistics needed by the frontend to compute
+// MTF stretch uniforms without a second backend round-trip.
+type ChannelStats struct {
+	Median float64 `json:"median"`
+	Sigma  float64 `json:"sigma"`
+}
+
+// RawPreviewData is returned by GeneratePreviewRaw.  The pixel data is a
+// base64-encoded little-endian float32 array in RGBA interleaved order
+// (R,G,B,1.0 per pixel, row-major, top-left origin).  All channels are
+// globally normalised to [0,1] so that colour balance is preserved; the
+// frontend applies the MTF stretch in a WebGL shader using the Stats.
+type RawPreviewData struct {
+	Data     string         `json:"data"`
+	Width    int            `json:"width"`
+	Height   int            `json:"height"`
+	Channels int            `json:"channels"` // 1 = mono, 3 = colour
+	Stats    []ChannelStats `json:"stats"`
+}
+
+// GeneratePreviewRaw reads a FITS file, debayers if needed, globally
+// normalises all channels together (preserving colour balance), resizes to
+// maxSize on the longest side, and returns raw float32 RGBA data + per-channel
+// statistics for WebGL-based MTF rendering on the frontend.
+func GeneratePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
+	f, err := openFITS(path)
+	if err != nil {
+		return RawPreviewData{}, err
+	}
+	defer f.Close()
+
+	hdu := f.HDU(0)
+	if hdu == nil {
+		return RawPreviewData{}, fmt.Errorf("no HDU in %s", path)
+	}
+	img, ok := hdu.(fitsio.Image)
+	if !ok {
+		return RawPreviewData{}, fmt.Errorf("primary HDU is not an image")
+	}
+	hdr := img.Header()
+	axes := hdr.Axes()
+	if len(axes) < 2 {
+		return RawPreviewData{}, fmt.Errorf("not a 2D image")
+	}
+
+	w, h := axes[0], axes[1]
+	channels := 1
+	if len(axes) >= 3 {
+		channels = axes[2]
+	}
+
+	bscale := cardF64(hdr, 1.0, "BSCALE")
+	bzero := cardF64(hdr, 0.0, "BZERO")
+
+	pixels, err := readPixelsAsFloat64(img, bscale, bzero)
+	if err != nil {
+		return RawPreviewData{}, fmt.Errorf("read pixels: %w", err)
+	}
+
+	var channelData [][]float64
+
+	bayerpat := cardStr(hdr, "BAYERPAT", "COLORTYP")
+	if bayerpat != "" && channels == 1 {
+		rCh, gCh, bCh, dw, dh := debayerBlocks(pixels, w, h, bayerpat)
+		w, h = dw, dh
+		channels = 3
+		channelData = [][]float64{rCh, gCh, bCh}
+	} else {
+		planeSize := w * h
+		channelData = make([][]float64, channels)
+		for c := 0; c < channels; c++ {
+			plane := make([]float64, planeSize)
+			copy(plane, pixels[c*planeSize:(c+1)*planeSize])
+			channelData[c] = plane
+		}
+	}
+
+	// Normalise ALL channels with the same global percentile range so that
+	// the relative colour balance between channels is preserved.
+	channelData = globalNormalize(channelData)
+
+	// Compute per-channel statistics on the normalised data for the shader.
+	stats := make([]ChannelStats, channels)
+	for c := 0; c < channels; c++ {
+		med, sig := channelMedianSigma(channelData[c])
+		stats[c] = ChannelStats{Median: med, Sigma: sig}
+	}
+
+	// Compute output dimensions preserving aspect ratio.
+	outW, outH := w, h
+	if w > maxSize || h > maxSize {
+		if w >= h {
+			outW = maxSize
+			outH = max(1, h*maxSize/w)
+		} else {
+			outH = maxSize
+			outW = max(1, w*maxSize/h)
+		}
+	}
+
+	// Pack as RGBA float32, interleaved, row-major, top-left origin.
+	// FITS pixel (0,0) is bottom-left; flip Y so row 0 = visual top.
+	nPixels := outW * outH
+	raw := make([]byte, nPixels*4*4) // 4 components × 4 bytes each
+	for y := 0; y < outH; y++ {
+		srcY := h - 1 - (y*h/outH)
+		for x := 0; x < outW; x++ {
+			srcX := x * w / outW
+			idx := srcY*w + srcX
+			base := (y*outW+x) * 16 // 4 floats × 4 bytes
+			var r, g, b float32
+			if channels == 3 {
+				r = float32(channelData[0][idx])
+				g = float32(channelData[1][idx])
+				b = float32(channelData[2][idx])
+			} else {
+				v := float32(channelData[0][idx])
+				r, g, b = v, v, v
+			}
+			packF32(raw, base+0, r)
+			packF32(raw, base+4, g)
+			packF32(raw, base+8, b)
+			packF32(raw, base+12, 1.0)
+		}
+	}
+
+	return RawPreviewData{
+		Data:     base64.StdEncoding.EncodeToString(raw),
+		Width:    outW,
+		Height:   outH,
+		Channels: channels,
+		Stats:    stats,
+	}, nil
+}
+
+func packF32(dst []byte, offset int, v float32) {
+	bits := math.Float32bits(v)
+	dst[offset+0] = byte(bits)
+	dst[offset+1] = byte(bits >> 8)
+	dst[offset+2] = byte(bits >> 16)
+	dst[offset+3] = byte(bits >> 24)
+}
+
+// globalNormalize maps all channels to [0,1] using a SHARED percentile range
+// computed across all channels combined.  This preserves colour balance —
+// unlike per-channel normalisation which amplifies dim channels independently.
+func globalNormalize(channels [][]float64) [][]float64 {
+	if len(channels) == 0 {
+		return channels
+	}
+
+	totalLen := 0
+	for _, ch := range channels {
+		totalLen += len(ch)
+	}
+
+	// Sub-sample for statistics (65 k points per channel is plenty).
+	maxSamples := 65536 * len(channels)
+	step := max(1, totalLen/maxSamples)
+	sample := make([]float64, 0, min(totalLen, maxSamples))
+	i := 0
+	for _, ch := range channels {
+		for _, v := range ch {
+			if i%step == 0 {
+				sample = append(sample, v)
+			}
+			i++
+		}
+	}
+
+	sort.Float64s(sample)
+	lo := sample[0]
+	hiIdx := int(float64(len(sample)) * 0.999)
+	hi := sample[hiIdx]
+
+	if hi <= lo {
+		return channels
+	}
+	rng := hi - lo
+
+	out := make([][]float64, len(channels))
+	for c, ch := range channels {
+		norm := make([]float64, len(ch))
+		for j, v := range ch {
+			nv := (v - lo) / rng
+			if nv < 0 {
+				nv = 0
+			} else if nv > 1 {
+				nv = 1
+			}
+			norm[j] = nv
+		}
+		out[c] = norm
+	}
+	return out
+}
+
+// channelMedianSigma returns the median and MAD-based sigma for a pixel array.
+func channelMedianSigma(pixels []float64) (median, sigma float64) {
+	sample := pixels
+	if len(pixels) > 65536 {
+		step := len(pixels) / 65536
+		s := make([]float64, 0, 65536)
+		for i := 0; i < len(pixels); i += step {
+			s = append(s, pixels[i])
+		}
+		sample = s
+	}
+
+	sorted := make([]float64, len(sample))
+	copy(sorted, sample)
+	sort.Float64s(sorted)
+	median = sorted[len(sorted)/2]
+
+	devs := make([]float64, len(sorted))
+	for i, v := range sorted {
+		devs[i] = math.Abs(v - median)
+	}
+	sort.Float64s(devs)
+	sigma = devs[len(devs)/2] * 1.4826
+	return
+}
+
 // ── internal helpers ──────────────────────────────────────────────────────────
 
 func openFITS(path string) (*fitsio.File, error) {
