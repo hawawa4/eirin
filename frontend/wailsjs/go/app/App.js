@@ -18,6 +18,10 @@ export function GeneratePreviewRaw(arg1) {
   return window['go']['app']['App']['GeneratePreviewRaw'](arg1);
 }
 
+export function GetLibraryFrames(arg1) {
+  return window['go']['app']['App']['GetLibraryFrames'](arg1);
+}
+
 export function HardDeleteFile(arg1) {
   return window['go']['app']['App']['HardDeleteFile'](arg1);
 }
@@ -44,6 +48,10 @@ export function RejectFile(arg1) {
 
 export function SelectRootFolder() {
   return window['go']['app']['App']['SelectRootFolder']();
+}
+
+export function SetFrameType(arg1, arg2) {
+  return window['go']['app']['App']['SetFrameType'](arg1, arg2);
 }
 
 export function SetPref(arg1, arg2) {

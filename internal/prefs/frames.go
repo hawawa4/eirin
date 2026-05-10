@@ -2,9 +2,21 @@ package prefs
 
 import (
 	"database/sql"
+	"path/filepath"
+	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+)
+
+// Frame type constants.
+const (
+	FrameTypeLight     = "light"
+	FrameTypeDark      = "dark"
+	FrameTypeFlat      = "flat"
+	FrameTypeBias      = "bias"
+	FrameTypeStacked   = "stacked"
+	FrameTypeProcessed = "processed"
 )
 
 // Frame holds all data stored about a single file in the frames table.
@@ -26,6 +38,9 @@ type Frame struct {
 	DateObs    string
 	Telescope  string
 	Instrument string
+
+	// Classified frame type (auto-detected on index, can be overridden by user)
+	FrameType string
 
 	// Plate solve results (WCS)
 	RA         *float64
@@ -52,6 +67,30 @@ type Frame struct {
 	Notes           string
 }
 
+// ClassifyFrameType determines the frame type from the file path.
+// The parent directory is checked first (folders ending in "_sub" indicate lights),
+// then the filename prefix is used.
+func ClassifyFrameType(nasPath string) string {
+	name := filepath.Base(nasPath)
+	dir := filepath.Base(filepath.Dir(nasPath))
+
+	if strings.HasSuffix(dir, "_sub") {
+		return FrameTypeLight
+	}
+	switch {
+	case strings.HasPrefix(name, "Light"):
+		return FrameTypeLight
+	case strings.HasPrefix(name, "Dark"):
+		return FrameTypeDark
+	case strings.HasPrefix(name, "Flat"):
+		return FrameTypeFlat
+	case strings.HasPrefix(strings.ToLower(name), "bias"):
+		return FrameTypeBias
+	default:
+		return FrameTypeStacked
+	}
+}
+
 // UpsertFrame stores or updates the FITS header fields for a single frame.
 // Only the header-derived columns are written; user metadata (rejected, tags, etc.)
 // and analysis results (wcs, quality) are preserved if the row already exists.
@@ -60,16 +99,17 @@ func (s *Store) UpsertFrame(path string, f Frame) error {
 		Insert("frames").
 		Columns("nas_path", "file_size", "last_seen", "cached_at",
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs",
-			"telescope", "instrument").
+			"telescope", "instrument", "frame_type").
 		Values(path, f.FileSize, f.LastSeen, time.Now().Unix(),
 			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
-			f.Telescope, f.Instrument).
+			f.Telescope, f.Instrument, f.FrameType).
 		Suffix(`ON CONFLICT(nas_path) DO UPDATE SET
 			file_size=excluded.file_size, last_seen=excluded.last_seen,
 			cached_at=excluded.cached_at,
 			object=excluded.object, filter=excluded.filter, exptime=excluded.exptime,
 			gain=excluded.gain, ccd_temp=excluded.ccd_temp, date_obs=excluded.date_obs,
-			telescope=excluded.telescope, instrument=excluded.instrument`).
+			telescope=excluded.telescope, instrument=excluded.instrument,
+			frame_type=excluded.frame_type`).
 		ToSql()
 	if err != nil {
 		return err
@@ -94,14 +134,16 @@ func (s *Store) BatchUpsertFrames(entries map[string]Frame) error {
 	stmt, err := tx.Prepare(`
 		INSERT INTO frames
 			(nas_path, file_size, last_seen, cached_at,
-			 object, filter, exptime, gain, ccd_temp, date_obs, telescope, instrument)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 object, filter, exptime, gain, ccd_temp, date_obs, telescope, instrument,
+			 frame_type)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(nas_path) DO UPDATE SET
 			file_size=excluded.file_size, last_seen=excluded.last_seen,
 			cached_at=excluded.cached_at,
 			object=excluded.object, filter=excluded.filter, exptime=excluded.exptime,
 			gain=excluded.gain, ccd_temp=excluded.ccd_temp, date_obs=excluded.date_obs,
-			telescope=excluded.telescope, instrument=excluded.instrument
+			telescope=excluded.telescope, instrument=excluded.instrument,
+			frame_type=excluded.frame_type
 	`)
 	if err != nil {
 		return err
@@ -112,7 +154,7 @@ func (s *Store) BatchUpsertFrames(entries map[string]Frame) error {
 	for path, f := range entries {
 		if _, err := stmt.Exec(path, f.FileSize, f.LastSeen, now,
 			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
-			f.Telescope, f.Instrument); err != nil {
+			f.Telescope, f.Instrument, f.FrameType); err != nil {
 			return err
 		}
 	}
@@ -138,6 +180,55 @@ func (s *Store) GetFrames(paths []string) (map[string]Frame, error) {
 		}
 	}
 	return result, nil
+}
+
+// GetAllFramesUnder returns all indexed (cached_at > 0) frames whose path
+// starts with rootPath. Results are sorted by object then date_obs.
+func (s *Store) GetAllFramesUnder(rootPath string) ([]Frame, error) {
+	prefix := rootPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	query, args, err := s.qb.
+		Select(
+			"nas_path", "file_size", "last_seen", "cached_at",
+			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
+			"frame_type",
+			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"approved", "rejected", "rejection_reason", "tags", "notes",
+		).
+		From("frames").
+		Where(sq.And{
+			sq.Like{"nas_path": prefix + "%"},
+			sq.Gt{"cached_at": 0},
+		}).
+		OrderBy("object", "date_obs").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var frames []Frame
+	for rows.Next() {
+		_, f, err := scanFrame(rows)
+		if err != nil {
+			return nil, err
+		}
+		frames = append(frames, f)
+	}
+	return frames, rows.Err()
+}
+
+// SetFrameType updates the frame_type for the given path. This allows the user
+// to manually override the auto-detected type (e.g. to mark a file as "processed").
+func (s *Store) SetFrameType(path, frameType string) error {
+	_, err := s.db.Exec(`UPDATE frames SET frame_type=? WHERE nas_path=?`, frameType, path)
+	return err
 }
 
 // RejectFrame marks a file as rejected with an optional reason. If the file
@@ -213,6 +304,7 @@ func (s *Store) getFramesChunk(paths []string, out map[string]Frame) error {
 		Select(
 			"nas_path", "file_size", "last_seen", "cached_at",
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
+			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
 			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
 			"approved", "rejected", "rejection_reason", "tags", "notes",
@@ -247,6 +339,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 
 		object, filter, dateObs, telescope, instrument string
 		exptime, gain, ccdTemp                         float64
+		frameType                                      string
 
 		ra, dec, pixScale, rotation             sql.NullFloat64
 		wcsSolved                               int64
@@ -264,6 +357,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 	err := rows.Scan(
 		&path, &fileSize, &lastSeen, &cachedAt,
 		&object, &filter, &exptime, &gain, &ccdTemp, &dateObs, &telescope, &instrument,
+		&frameType,
 		&ra, &dec, &pixScale, &rotation, &wcsSolved,
 		&fwhm, &fwhmUnit, &roundness, &background, &noise, &snr, &starCount, &qualityAnalyzed,
 		&approved, &rejected, &rejectionReason, &tags, &notes,
@@ -283,6 +377,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		DateObs:         dateObs,
 		Telescope:       telescope,
 		Instrument:      instrument,
+		FrameType:       frameType,
 		WCSSolved:       wcsSolved != 0,
 		QualityAnalyzed: qualityAnalyzed != 0,
 		Rejected:        rejected != 0,

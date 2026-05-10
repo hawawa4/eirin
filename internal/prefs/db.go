@@ -48,8 +48,8 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate creates the schema. The old fits_cache and rejected_files tables are
-// dropped on startup since data migration is not required during development.
+// migrate creates the schema. Old tables are dropped on startup since data
+// migration is not required during development.
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return err
@@ -57,6 +57,7 @@ func migrate(db *sql.DB) error {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS fits_cache;
 		DROP TABLE IF EXISTS rejected_files;
+		DROP TABLE IF EXISTS frames;
 		CREATE TABLE IF NOT EXISTS preferences (
 			key   TEXT PRIMARY KEY NOT NULL,
 			value TEXT NOT NULL
@@ -75,6 +76,8 @@ func migrate(db *sql.DB) error {
 			date_obs    TEXT NOT NULL DEFAULT '',
 			telescope   TEXT NOT NULL DEFAULT '',
 			instrument  TEXT NOT NULL DEFAULT '',
+
+			frame_type  TEXT NOT NULL DEFAULT 'stacked',
 
 			ra          REAL,
 			dec         REAL,
@@ -97,11 +100,12 @@ func migrate(db *sql.DB) error {
 			tags             TEXT,
 			notes            TEXT
 		);
-		CREATE INDEX IF NOT EXISTS idx_frames_object   ON frames(object);
-		CREATE INDEX IF NOT EXISTS idx_frames_filter   ON frames(filter);
-		CREATE INDEX IF NOT EXISTS idx_frames_date_obs ON frames(date_obs);
-		CREATE INDEX IF NOT EXISTS idx_frames_obj_filt ON frames(object, filter);
-		CREATE INDEX IF NOT EXISTS idx_frames_rejected ON frames(rejected);
+		CREATE INDEX IF NOT EXISTS idx_frames_object     ON frames(object);
+		CREATE INDEX IF NOT EXISTS idx_frames_filter     ON frames(filter);
+		CREATE INDEX IF NOT EXISTS idx_frames_date_obs   ON frames(date_obs);
+		CREATE INDEX IF NOT EXISTS idx_frames_obj_filt   ON frames(object, filter);
+		CREATE INDEX IF NOT EXISTS idx_frames_rejected   ON frames(rejected);
+		CREATE INDEX IF NOT EXISTS idx_frames_frame_type ON frames(frame_type);
 	`)
 	return err
 }
