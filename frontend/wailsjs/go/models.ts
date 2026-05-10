@@ -254,6 +254,7 @@ export namespace prefs {
 	    stretchEnabled: boolean;
 	    stretchLevel: number;
 	    columnConfig: string;
+	    libraryColumnConfig: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Prefs(source);
@@ -267,6 +268,7 @@ export namespace prefs {
 	        this.stretchEnabled = source["stretchEnabled"];
 	        this.stretchLevel = source["stretchLevel"];
 	        this.columnConfig = source["columnConfig"];
+	        this.libraryColumnConfig = source["libraryColumnConfig"];
 	    }
 	}
 

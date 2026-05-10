@@ -1,4 +1,4 @@
-import type { browser, fits } from "../../wailsjs/go/models";
+import type { app } from "../../wailsjs/go/models";
 
 export function isFits(name: string): boolean {
   const l = name.toLowerCase();
@@ -37,7 +37,7 @@ export function formatSize(bytes: number, isDir: boolean): string {
   return (bytes / 1024 / 1024 / 1024).toFixed(2) + " GB";
 }
 
-export function getCellValue(entry: browser.EnrichedFileEntry, colId: string): string {
+export function getCellValue(entry: app.EnrichedFileEntry, colId: string): string {
   switch (colId) {
     case "name":
       return entry.name;
@@ -68,12 +68,39 @@ export function getCellValue(entry: browser.EnrichedFileEntry, colId: string): s
   }
 }
 
+export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): string {
+  switch (colId) {
+    case "name":
+      return frame.fileName;
+    case "object":
+      return frame.object || "—";
+    case "filter":
+      return frame.filter || "—";
+    case "dateObs":
+      return frame.dateObs ? frame.dateObs.substring(0, 10) : "—";
+    case "expTime":
+      return formatExpTime(frame.expTime);
+    case "size":
+      return formatSize(frame.fileSize, false);
+    case "gain":
+      return frame.gain ? String(frame.gain) : "—";
+    case "ccdTemp":
+      return frame.ccdTemp ? frame.ccdTemp.toFixed(1) + " °C" : "—";
+    case "telescope":
+      return frame.telescope || "—";
+    case "instrument":
+      return frame.instrument || "—";
+    default:
+      return "—";
+  }
+}
+
 export interface MetaRow {
   key: string;
   val: string;
 }
 
-export function basicRows(h: fits.FITSHeader | null): MetaRow[] {
+export function basicRows(h: app.FITSHeader | null): MetaRow[] {
   if (!h) return [];
   const expStr = !h.exptime
     ? "—"
@@ -95,7 +122,7 @@ export function basicRows(h: fits.FITSHeader | null): MetaRow[] {
   ];
 }
 
-export function advancedRows(h: fits.FITSHeader | null): MetaRow[] {
+export function advancedRows(h: app.FITSHeader | null): MetaRow[] {
   if (!h) return [];
   return [
     { key: "Gain", val: h.gain ? String(h.gain) : "—" },

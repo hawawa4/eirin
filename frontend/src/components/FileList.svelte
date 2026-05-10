@@ -1,17 +1,17 @@
 <script lang="ts">
-  import type { browser } from "../../wailsjs/go/models";
+  import type { app } from "../../wailsjs/go/models";
   import type { ColumnDef, FileGroup, ViewMode } from "../lib/types";
   import { isFits, getCellValue } from "../lib/utils";
   import { SvelteMap } from "svelte/reactivity";
 
   interface Props {
-    files: browser.EnrichedFileEntry[];
-    selectedEntry: browser.EnrichedFileEntry | null;
+    files: app.EnrichedFileEntry[];
+    selectedEntry: app.EnrichedFileEntry | null;
     columns: ColumnDef[];
     error: string;
     loading: boolean;
-    onfileclick: (entry: browser.EnrichedFileEntry) => void;
-    oncontextmenu: (x: number, y: number, entry: browser.EnrichedFileEntry) => void;
+    onfileclick: (entry: app.EnrichedFileEntry) => void;
+    oncontextmenu: (x: number, y: number, entry: app.EnrichedFileEntry) => void;
     onsavecolumns: () => void;
     onfilteredcountchange: (count: number) => void;
   }
@@ -74,11 +74,11 @@
 
   // ── Filtering / grouping ─────────────────────────────────────────────────
   function applyFilters(
-    all: browser.EnrichedFileEntry[],
+    all: app.EnrichedFileEntry[],
     search: string,
     filter: string,
     mode: ViewMode,
-  ): browser.EnrichedFileEntry[] {
+  ): app.EnrichedFileEntry[] {
     let r = all;
     if (mode === "files") {
       r = r.filter((f) => f.isDir || !f.isRejected);
@@ -97,7 +97,7 @@
     return r;
   }
 
-  function buildGroups(fits: browser.EnrichedFileEntry[]): FileGroup[] {
+  function buildGroups(fits: app.EnrichedFileEntry[]): FileGroup[] {
     const map = new SvelteMap<string, FileGroup>();
     for (const f of fits) {
       const obj = f.object || "—";
@@ -269,14 +269,12 @@
               }}
             >
               <span class="th-text">{col.label}</span>
-              {#if col.id !== "name"}
-                <span
-                  class="resize-handle"
-                  onmousedown={(e) => startColResize(e, col.id)}
-                  role="separator"
-                  aria-label="Resize column"
-                ></span>
-              {/if}
+              <span
+                class="resize-handle"
+                onmousedown={(e) => startColResize(e, col.id)}
+                role="separator"
+                aria-label="Resize column"
+              ></span>
             </th>
           {/each}
         </tr>
