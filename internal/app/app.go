@@ -324,6 +324,13 @@ func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 	return fits.GeneratePreview(path, 1024, stretchLevel)
 }
 
+// GeneratePreviewRaw returns raw float32 RGBA pixel data (base64-encoded) plus
+// per-channel statistics for WebGL-based MTF rendering on the frontend.
+// All channels are globally normalised so colour balance is preserved.
+func (a *App) GeneratePreviewRaw(path string) (fits.RawPreviewData, error) {
+	return fits.GeneratePreviewRaw(path, 1024)
+}
+
 // ── File operations ───────────────────────────────────────────────────────────
 
 // RejectFile marks a file as soft-deleted. It remains on disk but is hidden
