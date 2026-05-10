@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte'
   import {
     SelectRootFolder,
@@ -8,8 +8,8 @@
     LoadPrefs,
     SetPref,
   } from '../wailsjs/go/app/App.js'
+  import type { browser, fits } from '../wailsjs/go/models'
 
-  // Preference keys — mirrors internal/prefs/prefs.go constants.
   const PREF_ROOT_FOLDER        = 'root_folder'
   const PREF_BASIC_COLLAPSED    = 'basic_collapsed'
   const PREF_ADVANCED_COLLAPSED = 'advanced_collapsed'
@@ -17,38 +17,36 @@
   const PREF_STRETCH_LEVEL      = 'stretch_level'
 
   // ── File browser state ────────────────────────────────────────────────────
-  let rootFolder = ''
-  let currentPath = ''
-  let pathHistory = []
-  let files = []
-  let error = ''
-  let loading = false
+  let rootFolder  = $state('')
+  let currentPath = $state('')
+  let pathHistory = $state<string[]>([])
+  let files       = $state<browser.FileEntry[]>([])
+  let error       = $state('')
+  let loading     = $state(false)
 
   // ── Preview state ─────────────────────────────────────────────────────────
-  let selectedEntry = null
-  let previewDataUrl = ''
-  let previewLoading = false
-  let previewError = ''
-  let fitsHeader = null
+  let selectedEntry  = $state<browser.FileEntry | null>(null)
+  let previewDataUrl = $state('')
+  let previewLoading = $state(false)
+  let previewError   = $state('')
+  let fitsHeader     = $state<fits.FITSHeader | null>(null)
 
   // ── Stretch controls ──────────────────────────────────────────────────────
-  let stretchEnabled = true
-  let stretchLevel = 2   // 1=gentle 2=normal 3=strong
+  let stretchEnabled = $state(true)
+  let stretchLevel   = $state(2) // 1=gentle 2=normal 3=strong
 
   // ── Header section collapse ───────────────────────────────────────────────
-  let basicCollapsed = false
-  let advancedCollapsed = true
+  let basicCollapsed    = $state(false)
+  let advancedCollapsed = $state(true)
 
-  // ── Preview request ID (stale cancellation) ───────────────────────────────
+  // ── Preference persistence guard ──────────────────────────────────────────
+  let prefsLoaded = $state(false)
+
+  // ── Preview request ID (stale cancellation, non-reactive) ─────────────────
   let previewReqId = 0
-
-  // ── Preference persistence ────────────────────────────────────────────────
-  // Guard: reactive saves only fire AFTER the initial load from the DB.
-  let prefsLoaded = false
 
   onMount(async () => {
     const p = await LoadPrefs()
-    // Seed all preference-backed state from the DB before marking as loaded.
     stretchEnabled    = p.stretchEnabled
     stretchLevel      = p.stretchLevel
     basicCollapsed    = p.basicCollapsed
@@ -60,23 +58,23 @@
     prefsLoaded = true
   })
 
-  // Auto-save each preference when it changes (guarded by prefsLoaded).
-  $: if (prefsLoaded) SetPref(PREF_STRETCH_ENABLED,    String(stretchEnabled))
-  $: if (prefsLoaded) SetPref(PREF_STRETCH_LEVEL,      String(stretchLevel))
-  $: if (prefsLoaded) SetPref(PREF_BASIC_COLLAPSED,    String(basicCollapsed))
-  $: if (prefsLoaded) SetPref(PREF_ADVANCED_COLLAPSED, String(advancedCollapsed))
+  // Auto-save each preference when it changes (guarded by prefsLoaded)
+  $effect(() => { if (prefsLoaded) SetPref(PREF_STRETCH_ENABLED,    String(stretchEnabled)) })
+  $effect(() => { if (prefsLoaded) SetPref(PREF_STRETCH_LEVEL,      String(stretchLevel)) })
+  $effect(() => { if (prefsLoaded) SetPref(PREF_BASIC_COLLAPSED,    String(basicCollapsed)) })
+  $effect(() => { if (prefsLoaded) SetPref(PREF_ADVANCED_COLLAPSED, String(advancedCollapsed)) })
 
   // ── Pane resize ───────────────────────────────────────────────────────────
-  let leftPct = 40       // left pane width as % of content area
-  let collapsed = false  // left pane collapsed
+  let leftPct   = $state(40)
+  let collapsed = $state(false)
 
-  function onDividerMouseDown(e) {
+  function onDividerMouseDown(e: MouseEvent) {
     e.preventDefault()
-    const contentArea = document.querySelector('.content-area')
+    const contentArea = document.querySelector('.content-area') as HTMLElement
 
-    function onMove(e) {
+    function onMove(ev: MouseEvent) {
       const rect = contentArea.getBoundingClientRect()
-      const pct = ((e.clientX - rect.left) / rect.width) * 100
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100
       leftPct = Math.max(15, Math.min(75, pct))
       if (collapsed) collapsed = false
     }
@@ -89,34 +87,34 @@
   }
 
   // ── Zoom / pan ────────────────────────────────────────────────────────────
-  let zoom = 1
-  let panX = 0
-  let panY = 0
-  let isPanning = false
+  let zoom      = $state(1)
+  let panX      = $state(0)
+  let panY      = $state(0)
+  let isPanning = $state(false)
   let panStartX = 0
   let panStartY = 0
 
   function resetView() { zoom = 1; panX = 0; panY = 0 }
 
-  function onWheel(e) {
+  function onWheel(e: WheelEvent) {
     e.preventDefault()
-    const factor = e.deltaY < 0 ? 1.15 : 0.87
+    const factor  = e.deltaY < 0 ? 1.15 : 0.87
     const newZoom = Math.max(0.25, Math.min(20, zoom * factor))
-    const rect = e.currentTarget.getBoundingClientRect()
-    const mx = e.clientX - rect.left - rect.width / 2
-    const my = e.clientY - rect.top - rect.height / 2
+    const rect    = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const mx      = e.clientX - rect.left - rect.width / 2
+    const my      = e.clientY - rect.top  - rect.height / 2
     panX = mx - (mx - panX) * newZoom / zoom
     panY = my - (my - panY) * newZoom / zoom
     zoom = newZoom
   }
 
-  function onPanStart(e) {
+  function onPanStart(e: MouseEvent) {
     if (e.button !== 0) return
     isPanning = true
     panStartX = e.clientX - panX
     panStartY = e.clientY - panY
   }
-  function onPanMove(e) {
+  function onPanMove(e: MouseEvent) {
     if (!isPanning) return
     panX = e.clientX - panStartX
     panY = e.clientY - panStartY
@@ -124,7 +122,7 @@
   function onPanEnd() { isPanning = false }
 
   // ── Navigation ────────────────────────────────────────────────────────────
-  function isFits(name) {
+  function isFits(name: string): boolean {
     const l = name.toLowerCase()
     return l.endsWith('.fits') || l.endsWith('.fit')
   }
@@ -140,9 +138,9 @@
     }
   }
 
-  async function loadDirectory(path) {
+  async function loadDirectory(path: string) {
     loading = true
-    error = ''
+    error   = ''
     try {
       const result = await ListDirectory(path)
       files = (result || []).slice().sort((a, b) => {
@@ -151,14 +149,14 @@
       })
       currentPath = path
     } catch (e) {
-      error = e.toString()
+      error = String(e)
       files = []
     } finally {
       loading = false
     }
   }
 
-  async function onRowClick(entry) {
+  async function onRowClick(entry: browser.FileEntry) {
     if (entry.isDir) {
       clearPreview()
       pathHistory = [...pathHistory, currentPath]
@@ -168,15 +166,15 @@
     }
   }
 
-  async function openPreview(entry) {
-    selectedEntry = entry
+  async function openPreview(entry: browser.FileEntry) {
+    selectedEntry  = entry
     previewDataUrl = ''
-    previewError = ''
-    fitsHeader = null
+    previewError   = ''
+    fitsHeader     = null
     previewLoading = true
     resetView()
 
-    const id = ++previewReqId
+    const id    = ++previewReqId
     const level = stretchEnabled ? stretchLevel : 0
 
     const [hdrResult, imgResult] = await Promise.allSettled([
@@ -190,31 +188,31 @@
     if (imgResult.status === 'fulfilled') {
       previewDataUrl = imgResult.value
     } else {
-      previewError = imgResult.reason?.toString() ?? 'Preview failed'
+      previewError = (imgResult as PromiseRejectedResult).reason?.toString() ?? 'Preview failed'
     }
   }
 
   async function navigateBack() {
     if (pathHistory.length === 0) return
-    const prev = pathHistory[pathHistory.length - 1]
+    const prev  = pathHistory[pathHistory.length - 1]
     pathHistory = pathHistory.slice(0, -1)
     clearPreview()
     await loadDirectory(prev)
   }
 
   function clearPreview() {
-    selectedEntry = null
+    selectedEntry  = null
     previewDataUrl = ''
-    previewError = ''
-    fitsHeader = null
+    previewError   = ''
+    fitsHeader     = null
     resetView()
   }
 
   async function refreshPreview() {
     if (!selectedEntry) return
-    const id = ++previewReqId
+    const id    = ++previewReqId
     previewLoading = true
-    previewError = ''
+    previewError   = ''
     const level = stretchEnabled ? stretchLevel : 0
     try {
       const result = await GeneratePreview(selectedEntry.path, level)
@@ -222,19 +220,19 @@
       previewDataUrl = result
     } catch (e) {
       if (id !== previewReqId) return
-      previewError = e?.toString() ?? 'Preview failed'
+      previewError = String(e) || 'Preview failed'
     } finally {
       if (id === previewReqId) previewLoading = false
     }
   }
 
-  function setStretch(level) {
+  function setStretch(level: number) {
     stretchLevel = level
     refreshPreview()
   }
 
   // ── Formatting helpers ────────────────────────────────────────────────────
-  function formatDate(dateStr) {
+  function formatDate(dateStr: string): string {
     const d = new Date(dateStr)
     return d.toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: '2-digit',
@@ -242,7 +240,7 @@
     })
   }
 
-  function formatSize(bytes, isDir) {
+  function formatSize(bytes: number, isDir: boolean): string {
     if (isDir) return '—'
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -250,14 +248,16 @@
     return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
   }
 
-  function truncatePath(path, maxLen = 60) {
+  function truncatePath(path: string, maxLen = 60): string {
     if (path.length <= maxLen) return path
     const parts = path.split('/')
     if (parts.length <= 2) return '…' + path.slice(-(maxLen - 1))
     return '…/' + parts.slice(-2).join('/')
   }
 
-  function basicRows(h) {
+  interface MetaRow { key: string; val: string }
+
+  function basicRows(h: fits.FITSHeader | null): MetaRow[] {
     if (!h) return []
     const expStr = !h.exptime ? '—'
       : h.exptime >= 60 ? (h.exptime / 60).toFixed(1) + ' min'
@@ -273,29 +273,31 @@
     ]
   }
 
-  function advancedRows(h) {
+  function advancedRows(h: fits.FITSHeader | null): MetaRow[] {
     if (!h) return []
     return [
-      { key: 'Gain',      val: h.gain       || '—' },
-      { key: 'CCD Temp',  val: h.ccdTemp ? h.ccdTemp + ' °C' : '—' },
+      { key: 'Gain',      val: h.gain       ? String(h.gain) : '—' },
+      { key: 'CCD Temp',  val: h.ccdTemp    ? h.ccdTemp + ' °C' : '—' },
       { key: 'Telescope', val: h.telescope  || '—' },
       { key: 'Camera',    val: h.instrument || '—' },
       { key: 'Binning',   val: h.xbinning ? `${h.xbinning} × ${h.ybinning}` : '—' },
     ]
   }
 
-  $: leftStyle = selectedEntry
-    ? collapsed
-      ? 'flex: 0 0 0px; min-width: 0; overflow: hidden;'
-      : `flex: 0 0 ${leftPct}%;`
-    : 'flex: 1;'
+  let leftStyle = $derived(
+    selectedEntry
+      ? collapsed
+        ? 'flex: 0 0 0px; min-width: 0; overflow: hidden;'
+        : `flex: 0 0 ${leftPct}%;`
+      : 'flex: 1;'
+  )
 </script>
 
 <div class="layout">
   <header>
     <span class="logo">✦ Eirin</span>
     <div class="header-right">
-      <button class="btn-primary" on:click={selectFolder}>
+      <button class="btn-primary" onclick={selectFolder}>
         {rootFolder ? 'Change Root Folder' : 'Select Root Folder'}
       </button>
     </div>
@@ -306,11 +308,11 @@
       <div class="empty-icon">◎</div>
       <p class="empty-title">No folder selected</p>
       <p class="empty-sub">Choose your astrophotography NAS folder to get started</p>
-      <button class="btn-primary btn-large" on:click={selectFolder}>Select Root Folder</button>
+      <button class="btn-primary btn-large" onclick={selectFolder}>Select Root Folder</button>
     </div>
   {:else}
     <div class="toolbar">
-      <button class="btn-icon" on:click={navigateBack} disabled={pathHistory.length === 0} title="Go back">←</button>
+      <button class="btn-icon" onclick={navigateBack} disabled={pathHistory.length === 0} title="Go back">←</button>
       <span class="path-display" title={currentPath}>{truncatePath(currentPath)}</span>
     </div>
 
@@ -341,7 +343,7 @@
                   class:is-dir={entry.isDir}
                   class:is-fits={!entry.isDir && isFits(entry.name)}
                   class:selected={selectedEntry && selectedEntry.path === entry.path}
-                  on:click={() => onRowClick(entry)}
+                  onclick={() => onRowClick(entry)}
                 >
                   <td class="col-name">
                     <span class="file-icon">{entry.isDir ? '📁' : isFits(entry.name) ? '🔭' : '🗒'}</span>
@@ -358,11 +360,11 @@
 
       <!-- ── Divider ───────────────────────────────────────────────────────── -->
       {#if selectedEntry}
-        <div class="divider" on:mousedown={onDividerMouseDown}>
+        <div class="divider" onmousedown={onDividerMouseDown}>
           <button
             class="collapse-btn"
-            on:mousedown|stopPropagation
-            on:click={() => collapsed = !collapsed}
+            onmousedown={(e) => e.stopPropagation()}
+            onclick={() => (collapsed = !collapsed)}
             title={collapsed ? 'Expand file list' : 'Collapse file list'}
           >{collapsed ? '›' : '‹'}</button>
         </div>
@@ -376,21 +378,21 @@
             <span class="preview-filename" title={selectedEntry.path}>{selectedEntry.name}</span>
             <div class="preview-controls">
               <span class="zoom-label">{Math.round(zoom * 100)}%</span>
-              <button class="tool-btn" on:click={resetView} title="Fit to window (or double-click image)">Fit</button>
+              <button class="tool-btn" onclick={resetView} title="Fit to window (or double-click image)">Fit</button>
               <div class="stretch-group">
                 <button
                   class="tool-btn"
                   class:active={stretchEnabled}
-                  on:click={() => { stretchEnabled = !stretchEnabled; refreshPreview() }}
+                  onclick={() => { stretchEnabled = !stretchEnabled; refreshPreview() }}
                   title="Toggle autostretch"
                 >Stretch</button>
                 {#if stretchEnabled}
-                  <button class="tool-btn preset" class:active={stretchLevel === 1} on:click={() => setStretch(1)}>Gentle</button>
-                  <button class="tool-btn preset" class:active={stretchLevel === 2} on:click={() => setStretch(2)}>Normal</button>
-                  <button class="tool-btn preset" class:active={stretchLevel === 3} on:click={() => setStretch(3)}>Strong</button>
+                  <button class="tool-btn preset" class:active={stretchLevel === 1} onclick={() => setStretch(1)}>Gentle</button>
+                  <button class="tool-btn preset" class:active={stretchLevel === 2} onclick={() => setStretch(2)}>Normal</button>
+                  <button class="tool-btn preset" class:active={stretchLevel === 3} onclick={() => setStretch(3)}>Strong</button>
                 {/if}
               </div>
-              <button class="btn-icon small" on:click={clearPreview} title="Close preview">✕</button>
+              <button class="btn-icon small" onclick={clearPreview} title="Close preview">✕</button>
             </div>
           </div>
 
@@ -398,12 +400,12 @@
           <div
             class="image-viewport"
             class:panning={isPanning}
-            on:wheel|preventDefault={onWheel}
-            on:mousedown={onPanStart}
-            on:mousemove={onPanMove}
-            on:mouseup={onPanEnd}
-            on:mouseleave={onPanEnd}
-            on:dblclick={resetView}
+            onwheel={onWheel}
+            onmousedown={onPanStart}
+            onmousemove={onPanMove}
+            onmouseup={onPanEnd}
+            onmouseleave={onPanEnd}
+            ondblclick={resetView}
           >
             {#if previewLoading}
               <div class="preview-status">
@@ -425,7 +427,7 @@
           {#if fitsHeader}
             <div class="preview-meta">
               <div class="meta-section">
-                <button class="meta-section-hdr" on:click={() => basicCollapsed = !basicCollapsed}>
+                <button class="meta-section-hdr" onclick={() => (basicCollapsed = !basicCollapsed)}>
                   <span>Basic</span>
                   <span class="meta-caret">{basicCollapsed ? '›' : '⌄'}</span>
                 </button>
@@ -439,7 +441,7 @@
                 {/if}
               </div>
               <div class="meta-section">
-                <button class="meta-section-hdr" on:click={() => advancedCollapsed = !advancedCollapsed}>
+                <button class="meta-section-hdr" onclick={() => (advancedCollapsed = !advancedCollapsed)}>
                   <span>Advanced</span>
                   <span class="meta-caret">{advancedCollapsed ? '›' : '⌄'}</span>
                 </button>
