@@ -1,4 +1,4 @@
-import type { browser } from "../../wailsjs/go/models";
+import type { browser, app } from "../../wailsjs/go/models";
 
 export interface ColumnDef {
   id: string;
@@ -31,6 +31,18 @@ export interface CtxMenuState {
 }
 
 export type ViewMode = "files" | "rejected";
+
+export type AppMode = "browser" | "library";
+
+export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "processed";
+
+export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
+
+export interface LibraryGroup {
+  key: string;
+  label: string;
+  frames: app.LibraryFrame[];
+}
 
 export const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: "name", label: "Name", visible: true, width: 160, order: 0 },

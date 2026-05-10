@@ -134,6 +134,7 @@ func (a *App) BuildIndex(rootPath string) {
 					CCDTemp:    hdr.CCDTemp,
 					Telescope:  hdr.Telescope,
 					Instrument: hdr.Instrument,
+					FrameType:  prefs.ClassifyFrameType(p),
 				}
 				newlyIndexed++
 			}

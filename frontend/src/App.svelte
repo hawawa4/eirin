@@ -15,6 +15,7 @@
   import type { browser } from "../wailsjs/go/models";
   import {
     DEFAULT_COLUMNS,
+    type AppMode,
     type ColumnDef,
     type CtxMenuState,
     type IndexProgress,
@@ -24,6 +25,7 @@
   import NavToolbar from "./components/NavToolbar.svelte";
   import IndexProgressBar from "./components/IndexProgressBar.svelte";
   import FileList from "./components/FileList.svelte";
+  import LibraryView from "./components/LibraryView.svelte";
   import PreviewPane from "./components/PreviewPane.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import HardDeleteModal from "./components/HardDeleteModal.svelte";
@@ -35,6 +37,9 @@
   const PREF_STRETCH_ENABLED = "stretch_enabled";
   const PREF_STRETCH_LEVEL = "stretch_level";
   const PREF_COLUMN_CONFIG = "column_config";
+
+  // ── App mode ──────────────────────────────────────────────────────────────
+  let appMode = $state<AppMode>("browser");
 
   // ── File browser state ────────────────────────────────────────────────────
   let rootFolder = $state("");
@@ -59,6 +64,7 @@
 
   // ── Selected file / preview ───────────────────────────────────────────────
   let selectedEntry = $state<browser.EnrichedFileEntry | null>(null);
+  let libraryPreviewPath = $state<string | null>(null);
 
   // ── Stretch / section collapse (persisted) ────────────────────────────────
   let stretchEnabled = $state(true);
@@ -79,6 +85,9 @@
   let uncachedCount = $derived(
     files.filter((f) => !f.isDir && isFits(f.name) && !f.hasMeta).length,
   );
+
+  // ── Library view ref ─────────────────────────────────────────────────────
+  let libraryView = $state<{ reload: () => void } | null>(null);
 
   onMount(async () => {
     const p = await LoadPrefs();
@@ -107,8 +116,9 @@
 
     EventsOn("index:progress", (data: IndexProgress) => {
       indexProgress = data;
-      if ((data.phase === "done" || data.phase === "cancelled") && currentPath) {
-        setTimeout(() => loadDirectory(currentPath), 400);
+      if (data.phase === "done" || data.phase === "cancelled") {
+        if (currentPath) setTimeout(() => loadDirectory(currentPath), 400);
+        if (appMode === "library") setTimeout(() => libraryView?.reload(), 400);
       }
     });
   });
@@ -195,6 +205,7 @@
 
   function clearPreview() {
     selectedEntry = null;
+    libraryPreviewPath = null;
   }
 
   // ── File operations ───────────────────────────────────────────────────────
@@ -222,6 +233,31 @@
     await HardDeleteFile(path);
     files = files.filter((f) => f.path !== path);
     if (selectedEntry?.path === path) clearPreview();
+  }
+
+  // ── Library preview ───────────────────────────────────────────────────────
+  function onLibraryFileClick(nasPath: string) {
+    libraryPreviewPath = nasPath;
+    // Synthesise a minimal EnrichedFileEntry so PreviewPane can display it
+    const parts = nasPath.split("/");
+    selectedEntry = {
+      name: parts[parts.length - 1],
+      path: nasPath,
+      isDir: false,
+      modTime: new Date().toISOString(),
+      size: 0,
+      object: "",
+      filter: "",
+      expTime: 0,
+      dateObs: "",
+      gain: 0,
+      ccdTemp: 0,
+      telescope: "",
+      instrument: "",
+      hasMeta: true,
+      isRejected: false,
+      rejectionReason: "",
+    } as browser.EnrichedFileEntry;
   }
 
   // ── Pane resize ───────────────────────────────────────────────────────────
@@ -256,8 +292,13 @@
   <AppHeader
     {rootFolder}
     {indexRunning}
+    {appMode}
     onselectfolder={selectFolder}
     onbuildindex={startBuildIndex}
+    onmodechange={(m) => {
+      appMode = m;
+      clearPreview();
+    }}
   />
 
   {#if !rootFolder}
@@ -267,7 +308,7 @@
       <p class="empty-sub">Choose your astrophotography NAS folder to get started</p>
       <button class="btn-primary btn-large" onclick={selectFolder}>Select Root Folder</button>
     </div>
-  {:else}
+  {:else if appMode === "browser"}
     <NavToolbar {currentPath} canGoBack={pathHistory.length > 0} onnavigateBack={navigateBack} />
 
     {#if indexProgress && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled"}
@@ -323,6 +364,42 @@
       {indexProgress}
       {rootFolder}
     />
+  {:else}
+    <!-- Library mode -->
+    {#if indexProgress && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled"}
+      <IndexProgressBar progress={indexProgress} oncancel={() => CancelIndex()} />
+    {/if}
+
+    <div class="content-area">
+      <div class="file-list-pane" style={leftStyle}>
+        <LibraryView
+          bind:this={libraryView}
+          {rootFolder}
+          onfileclick={onLibraryFileClick}
+        />
+      </div>
+
+      {#if selectedEntry}
+        <div class="divider" onmousedown={onDividerMouseDown}>
+          <button
+            class="collapse-btn"
+            onmousedown={(e) => e.stopPropagation()}
+            onclick={() => (collapsed = !collapsed)}
+            title={collapsed ? "Expand library" : "Collapse library"}
+            >{collapsed ? "›" : "‹"}</button
+          >
+        </div>
+
+        <PreviewPane
+          entry={selectedEntry}
+          bind:stretchEnabled
+          bind:stretchLevel
+          bind:basicCollapsed
+          bind:advancedCollapsed
+          onclose={clearPreview}
+        />
+      {/if}
+    </div>
   {/if}
 </div>
 

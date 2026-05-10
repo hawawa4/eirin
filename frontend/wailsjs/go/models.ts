@@ -1,5 +1,19 @@
-export namespace browser {
+export namespace app {
 	
+	export class ChannelStats {
+	    median: number;
+	    sigma: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChannelStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.median = source["median"];
+	        this.sigma = source["sigma"];
+	    }
+	}
 	export class EnrichedFileEntry {
 	    name: string;
 	    path: string;
@@ -61,64 +75,6 @@ export namespace browser {
 		    return a;
 		}
 	}
-	export class FileEntry {
-	    name: string;
-	    path: string;
-	    isDir: boolean;
-	    // Go type: time
-	    modTime: any;
-	    size: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new FileEntry(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.path = source["path"];
-	        this.isDir = source["isDir"];
-	        this.modTime = this.convertValues(source["modTime"], null);
-	        this.size = source["size"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-
-}
-
-export namespace fits {
-	
-	export class ChannelStats {
-	    median: number;
-	    sigma: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ChannelStats(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.median = source["median"];
-	        this.sigma = source["sigma"];
-	    }
-	}
 	export class FITSHeader {
 	    width: number;
 	    height: number;
@@ -171,6 +127,81 @@ export namespace fits {
 	        this.siteLat = source["siteLat"];
 	        this.siteLong = source["siteLong"];
 	        this.extra = source["extra"];
+	    }
+	}
+	export class FileEntry {
+	    name: string;
+	    path: string;
+	    isDir: boolean;
+	    // Go type: time
+	    modTime: any;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.isDir = source["isDir"];
+	        this.modTime = this.convertValues(source["modTime"], null);
+	        this.size = source["size"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LibraryFrame {
+	    nasPath: string;
+	    fileName: string;
+	    frameType: string;
+	    object: string;
+	    filter: string;
+	    expTime: number;
+	    dateObs: string;
+	    gain: number;
+	    ccdTemp: number;
+	    telescope: string;
+	    instrument: string;
+	    fileSize: number;
+	    isRejected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryFrame(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nasPath = source["nasPath"];
+	        this.fileName = source["fileName"];
+	        this.frameType = source["frameType"];
+	        this.object = source["object"];
+	        this.filter = source["filter"];
+	        this.expTime = source["expTime"];
+	        this.dateObs = source["dateObs"];
+	        this.gain = source["gain"];
+	        this.ccdTemp = source["ccdTemp"];
+	        this.telescope = source["telescope"];
+	        this.instrument = source["instrument"];
+	        this.fileSize = source["fileSize"];
+	        this.isRejected = source["isRejected"];
 	    }
 	}
 	export class RawPreviewData {
