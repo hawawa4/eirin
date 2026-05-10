@@ -110,6 +110,13 @@ func migrate(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_frames_obj_filt   ON frames(object, filter);
 		CREATE INDEX IF NOT EXISTS idx_frames_rejected   ON frames(rejected);
 		CREATE INDEX IF NOT EXISTS idx_frames_frame_type ON frames(frame_type);
+		CREATE TABLE IF NOT EXISTS projects (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			name        TEXT    NOT NULL,
+			description TEXT    NOT NULL DEFAULT '',
+			folder      TEXT    NOT NULL UNIQUE,
+			created_at  TEXT    NOT NULL
+		);
 	`)
 	return err
 }

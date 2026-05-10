@@ -240,6 +240,26 @@ export namespace app {
 	        this.isRejected = source["isRejected"];
 	    }
 	}
+	export class Project {
+	    id: number;
+	    name: string;
+	    description: string;
+	    folder: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Project(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.folder = source["folder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class RawPreviewData {
 	    data: string;
 	    width: number;
@@ -308,6 +328,7 @@ export namespace prefs {
 	    columnConfig: string;
 	    libraryColumnConfig: string;
 	    sirilPath: string;
+	    projectsFolder: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Prefs(source);
@@ -323,6 +344,7 @@ export namespace prefs {
 	        this.columnConfig = source["columnConfig"];
 	        this.libraryColumnConfig = source["libraryColumnConfig"];
 	        this.sirilPath = source["sirilPath"];
+	        this.projectsFolder = source["projectsFolder"];
 	    }
 	}
 
