@@ -162,6 +162,122 @@ func (s *Store) UpsertFITSCache(path string, h CachedFITSHeader) error {
 	return err
 }
 
+// RejectFile marks a file path as soft-deleted.
+func (s *Store) RejectFile(path string) error {
+	query, args, err := s.qb.
+		Insert("rejected_files").
+		Columns("path", "rejected_at").
+		Values(path, time.Now().Unix()).
+		Suffix("ON CONFLICT(path) DO NOTHING").
+		ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(query, args...)
+	return err
+}
+
+// UnrejectFile removes the soft-delete mark from a file path.
+func (s *Store) UnrejectFile(path string) error {
+	query, args, err := s.qb.
+		Delete("rejected_files").
+		Where(sq.Eq{"path": path}).
+		ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(query, args...)
+	return err
+}
+
+// GetRejected returns which of the given paths are currently rejected.
+// Only paths present in the rejected_files table appear in the result.
+func (s *Store) GetRejected(paths []string) (map[string]bool, error) {
+	result := make(map[string]bool, len(paths))
+	if len(paths) == 0 {
+		return result, nil
+	}
+	const chunkSize = 900
+	for i := 0; i < len(paths); i += chunkSize {
+		end := i + chunkSize
+		if end > len(paths) {
+			end = len(paths)
+		}
+		if err := s.getRejectedChunk(paths[i:end], result); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) getRejectedChunk(paths []string, out map[string]bool) error {
+	query, args, err := s.qb.
+		Select("path").
+		From("rejected_files").
+		Where(sq.Eq{"path": paths}).
+		ToSql()
+	if err != nil {
+		return err
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return err
+		}
+		out[p] = true
+	}
+	return rows.Err()
+}
+
+// GetAllRejectedUnder returns all rejected paths that start with rootPath.
+func (s *Store) GetAllRejectedUnder(rootPath string) ([]string, error) {
+	prefix := rootPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	query, args, err := s.qb.
+		Select("path").
+		From("rejected_files").
+		Where(sq.Like{"path": prefix + "%"}).
+		OrderBy("path").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}
+
+// DeleteFromCache removes a single entry from the fits_cache table.
+func (s *Store) DeleteFromCache(path string) error {
+	query, args, err := s.qb.
+		Delete("fits_cache").
+		Where(sq.Eq{"path": path}).
+		ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(query, args...)
+	return err
+}
+
 // BatchUpsertFITSCache inserts or updates many entries in a single transaction.
 // This is significantly faster than calling UpsertFITSCache in a loop.
 func (s *Store) BatchUpsertFITSCache(entries map[string]CachedFITSHeader) error {
@@ -294,6 +410,11 @@ func migrate(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_fits_cache_filter   ON fits_cache(filter);
 		CREATE INDEX IF NOT EXISTS idx_fits_cache_date_obs ON fits_cache(date_obs);
 		CREATE INDEX IF NOT EXISTS idx_fits_cache_obj_filt ON fits_cache(object, filter);
+		CREATE TABLE IF NOT EXISTS rejected_files (
+			path        TEXT    PRIMARY KEY NOT NULL,
+			rejected_at INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE INDEX IF NOT EXISTS idx_rejected_files_path ON rejected_files(path);
 	`)
 	return err
 }

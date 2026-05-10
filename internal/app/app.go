@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -106,19 +107,28 @@ func (a *App) ListDirectoryEnriched(path string) ([]browser.EnrichedFileEntry, e
 		return result, nil
 	}
 
-	// Collect FITS file paths in this directory.
+	// Collect all non-directory paths for batch lookups.
+	allPaths  := make([]string, 0, len(entries))
 	fitsPaths := make([]string, 0, len(entries))
 	for _, e := range entries {
-		if !e.IsDir && isFitsFile(e.Name) {
-			fitsPaths = append(fitsPaths, e.Path)
+		if !e.IsDir {
+			allPaths = append(allPaths, e.Path)
+			if isFitsFile(e.Name) {
+				fitsPaths = append(fitsPaths, e.Path)
+			}
 		}
 	}
 
-	// Fetch whatever is already cached (no header reading here).
+	// Batch-fetch FITS cache and rejection status in parallel.
 	cached, err := a.prefs.GetFITSCache(fitsPaths)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "fits cache: get: %v", err)
 		cached = map[string]prefs.CachedFITSHeader{}
+	}
+	rejected, err := a.prefs.GetRejected(allPaths)
+	if err != nil {
+		runtime.LogErrorf(a.ctx, "rejected: get: %v", err)
+		rejected = map[string]bool{}
 	}
 
 	result := make([]browser.EnrichedFileEntry, len(entries))
@@ -135,6 +145,7 @@ func (a *App) ListDirectoryEnriched(path string) ([]browser.EnrichedFileEntry, e
 			ee.Instrument = ch.Instrument
 			ee.HasMeta    = true
 		}
+		ee.IsRejected = rejected[e.Path]
 		result[i] = ee
 	}
 	return result, nil
@@ -311,6 +322,38 @@ func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {
 // stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong
 func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 	return fits.GeneratePreview(path, 1024, stretchLevel)
+}
+
+// ── File operations ───────────────────────────────────────────────────────────
+
+// RejectFile marks a file as soft-deleted. It remains on disk but is hidden
+// from the normal file listing until explicitly shown in the Rejected view.
+func (a *App) RejectFile(path string) error {
+	if a.prefs == nil {
+		return nil
+	}
+	return a.prefs.RejectFile(path)
+}
+
+// UnrejectFile removes the soft-delete mark, making the file visible again.
+func (a *App) UnrejectFile(path string) error {
+	if a.prefs == nil {
+		return nil
+	}
+	return a.prefs.UnrejectFile(path)
+}
+
+// HardDeleteFile permanently removes a file from disk and cleans up any
+// associated cache and rejection records.
+func (a *App) HardDeleteFile(path string) error {
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	if a.prefs != nil {
+		_ = a.prefs.DeleteFromCache(path)
+		_ = a.prefs.UnrejectFile(path)
+	}
+	return nil
 }
 
 func isFitsFile(name string) bool {

@@ -5,6 +5,9 @@
     ListDirectoryEnriched,
     BuildIndex,
     CancelIndex,
+    RejectFile,
+    UnrejectFile,
+    HardDeleteFile,
     GeneratePreview,
     ReadFITSHeader,
     LoadPrefs,
@@ -81,6 +84,17 @@
     indexProgress.phase !== 'done' &&
     indexProgress.phase !== 'cancelled'
   )
+
+  // ── View mode (Files | Rejected) ──────────────────────────────────────────
+  type ViewMode = 'files' | 'rejected'
+  let viewMode = $state<ViewMode>('files')
+
+  // ── Context menu ─────────────────────────────────────────────────────────
+  interface CtxMenu { x: number; y: number; entry: browser.EnrichedFileEntry }
+  let ctxMenu = $state<CtxMenu | null>(null)
+
+  // ── Hard-delete confirmation modal ────────────────────────────────────────
+  let confirmDel = $state<{ path: string; name: string } | null>(null)
 
   // ── Preview state ─────────────────────────────────────────────────────────
   let selectedEntry  = $state<browser.EnrichedFileEntry | null>(null)
@@ -186,7 +200,8 @@
     )].sort()
   )
 
-  let filteredFiles = $derived(applyFilters(files, searchQuery, filterFilter))
+  let rejectedCount = $derived(files.filter(f => !f.isDir && f.isRejected).length)
+  let filteredFiles = $derived(applyFilters(files, searchQuery, filterFilter, viewMode))
   let filteredDirs  = $derived(filteredFiles.filter(f => f.isDir))
   let filteredFits  = $derived(filteredFiles.filter(f => !f.isDir && f.hasMeta))
   let filteredOther = $derived(filteredFiles.filter(f => !f.isDir && !f.hasMeta))
@@ -202,8 +217,14 @@
     all: browser.EnrichedFileEntry[],
     search: string,
     filter: string,
+    mode: ViewMode,
   ): browser.EnrichedFileEntry[] {
     let r = all
+    if (mode === 'files') {
+      r = r.filter(f => f.isDir || !f.isRejected)
+    } else {
+      r = r.filter(f => !f.isDir && f.isRejected)
+    }
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(f =>
@@ -317,6 +338,45 @@
     col.visible = !col.visible
     saveColumnConfig()
   }
+
+  // ── File operations ───────────────────────────────────────────────────────
+
+  async function rejectFile(entry: browser.EnrichedFileEntry) {
+    ctxMenu = null
+    await RejectFile(entry.path)
+    entry.isRejected = true
+  }
+
+  async function restoreFile(entry: browser.EnrichedFileEntry) {
+    ctxMenu = null
+    await UnrejectFile(entry.path)
+    entry.isRejected = false
+  }
+
+  function openHardDeleteConfirm(entry: browser.EnrichedFileEntry) {
+    ctxMenu = null
+    confirmDel = { path: entry.path, name: entry.name }
+  }
+
+  async function doHardDelete() {
+    if (!confirmDel) return
+    const { path } = confirmDel
+    confirmDel = null
+    await HardDeleteFile(path)
+    files = files.filter(f => f.path !== path)
+    if (selectedEntry?.path === path) clearPreview()
+  }
+
+  // Close context menu when clicking outside it.
+  $effect(() => {
+    if (!ctxMenu) return
+    function onDoc(e: MouseEvent) {
+      const el = document.getElementById('ctx-menu')
+      if (el && !el.contains(e.target as Node)) ctxMenu = null
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  })
 
   // ── Zoom / pan ────────────────────────────────────────────────────────────
   let zoom      = $state(1)
@@ -611,6 +671,18 @@
 
         <!-- Toolbar: search, filter, group, columns -->
         <div class="table-toolbar">
+          <div class="view-tabs">
+            <button
+              class="view-tab"
+              class:active={viewMode === 'files'}
+              onclick={() => { viewMode = 'files' }}
+            >Files</button>
+            <button
+              class="view-tab"
+              class:active={viewMode === 'rejected'}
+              onclick={() => { viewMode = 'rejected' }}
+            >Rejected{#if rejectedCount > 0} <span class="tab-badge">{rejectedCount}</span>{/if}</button>
+          </div>
           <input
             class="search-input"
             type="search"
@@ -708,8 +780,10 @@
                       class="file-row"
                       class:is-dir={entry.isDir}
                       class:is-fits={!entry.isDir && isFits(entry.name)}
+                      class:is-rejected={entry.isRejected}
                       class:selected={selectedEntry && selectedEntry.path === entry.path}
                       onclick={() => onRowClick(entry)}
+                      oncontextmenu={(e) => { if (!entry.isDir) { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, entry } } }}
                     >
                       {#each visibleColumns as col}
                         <td class="col-{col.id}">
@@ -747,8 +821,10 @@
                     <tr
                       class="file-row"
                       class:is-fits={isFits(entry.name)}
+                      class:is-rejected={entry.isRejected}
                       class:selected={selectedEntry && selectedEntry.path === entry.path}
                       onclick={() => onRowClick(entry)}
+                      oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, entry } }}
                     >
                       {#each visibleColumns as col}
                         <td class="col-{col.id}">
@@ -774,8 +850,10 @@
                     {#each group.files as entry (entry.path)}
                       <tr
                         class="file-row is-fits"
+                        class:is-rejected={entry.isRejected}
                         class:selected={selectedEntry && selectedEntry.path === entry.path}
                         onclick={() => onRowClick(entry)}
+                        oncontextmenu={(e) => { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, entry } }}
                       >
                         {#each visibleColumns as col}
                           <td class="col-{col.id}">
@@ -920,6 +998,39 @@
     </footer>
   {/if}
 </div>
+
+<!-- ── Context menu ───────────────────────────────────────────────────────── -->
+{#if ctxMenu}
+  <div
+    id="ctx-menu"
+    class="ctx-menu"
+    style="left: {ctxMenu.x}px; top: {ctxMenu.y}px"
+  >
+    {#if ctxMenu.entry.isRejected}
+      <button class="ctx-item" onclick={() => restoreFile(ctxMenu!.entry)}>Restore</button>
+    {:else}
+      <button class="ctx-item" onclick={() => rejectFile(ctxMenu!.entry)}>Reject</button>
+    {/if}
+    <div class="ctx-sep"></div>
+    <button class="ctx-item ctx-danger" onclick={() => openHardDeleteConfirm(ctxMenu!.entry)}>Hard Delete…</button>
+  </div>
+{/if}
+
+<!-- ── Hard-delete confirmation modal ─────────────────────────────────────── -->
+{#if confirmDel}
+  <div class="modal-backdrop" onclick={() => (confirmDel = null)}>
+    <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <div class="modal-icon">⚠</div>
+      <p class="modal-title">Delete file permanently?</p>
+      <p class="modal-filename">{confirmDel.name}</p>
+      <p class="modal-sub">This cannot be undone. The file will be removed from disk.</p>
+      <div class="modal-btns">
+        <button class="tool-btn" onclick={() => (confirmDel = null)}>Cancel</button>
+        <button class="btn-danger" onclick={doHardDelete}>Delete Forever</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .layout {
@@ -1547,4 +1658,137 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* ── View tabs ───────────────────────────────────────────────────────────── */
+
+  .view-tabs {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .view-tab {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .view-tab:hover { color: var(--text-secondary); }
+  .view-tab.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .tab-badge {
+    background: var(--danger);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 5px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 14px;
+  }
+
+  /* ── Context menu ────────────────────────────────────────────────────────── */
+
+  :global(.ctx-menu) {
+    position: fixed;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 5px;
+    padding: 3px 0;
+    z-index: 1000;
+    min-width: 140px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+
+  :global(.ctx-item) {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 5px 14px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  :global(.ctx-item:hover) { background: var(--bg-row-hover); color: var(--text-primary); }
+  :global(.ctx-item.ctx-danger) { color: var(--danger); }
+  :global(.ctx-item.ctx-danger:hover) { background: #2a1020; color: var(--danger); }
+
+  :global(.ctx-sep) {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 0;
+  }
+
+  /* ── Hard-delete modal ───────────────────────────────────────────────────── */
+
+  :global(.modal-backdrop) {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  :global(.modal) {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 8px;
+    padding: 24px 28px;
+    max-width: 380px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+  }
+
+  :global(.modal-icon) { font-size: 2rem; color: var(--danger); margin-bottom: 4px; }
+  :global(.modal-title) { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+  :global(.modal-filename) {
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    color: var(--accent);
+    word-break: break-all;
+    text-align: center;
+    margin: 0;
+  }
+  :global(.modal-sub) { font-size: 0.8rem; color: var(--text-secondary); text-align: center; margin: 0; }
+  :global(.modal-btns) { display: flex; gap: 10px; margin-top: 10px; }
+
+  .btn-danger {
+    background: var(--danger);
+    color: #fff;
+    border: 1px solid var(--danger);
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-danger:hover { opacity: 0.85; }
+
+  /* ── Rejected row styling ────────────────────────────────────────────────── */
+
+  .file-row.is-rejected td {
+    color: var(--text-dim);
+    text-decoration: line-through;
+    opacity: 0.55;
+  }
+  .file-row.is-rejected:hover td { opacity: 0.8; }
 </style>

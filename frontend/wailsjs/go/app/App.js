@@ -14,6 +14,10 @@ export function GeneratePreview(arg1, arg2) {
   return window['go']['app']['App']['GeneratePreview'](arg1, arg2);
 }
 
+export function HardDeleteFile(arg1) {
+  return window['go']['app']['App']['HardDeleteFile'](arg1);
+}
+
 export function ListDirectory(arg1) {
   return window['go']['app']['App']['ListDirectory'](arg1);
 }
@@ -30,10 +34,18 @@ export function ReadFITSHeader(arg1) {
   return window['go']['app']['App']['ReadFITSHeader'](arg1);
 }
 
+export function RejectFile(arg1) {
+  return window['go']['app']['App']['RejectFile'](arg1);
+}
+
 export function SelectRootFolder() {
   return window['go']['app']['App']['SelectRootFolder']();
 }
 
 export function SetPref(arg1, arg2) {
   return window['go']['app']['App']['SetPref'](arg1, arg2);
+}
+
+export function UnrejectFile(arg1) {
+  return window['go']['app']['App']['UnrejectFile'](arg1);
 }
