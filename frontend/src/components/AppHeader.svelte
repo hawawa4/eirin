@@ -4,40 +4,18 @@
 
   interface Props {
     rootFolder: string;
-    indexRunning: boolean;
     appMode: AppMode;
-    onselectfolder: () => void;
-    onbuildindex: () => void;
     onmodechange: (mode: AppMode) => void;
   }
 
-  let { rootFolder, indexRunning, appMode, onselectfolder, onbuildindex, onmodechange }: Props =
-    $props();
+  let { rootFolder, appMode, onmodechange }: Props = $props();
 </script>
 
 <header>
   <span class="logo">✦ Eirin</span>
 
-  {#if rootFolder}
-    <div class="mode-area">
-      <ModeSelector mode={appMode} {onmodechange} />
-    </div>
-  {/if}
-
-  <div class="header-right">
-    {#if rootFolder}
-      <button
-        class="btn-secondary"
-        onclick={onbuildindex}
-        disabled={indexRunning}
-        title="Scan all subfolders and index FITS headers. Re-run to pick up new files."
-      >
-        {indexRunning ? "Indexing…" : "Build Index"}
-      </button>
-    {/if}
-    <button class="btn-primary" onclick={onselectfolder}>
-      {rootFolder ? "Change Root Folder" : "Select Root Folder"}
-    </button>
+  <div class="mode-area">
+    <ModeSelector mode={appMode} {onmodechange} {rootFolder} />
   </div>
 </header>
 
@@ -45,7 +23,6 @@
   header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 0 20px;
     height: 52px;
     background: var(--bg-panel);
@@ -68,12 +45,5 @@
     display: flex;
     justify-content: center;
     -webkit-app-region: no-drag;
-  }
-
-  .header-right {
-    -webkit-app-region: no-drag;
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
   }
 </style>

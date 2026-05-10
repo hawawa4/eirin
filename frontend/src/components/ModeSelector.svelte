@@ -5,29 +5,34 @@
     value: AppMode;
     label: string;
     icon: string;
+    requiresRoot: boolean;
   }
 
   interface Props {
     mode: AppMode;
+    rootFolder: string;
     onmodechange: (mode: AppMode) => void;
   }
 
-  let { mode, onmodechange }: Props = $props();
+  let { mode, rootFolder, onmodechange }: Props = $props();
 
   const modes: ModeOption[] = [
-    { value: "browser", label: "Browse", icon: "⊞" },
-    { value: "library", label: "Library", icon: "◈" },
-    { value: "import", label: "Import", icon: "⇪" },
+    { value: "browser", label: "Browse", icon: "⊞", requiresRoot: true },
+    { value: "library", label: "Library", icon: "◈", requiresRoot: true },
+    { value: "import", label: "Import", icon: "⇪", requiresRoot: true },
+    { value: "settings", label: "Settings", icon: "⚙", requiresRoot: false },
   ];
 </script>
 
 <div class="mode-selector">
   {#each modes as m}
+    {@const disabled = m.requiresRoot && !rootFolder}
     <button
       class="mode-btn"
       class:active={mode === m.value}
-      onclick={() => onmodechange(m.value)}
-      title={m.label}
+      onclick={() => !disabled && onmodechange(m.value)}
+      {disabled}
+      title={disabled ? "Select a root folder first" : m.label}
     >
       <span class="mode-icon">{m.icon}</span>
       <span class="mode-label">{m.label}</span>
@@ -59,11 +64,17 @@
     cursor: pointer;
     transition:
       background 0.15s,
-      color 0.15s;
+      color 0.15s,
+      opacity 0.15s;
     white-space: nowrap;
   }
 
-  .mode-btn:hover {
+  .mode-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .mode-btn:not(:disabled):hover {
     color: var(--text-primary);
     background: var(--bg-row-hover);
   }

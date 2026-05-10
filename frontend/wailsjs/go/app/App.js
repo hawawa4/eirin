@@ -18,6 +18,10 @@ export function GeneratePreviewRaw(arg1) {
   return window['go']['app']['App']['GeneratePreviewRaw'](arg1);
 }
 
+export function GetAppInfo() {
+  return window['go']['app']['App']['GetAppInfo']();
+}
+
 export function GetLibraryFrames(arg1) {
   return window['go']['app']['App']['GetLibraryFrames'](arg1);
 }
