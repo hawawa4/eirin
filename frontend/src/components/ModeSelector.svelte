@@ -17,6 +17,7 @@
   const modes: ModeOption[] = [
     { value: "browser", label: "Browse", icon: "⊞" },
     { value: "library", label: "Library", icon: "◈" },
+    { value: "import", label: "Import", icon: "⇪" },
   ];
 </script>
 

@@ -27,6 +27,7 @@
   import IndexProgressBar from "./components/IndexProgressBar.svelte";
   import FileList from "./components/FileList.svelte";
   import LibraryView from "./components/LibraryView.svelte";
+  import ImportView from "./components/ImportView.svelte";
   import PreviewPane from "./components/PreviewPane.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import HardDeleteModal from "./components/HardDeleteModal.svelte";
@@ -384,7 +385,7 @@
       {indexProgress}
       {rootFolder}
     />
-  {:else}
+  {:else if appMode === "library"}
     <!-- Library mode -->
     {#if indexProgress && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled"}
       <IndexProgressBar progress={indexProgress} oncancel={() => CancelIndex()} />
@@ -423,6 +424,9 @@
         />
       {/if}
     </div>
+  {:else if appMode === "import"}
+    <!-- Import mode -->
+    <ImportView {rootFolder} />
   {/if}
 </div>
 

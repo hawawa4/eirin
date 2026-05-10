@@ -46,8 +46,16 @@ export function RejectFile(arg1) {
   return window['go']['app']['App']['RejectFile'](arg1);
 }
 
+export function ScanImportCandidates(arg1) {
+  return window['go']['app']['App']['ScanImportCandidates'](arg1);
+}
+
 export function SelectRootFolder() {
   return window['go']['app']['App']['SelectRootFolder']();
+}
+
+export function SelectSourceFolder() {
+  return window['go']['app']['App']['SelectSourceFolder']();
 }
 
 export function SetFrameType(arg1, arg2) {
@@ -56,6 +64,10 @@ export function SetFrameType(arg1, arg2) {
 
 export function SetPref(arg1, arg2) {
   return window['go']['app']['App']['SetPref'](arg1, arg2);
+}
+
+export function StartImport(arg1) {
+  return window['go']['app']['App']['StartImport'](arg1);
 }
 
 export function UnrejectFile(arg1) {

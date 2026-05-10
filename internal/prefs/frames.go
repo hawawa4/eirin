@@ -286,6 +286,25 @@ func (s *Store) GetAllRejectedUnder(rootPath string) ([]string, error) {
 	return paths, rows.Err()
 }
 
+// GetAllFrameBasenames returns a set of all file basenames currently in the
+// frames table. Used by the importer to identify files already in the library.
+func (s *Store) GetAllFrameBasenames() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT nas_path FROM frames`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]bool)
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		result[filepath.Base(p)] = true
+	}
+	return result, rows.Err()
+}
+
 // DeleteFrame removes a frame record entirely from the database.
 func (s *Store) DeleteFrame(path string) error {
 	query, args, err := s.qb.

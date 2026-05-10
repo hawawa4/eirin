@@ -168,6 +168,24 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class ImportCandidate {
+	    sourcePath: string;
+	    relativePath: string;
+	    destPath: string;
+	    fileSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourcePath = source["sourcePath"];
+	        this.relativePath = source["relativePath"];
+	        this.destPath = source["destPath"];
+	        this.fileSize = source["fileSize"];
+	    }
+	}
 	export class LibraryFrame {
 	    nasPath: string;
 	    fileName: string;
