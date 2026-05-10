@@ -11,6 +11,8 @@
     LoadPrefs,
     SetPref,
     GetAppInfo,
+    CheckSiril,
+    OpenWithSiril,
   } from "../wailsjs/go/app/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
   import type { app } from "../wailsjs/go/models";
@@ -20,8 +22,10 @@
     type AppInfo,
     type AppMode,
     type ColumnDef,
+    type CtxEntry,
     type CtxMenuState,
     type IndexProgress,
+    type SirilInfo,
   } from "./lib/types";
   import { isFits } from "./lib/utils";
   import AppHeader from "./components/AppHeader.svelte";
@@ -68,6 +72,10 @@
   // ── App info (DB path, server URL) ────────────────────────────────────────
   let appInfo = $state<AppInfo>({ dbPath: "", serverPort: 7070, serverUrl: "", portSource: "" });
 
+  // ── Siril ─────────────────────────────────────────────────────────────────
+  let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
+  let sirilAvailable = $derived(sirilInfo.available);
+
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ path: string; name: string } | null>(null);
@@ -100,8 +108,9 @@
   let libraryView = $state<{ reload: () => void } | null>(null);
 
   onMount(async () => {
-    const [p, info] = await Promise.all([LoadPrefs(), GetAppInfo()]);
+    const [p, info, siril] = await Promise.all([LoadPrefs(), GetAppInfo(), CheckSiril()]);
     appInfo = info;
+    sirilInfo = siril;
 
     stretchEnabled = p.stretchEnabled;
     stretchLevel = p.stretchLevel;
@@ -264,6 +273,12 @@
     if (selectedEntry?.path === path) clearPreview();
   }
 
+  // ── Siril ─────────────────────────────────────────────────────────────────
+  async function doOpenWithSiril(entry: CtxEntry) {
+    ctxMenu = null;
+    await OpenWithSiril(entry.path);
+  }
+
   // ── Library preview ───────────────────────────────────────────────────────
   function onLibraryFileClick(nasPath: string) {
     libraryPreviewPath = nasPath;
@@ -351,7 +366,7 @@
           {loading}
           onfileclick={onRowClick}
           oncontextmenu={(x, y, entry) => {
-            ctxMenu = { x, y, entry };
+            ctxMenu = { x, y, entry, sirilAvailable };
           }}
           onsavecolumns={saveColumnConfig}
           onfilteredcountchange={(n) => {
@@ -398,6 +413,7 @@
           {rootFolder}
           columns={libraryColumns}
           selectedNasPath={selectedEntry?.path ?? null}
+          {sirilAvailable}
           onfileclick={onLibraryFileClick}
           onsavecolumns={saveLibraryColumnConfig}
         />
@@ -434,6 +450,7 @@
       {indexProgress}
       onselectfolder={selectFolder}
       onbuildindex={startBuildIndex}
+      onsirilchange={(info) => (sirilInfo = info)}
     />
   {/if}
 </div>
@@ -447,6 +464,7 @@
     onreject={rejectFile}
     onrestore={restoreFile}
     onharddelete={openHardDeleteConfirm}
+    onopensiril={doOpenWithSiril}
   />
 {/if}
 

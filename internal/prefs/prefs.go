@@ -18,18 +18,20 @@ const (
 	KeyStretchLevel      = "stretch_level"
 	KeyColumnConfig        = "column_config"
 	KeyLibraryColumnConfig = "library_column_config"
+	KeySirilPath           = "siril_path"
 )
 
 // Prefs is the typed snapshot of all user preferences, serialised to/from the
 // database as plain strings.
 type Prefs struct {
-	RootFolder           string `json:"rootFolder"`
-	BasicCollapsed       bool   `json:"basicCollapsed"`
-	AdvancedCollapsed    bool   `json:"advancedCollapsed"`
-	StretchEnabled       bool   `json:"stretchEnabled"`
-	StretchLevel         int    `json:"stretchLevel"`
-	ColumnConfig         string `json:"columnConfig"`
-	LibraryColumnConfig  string `json:"libraryColumnConfig"`
+	RootFolder          string `json:"rootFolder"`
+	BasicCollapsed      bool   `json:"basicCollapsed"`
+	AdvancedCollapsed   bool   `json:"advancedCollapsed"`
+	StretchEnabled      bool   `json:"stretchEnabled"`
+	StretchLevel        int    `json:"stretchLevel"`
+	ColumnConfig        string `json:"columnConfig"`
+	LibraryColumnConfig string `json:"libraryColumnConfig"`
+	SirilPath           string `json:"sirilPath"`
 }
 
 // DefaultPrefs returns the out-of-the-box preference values.
@@ -70,6 +72,9 @@ func (s *Store) Load() Prefs {
 	}
 	if v, ok := s.getString(KeyLibraryColumnConfig); ok {
 		p.LibraryColumnConfig = v
+	}
+	if v, ok := s.getString(KeySirilPath); ok {
+		p.SirilPath = v
 	}
 	return p
 }

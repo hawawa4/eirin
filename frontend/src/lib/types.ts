@@ -35,6 +35,13 @@ export interface CtxMenuState {
   x: number;
   y: number;
   entry: CtxEntry;
+  sirilAvailable: boolean;
+}
+
+export interface SirilInfo {
+  executable: string;
+  version: string;
+  available: boolean;
 }
 
 export type ViewMode = "files" | "rejected";

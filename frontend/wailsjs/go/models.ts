@@ -278,6 +278,22 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class SirilInfo {
+	    executable: string;
+	    version: string;
+	    available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SirilInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.executable = source["executable"];
+	        this.version = source["version"];
+	        this.available = source["available"];
+	    }
+	}
 
 }
 
@@ -291,6 +307,7 @@ export namespace prefs {
 	    stretchLevel: number;
 	    columnConfig: string;
 	    libraryColumnConfig: string;
+	    sirilPath: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Prefs(source);
@@ -305,6 +322,7 @@ export namespace prefs {
 	        this.stretchLevel = source["stretchLevel"];
 	        this.columnConfig = source["columnConfig"];
 	        this.libraryColumnConfig = source["libraryColumnConfig"];
+	        this.sirilPath = source["sirilPath"];
 	    }
 	}
 

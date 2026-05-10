@@ -7,6 +7,8 @@ export function BuildIndex(arg1:string):Promise<void>;
 
 export function CancelIndex():Promise<void>;
 
+export function CheckSiril():Promise<app.SirilInfo>;
+
 export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
 export function GeneratePreviewRaw(arg1:string):Promise<app.RawPreviewData>;
@@ -23,6 +25,8 @@ export function ListDirectoryEnriched(arg1:string):Promise<Array<app.EnrichedFil
 
 export function LoadPrefs():Promise<prefs.Prefs>;
 
+export function OpenWithSiril(arg1:string):Promise<void>;
+
 export function ReadFITSHeader(arg1:string):Promise<app.FITSHeader>;
 
 export function RejectFile(arg1:string):Promise<void>;
@@ -31,11 +35,15 @@ export function ScanImportCandidates(arg1:string):Promise<Array<app.ImportCandid
 
 export function SelectRootFolder():Promise<string>;
 
+export function SelectSirilExecutable():Promise<string>;
+
 export function SelectSourceFolder():Promise<string>;
 
 export function SetFrameType(arg1:string,arg2:string):Promise<void>;
 
 export function SetPref(arg1:string,arg2:string):Promise<void>;
+
+export function SetSirilPath(arg1:string):Promise<void>;
 
 export function StartImport(arg1:string):Promise<void>;
 

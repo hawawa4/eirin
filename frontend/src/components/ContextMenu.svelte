@@ -7,9 +7,10 @@
     onreject: (entry: CtxEntry) => void;
     onrestore: (entry: CtxEntry) => void;
     onharddelete: (entry: CtxEntry) => void;
+    onopensiril: (entry: CtxEntry) => void;
   }
 
-  let { menu, onclose, onreject, onrestore, onharddelete }: Props = $props();
+  let { menu, onclose, onreject, onrestore, onharddelete, onopensiril }: Props = $props();
 
   $effect(() => {
     function onDoc(e: MouseEvent) {
@@ -22,6 +23,16 @@
 </script>
 
 <div id="ctx-menu" class="ctx-menu" style="left: {menu.x}px; top: {menu.y}px">
+  <button
+    class="ctx-item ctx-siril"
+    class:ctx-disabled={!menu.sirilAvailable}
+    disabled={!menu.sirilAvailable}
+    onclick={() => onopensiril(menu.entry)}
+    title={menu.sirilAvailable ? "Open in Siril" : "Siril not found — configure it in Settings"}
+  >
+    Open with Siril
+  </button>
+  <div class="ctx-sep"></div>
   {#if menu.entry.isRejected}
     <button class="ctx-item" onclick={() => onrestore(menu.entry)}>Restore</button>
   {:else}
@@ -39,7 +50,7 @@
     border-radius: 5px;
     padding: 3px 0;
     z-index: 1000;
-    min-width: 140px;
+    min-width: 160px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   }
 
@@ -67,6 +78,20 @@
   :global(.ctx-item.ctx-danger:hover) {
     background: #2a1020;
     color: var(--danger);
+  }
+  :global(.ctx-item.ctx-siril) {
+    color: var(--accent);
+  }
+  :global(.ctx-item.ctx-siril:hover) {
+    background: var(--bg-row-hover);
+    color: var(--accent);
+  }
+  :global(.ctx-item.ctx-disabled) {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  :global(.ctx-item.ctx-disabled:hover) {
+    background: transparent;
   }
 
   :global(.ctx-sep) {
