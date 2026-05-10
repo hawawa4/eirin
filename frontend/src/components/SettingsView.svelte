@@ -337,7 +337,7 @@
     border-radius: 3px;
     padding: 1px 4px;
     font-size: 0.78rem;
-    color: var(--accent-dim);
+    color: var(--accent);
   }
 
   /* ── Siril status ────────────────────────────────────────────────────── */
@@ -428,7 +428,7 @@
 
   .endpoints code {
     font-size: 0.78rem;
-    color: var(--accent-dim);
+    color: var(--accent);
     font-family: monospace;
     background: var(--bg-base);
     border: 1px solid var(--border);
@@ -445,7 +445,7 @@
 
   .env-hint code {
     font-family: monospace;
-    color: var(--accent-dim);
+    color: var(--accent);
     background: var(--bg-base);
     border-radius: 3px;
     padding: 1px 4px;
@@ -468,7 +468,7 @@
 
   .btn-ghost:hover {
     color: var(--text-primary);
-    border-color: var(--accent-dim);
+    border-color: var(--accent);
   }
 
   .btn-ghost:disabled {

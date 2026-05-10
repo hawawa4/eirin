@@ -71,7 +71,7 @@
   }
 
   .index-file {
-    color: var(--text-dim);
+    color: var(--text-secondary);
     font-family: "Consolas", "Fira Code", monospace;
     font-size: 0.72rem;
     max-width: 240px;

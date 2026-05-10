@@ -521,7 +521,7 @@ void main() {
 
   .zoom-label {
     font-size: 0.75rem;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
     min-width: 36px;
     text-align: right;
@@ -571,7 +571,7 @@ void main() {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     font-size: 0.875rem;
     gap: 8px;
     pointer-events: none;
@@ -635,18 +635,18 @@ void main() {
     border: none;
     cursor: pointer;
     padding: 5px 0 3px;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
   .meta-section-hdr:hover {
-    color: var(--accent);
+    color: var(--text-primary);
   }
   .meta-caret {
     font-size: 0.8rem;
-    opacity: 0.6;
+    opacity: 0.8;
   }
 
   .meta-row {
@@ -658,7 +658,7 @@ void main() {
   }
 
   .meta-key {
-    color: var(--text-dim);
+    color: var(--text-secondary);
     width: 80px;
     flex-shrink: 0;
   }

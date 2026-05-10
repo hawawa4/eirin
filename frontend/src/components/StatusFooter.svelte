@@ -43,18 +43,17 @@
     background: var(--bg-panel);
     border-top: 1px solid var(--border);
     font-size: 0.75rem;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     flex-shrink: 0;
   }
 
   .root-tag {
     font-family: "Consolas", "Fira Code", monospace;
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 
   .unindexed-hint {
-    color: var(--text-dim);
-    opacity: 0.7;
+    color: var(--text-secondary);
     cursor: default;
   }
 

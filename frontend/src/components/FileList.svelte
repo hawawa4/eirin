@@ -485,7 +485,7 @@
 
   .view-tab {
     background: transparent;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     border: 1px solid transparent;
     border-radius: 4px;
     padding: 2px 10px;
@@ -499,7 +499,7 @@
     gap: 5px;
   }
   .view-tab:hover {
-    color: var(--text-secondary);
+    color: var(--text-primary);
   }
   .view-tab.active {
     color: var(--accent);
@@ -557,7 +557,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     border-bottom: 1px solid var(--border);
     position: relative;
     overflow: hidden;
@@ -625,7 +625,7 @@
   }
 
   .file-row.is-rejected td {
-    color: var(--text-dim);
+    color: var(--text-secondary);
     text-decoration: line-through;
     opacity: 0.55;
   }
@@ -680,7 +680,7 @@
   }
   .group-count {
     font-size: 0.72rem;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     margin-left: 8px;
   }
 </style>
