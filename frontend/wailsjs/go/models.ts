@@ -1,5 +1,62 @@
 export namespace browser {
 	
+	export class EnrichedFileEntry {
+	    name: string;
+	    path: string;
+	    isDir: boolean;
+	    // Go type: time
+	    modTime: any;
+	    size: number;
+	    object: string;
+	    filter: string;
+	    expTime: number;
+	    dateObs: string;
+	    gain: number;
+	    ccdTemp: number;
+	    telescope: string;
+	    instrument: string;
+	    hasMeta: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnrichedFileEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.isDir = source["isDir"];
+	        this.modTime = this.convertValues(source["modTime"], null);
+	        this.size = source["size"];
+	        this.object = source["object"];
+	        this.filter = source["filter"];
+	        this.expTime = source["expTime"];
+	        this.dateObs = source["dateObs"];
+	        this.gain = source["gain"];
+	        this.ccdTemp = source["ccdTemp"];
+	        this.telescope = source["telescope"];
+	        this.instrument = source["instrument"];
+	        this.hasMeta = source["hasMeta"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class FileEntry {
 	    name: string;
 	    path: string;
@@ -109,6 +166,7 @@ export namespace prefs {
 	    advancedCollapsed: boolean;
 	    stretchEnabled: boolean;
 	    stretchLevel: number;
+	    columnConfig: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Prefs(source);
@@ -121,6 +179,7 @@ export namespace prefs {
 	        this.advancedCollapsed = source["advancedCollapsed"];
 	        this.stretchEnabled = source["stretchEnabled"];
 	        this.stretchLevel = source["stretchLevel"];
+	        this.columnConfig = source["columnConfig"];
 	    }
 	}
 

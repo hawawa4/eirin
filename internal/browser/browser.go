@@ -14,6 +14,21 @@ type FileEntry struct {
 	Size    int64     `json:"size"`
 }
 
+// EnrichedFileEntry extends FileEntry with FITS header metadata loaded from
+// the local cache. Fields are zero/empty when HasMeta is false.
+type EnrichedFileEntry struct {
+	FileEntry
+	Object     string  `json:"object"`
+	Filter     string  `json:"filter"`
+	ExpTime    float64 `json:"expTime"`
+	DateObs    string  `json:"dateObs"`
+	Gain       float64 `json:"gain"`
+	CCDTemp    float64 `json:"ccdTemp"`
+	Telescope  string  `json:"telescope"`
+	Instrument string  `json:"instrument"`
+	HasMeta    bool    `json:"hasMeta"`
+}
+
 func ListDirectory(path string) ([]FileEntry, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {

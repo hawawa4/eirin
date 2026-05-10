@@ -8,6 +8,8 @@ export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
 export function ListDirectory(arg1:string):Promise<Array<browser.FileEntry>>;
 
+export function ListDirectoryEnriched(arg1:string):Promise<Array<browser.EnrichedFileEntry>>;
+
 export function LoadPrefs():Promise<prefs.Prefs>;
 
 export function ReadFITSHeader(arg1:string):Promise<fits.FITSHeader>;
