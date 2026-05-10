@@ -26,8 +26,9 @@ type EnrichedFileEntry struct {
 	CCDTemp    float64 `json:"ccdTemp"`
 	Telescope  string  `json:"telescope"`
 	Instrument string  `json:"instrument"`
-	HasMeta    bool    `json:"hasMeta"`
-	IsRejected bool    `json:"isRejected"`
+	HasMeta         bool   `json:"hasMeta"`
+	IsRejected      bool   `json:"isRejected"`
+	RejectionReason string `json:"rejectionReason"`
 }
 
 func ListDirectory(path string) ([]FileEntry, error) {

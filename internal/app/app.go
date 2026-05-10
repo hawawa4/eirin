@@ -107,45 +107,38 @@ func (a *App) ListDirectoryEnriched(path string) ([]browser.EnrichedFileEntry, e
 		return result, nil
 	}
 
-	// Collect all non-directory paths for batch lookups.
-	allPaths  := make([]string, 0, len(entries))
-	fitsPaths := make([]string, 0, len(entries))
+	// Collect all non-directory paths for the batch frames lookup.
+	allPaths := make([]string, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir {
 			allPaths = append(allPaths, e.Path)
-			if isFitsFile(e.Name) {
-				fitsPaths = append(fitsPaths, e.Path)
-			}
 		}
 	}
 
-	// Batch-fetch FITS cache and rejection status in parallel.
-	cached, err := a.prefs.GetFITSCache(fitsPaths)
+	frames, err := a.prefs.GetFrames(allPaths)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "fits cache: get: %v", err)
-		cached = map[string]prefs.CachedFITSHeader{}
-	}
-	rejected, err := a.prefs.GetRejected(allPaths)
-	if err != nil {
-		runtime.LogErrorf(a.ctx, "rejected: get: %v", err)
-		rejected = map[string]bool{}
+		runtime.LogErrorf(a.ctx, "frames: get: %v", err)
+		frames = map[string]prefs.Frame{}
 	}
 
 	result := make([]browser.EnrichedFileEntry, len(entries))
 	for i, e := range entries {
 		ee := browser.EnrichedFileEntry{FileEntry: e}
-		if ch, ok := cached[e.Path]; ok {
-			ee.Object     = ch.Object
-			ee.Filter     = ch.Filter
-			ee.ExpTime    = ch.ExpTime
-			ee.DateObs    = ch.DateObs
-			ee.Gain       = ch.Gain
-			ee.CCDTemp    = ch.CCDTemp
-			ee.Telescope  = ch.Telescope
-			ee.Instrument = ch.Instrument
-			ee.HasMeta    = true
+		if f, ok := frames[e.Path]; ok {
+			ee.IsRejected      = f.Rejected
+			ee.RejectionReason = f.RejectionReason
+			if f.CachedAt > 0 {
+				ee.Object     = f.Object
+				ee.Filter     = f.Filter
+				ee.ExpTime    = f.ExpTime
+				ee.DateObs    = f.DateObs
+				ee.Gain       = f.Gain
+				ee.CCDTemp    = f.CCDTemp
+				ee.Telescope  = f.Telescope
+				ee.Instrument = f.Instrument
+				ee.HasMeta    = true
+			}
 		}
-		ee.IsRejected = rejected[e.Path]
 		result[i] = ee
 	}
 	return result, nil
@@ -200,16 +193,18 @@ func (a *App) BuildIndex(rootPath string) {
 			return
 		}
 
-		// ── Phase 2: find which paths are NOT yet cached ────────────────────
-		cached, err := a.prefs.GetFITSCache(fitsPaths)
+		// ── Phase 2: find which paths are NOT yet indexed ──────────────────
+		// A frame with CachedAt==0 exists only due to a prior reject action;
+		// its FITS header still needs to be read.
+		indexed0, err := a.prefs.GetFrames(fitsPaths)
 		if err != nil {
-			runtime.LogErrorf(a.ctx, "index: get cache: %v", err)
-			cached = map[string]prefs.CachedFITSHeader{}
+			runtime.LogErrorf(a.ctx, "index: get frames: %v", err)
+			indexed0 = map[string]prefs.Frame{}
 		}
 
-		toIndex := make([]string, 0, len(fitsPaths)-len(cached))
+		toIndex := make([]string, 0, len(fitsPaths))
 		for _, p := range fitsPaths {
-			if _, ok := cached[p]; !ok {
+			if f, ok := indexed0[p]; !ok || f.CachedAt == 0 {
 				toIndex = append(toIndex, p)
 			}
 		}
@@ -224,11 +219,11 @@ func (a *App) BuildIndex(rootPath string) {
 			Current: "Reading headers…",
 		})
 
-		// ── Phase 3: read headers and batch-write to cache ──────────────────
+		// ── Phase 3: read headers and batch-write to frames ────────────────
 		const batchSize = 100
-		batch := make(map[string]prefs.CachedFITSHeader, batchSize)
+		batch := make(map[string]prefs.Frame, batchSize)
 		done := alreadyCached
-		indexed := 0
+		newlyIndexed := 0
 		errs := 0
 		lastEmit := time.Now()
 
@@ -236,10 +231,10 @@ func (a *App) BuildIndex(rootPath string) {
 			if len(batch) == 0 {
 				return
 			}
-			if err := a.prefs.BatchUpsertFITSCache(batch); err != nil {
+			if err := a.prefs.BatchUpsertFrames(batch); err != nil {
 				runtime.LogErrorf(a.ctx, "index: batch upsert: %v", err)
 			}
-			batch = make(map[string]prefs.CachedFITSHeader, batchSize)
+			batch = make(map[string]prefs.Frame, batchSize)
 		}
 
 		for _, p := range toIndex {
@@ -251,7 +246,7 @@ func (a *App) BuildIndex(rootPath string) {
 			if err != nil {
 				errs++
 			} else {
-				batch[p] = prefs.CachedFITSHeader{
+				batch[p] = prefs.Frame{
 					Object:     hdr.Object,
 					Filter:     hdr.Filter,
 					ExpTime:    hdr.ExpTime,
@@ -261,7 +256,6 @@ func (a *App) BuildIndex(rootPath string) {
 					Telescope:  hdr.Telescope,
 					Instrument: hdr.Instrument,
 				}
-				indexed++
 			}
 			done++
 
@@ -274,7 +268,7 @@ func (a *App) BuildIndex(rootPath string) {
 					Phase:   "indexing",
 					Total:   total,
 					Done:    done,
-					Indexed: indexed,
+					Indexed: newlyIndexed,
 					Errors:  errs,
 					Current: filepath.Base(p),
 				})
@@ -292,7 +286,7 @@ func (a *App) BuildIndex(rootPath string) {
 			Phase:   phase,
 			Total:   total,
 			Done:    done,
-			Indexed: indexed,
+			Indexed: newlyIndexed,
 			Errors:  errs,
 		})
 	}()
@@ -339,7 +333,7 @@ func (a *App) RejectFile(path string) error {
 	if a.prefs == nil {
 		return nil
 	}
-	return a.prefs.RejectFile(path)
+	return a.prefs.RejectFrame(path, "")
 }
 
 // UnrejectFile removes the soft-delete mark, making the file visible again.
@@ -347,18 +341,16 @@ func (a *App) UnrejectFile(path string) error {
 	if a.prefs == nil {
 		return nil
 	}
-	return a.prefs.UnrejectFile(path)
+	return a.prefs.UnrejectFrame(path)
 }
 
-// HardDeleteFile permanently removes a file from disk and cleans up any
-// associated cache and rejection records.
+// HardDeleteFile permanently removes a file from disk and cleans up its frame record.
 func (a *App) HardDeleteFile(path string) error {
 	if err := os.Remove(path); err != nil {
 		return err
 	}
 	if a.prefs != nil {
-		_ = a.prefs.DeleteFromCache(path)
-		_ = a.prefs.UnrejectFile(path)
+		_ = a.prefs.DeleteFrame(path)
 	}
 	return nil
 }

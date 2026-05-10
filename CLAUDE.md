@@ -18,4 +18,4 @@ We are currently in an unreleased version. Any data in the SQLite database does 
 
 ## Tool notes
 
-Don't try and find the go binary in path. Only use the `just` commands to interact with the go binary
+Don't try and find the go binary in path. Only use the `just` commands to interact with the go binary. In general, prefer using the `just` commands over messing with "find stuff on path or other user folders"
