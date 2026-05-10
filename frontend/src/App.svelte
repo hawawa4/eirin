@@ -3,11 +3,14 @@
   import {
     SelectRootFolder,
     ListDirectoryEnriched,
+    BuildIndex,
+    CancelIndex,
     GeneratePreview,
     ReadFITSHeader,
     LoadPrefs,
     SetPref,
   } from '../wailsjs/go/app/App.js'
+  import { EventsOn } from '../wailsjs/runtime/runtime.js'
   import type { browser, fits } from '../wailsjs/go/models'
 
   const PREF_ROOT_FOLDER        = 'root_folder'
@@ -31,6 +34,15 @@
     object: string
     date:   string
     files:  browser.EnrichedFileEntry[]
+  }
+
+  interface IndexProgress {
+    phase:   'scanning' | 'indexing' | 'done' | 'cancelled'
+    total:   number
+    done:    number
+    indexed: number
+    errors:  number
+    current: string
   }
 
   const DEFAULT_COLUMNS: ColumnDef[] = [
@@ -61,6 +73,14 @@
 
   // ── Column config ─────────────────────────────────────────────────────────
   let columns = $state<ColumnDef[]>(DEFAULT_COLUMNS.map(c => ({ ...c })))
+
+  // ── Index builder state ───────────────────────────────────────────────────
+  let indexProgress = $state<IndexProgress | null>(null)
+  let indexRunning  = $derived(
+    indexProgress !== null &&
+    indexProgress.phase !== 'done' &&
+    indexProgress.phase !== 'cancelled'
+  )
 
   // ── Preview state ─────────────────────────────────────────────────────────
   let selectedEntry  = $state<browser.EnrichedFileEntry | null>(null)
@@ -110,6 +130,15 @@
       await loadDirectory(p.rootFolder)
     }
     prefsLoaded = true
+
+    // Listen for index progress events from the Go backend.
+    EventsOn('index:progress', (data: IndexProgress) => {
+      indexProgress = data
+      if ((data.phase === 'done' || data.phase === 'cancelled') && currentPath) {
+        // Reload current dir so newly indexed metadata becomes visible.
+        setTimeout(() => loadDirectory(currentPath), 400)
+      }
+    })
   })
 
   // Auto-save stretch/header prefs when they change.
@@ -121,6 +150,16 @@
   function saveColumnConfig() {
     if (!prefsLoaded) return
     SetPref(PREF_COLUMN_CONFIG, JSON.stringify(columns))
+  }
+
+  async function startBuildIndex() {
+    if (!rootFolder || indexRunning) return
+    indexProgress = { phase: 'scanning', total: 0, done: 0, indexed: 0, errors: 0, current: 'Starting…' }
+    await BuildIndex(rootFolder)  // returns immediately; progress via events
+  }
+
+  async function cancelBuildIndex() {
+    await CancelIndex()
   }
 
   // Close column menu when clicking outside it.
@@ -155,6 +194,9 @@
 
   let totalCount    = $derived(files.length)
   let filteredCount = $derived(filteredFiles.length)
+  let uncachedCount = $derived(
+    files.filter(f => !f.isDir && isFits(f.name) && !f.hasMeta).length
+  )
 
   function applyFilters(
     all: browser.EnrichedFileEntry[],
@@ -510,6 +552,16 @@
   <header>
     <span class="logo">✦ Eirin</span>
     <div class="header-right">
+      {#if rootFolder}
+        <button
+          class="btn-secondary"
+          onclick={startBuildIndex}
+          disabled={indexRunning}
+          title="Scan all subfolders and index FITS headers. Re-run to pick up new files."
+        >
+          {indexRunning ? 'Indexing…' : 'Build Index'}
+        </button>
+      {/if}
       <button class="btn-primary" onclick={selectFolder}>
         {rootFolder ? 'Change Root Folder' : 'Select Root Folder'}
       </button>
@@ -528,6 +580,29 @@
       <button class="btn-icon" onclick={navigateBack} disabled={pathHistory.length === 0} title="Go back">←</button>
       <span class="path-display" title={currentPath}>{truncatePath(currentPath)}</span>
     </div>
+
+    {#if indexProgress && indexProgress.phase !== 'done' && indexProgress.phase !== 'cancelled'}
+      <div class="index-bar">
+        <span class="index-phase">
+          {#if indexProgress.phase === 'scanning'}
+            Scanning directories…
+          {:else}
+            Indexing {indexProgress.done} / {indexProgress.total}
+            {#if indexProgress.indexed > 0}
+              <span class="index-new">+{indexProgress.indexed} new</span>
+            {/if}
+          {/if}
+        </span>
+        <div class="index-track">
+          <div
+            class="index-fill"
+            style="width: {indexProgress.total > 0 ? (indexProgress.done / indexProgress.total * 100).toFixed(1) : 0}%"
+          ></div>
+        </div>
+        <span class="index-file" title={indexProgress.current}>{indexProgress.current}</span>
+        <button class="tool-btn" onclick={cancelBuildIndex}>Cancel</button>
+      </div>
+    {/if}
 
     <div class="content-area">
 
@@ -831,6 +906,14 @@
           {filteredCount} of {totalCount} items
         {:else}
           {totalCount} item{totalCount !== 1 ? 's' : ''}
+        {/if}
+        {#if uncachedCount > 0 && !indexRunning}
+          <span class="unindexed-hint" title="Click 'Build Index' to populate FITS metadata">
+            · {uncachedCount} not indexed
+          </span>
+        {/if}
+        {#if indexProgress?.phase === 'done'}
+          <span class="index-done-hint">· Index up to date</span>
         {/if}
       </span>
       <span class="root-tag">Root: {truncatePath(rootFolder, 50)}</span>
@@ -1386,4 +1469,82 @@
   }
 
   .root-tag { font-family: 'Consolas', 'Fira Code', monospace; color: var(--text-dim); }
+
+  .unindexed-hint {
+    color: var(--text-dim);
+    opacity: 0.7;
+    cursor: default;
+  }
+
+  .index-done-hint {
+    color: var(--success);
+    opacity: 0.8;
+  }
+
+  /* ── Build Index button ───────────────────────────────────────────────────── */
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 13px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-right: 6px;
+  }
+  .btn-secondary:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  .btn-secondary:disabled { opacity: 0.45; cursor: default; }
+
+  /* ── Index progress bar ──────────────────────────────────────────────────── */
+
+  .index-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
+    border-bottom: 1px solid var(--border-accent);
+    flex-shrink: 0;
+    font-size: 0.78rem;
+  }
+
+  .index-phase {
+    color: var(--text-primary);
+    white-space: nowrap;
+    min-width: 120px;
+  }
+
+  .index-new {
+    color: var(--success);
+    margin-left: 4px;
+    font-size: 0.74rem;
+  }
+
+  .index-track {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 60px;
+  }
+
+  .index-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.15s linear;
+  }
+
+  .index-file {
+    color: var(--text-dim);
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.72rem;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 </style>

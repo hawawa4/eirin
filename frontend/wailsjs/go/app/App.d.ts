@@ -4,6 +4,10 @@ import {browser} from '../models';
 import {prefs} from '../models';
 import {fits} from '../models';
 
+export function BuildIndex(arg1:string):Promise<void>;
+
+export function CancelIndex():Promise<void>;
+
 export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
 export function ListDirectory(arg1:string):Promise<Array<browser.FileEntry>>;
