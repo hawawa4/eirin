@@ -1,0 +1,72 @@
+<script lang="ts">
+  import type { browser } from '../../wailsjs/go/models'
+  import type { CtxMenuState } from '../lib/types'
+
+  interface Props {
+    menu:         CtxMenuState
+    onclose:      () => void
+    onreject:     (entry: browser.EnrichedFileEntry) => void
+    onrestore:    (entry: browser.EnrichedFileEntry) => void
+    onharddelete: (entry: browser.EnrichedFileEntry) => void
+  }
+
+  let { menu, onclose, onreject, onrestore, onharddelete }: Props = $props()
+
+  $effect(() => {
+    function onDoc(e: MouseEvent) {
+      const el = document.getElementById('ctx-menu')
+      if (el && !el.contains(e.target as Node)) onclose()
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  })
+</script>
+
+<div
+  id="ctx-menu"
+  class="ctx-menu"
+  style="left: {menu.x}px; top: {menu.y}px"
+>
+  {#if menu.entry.isRejected}
+    <button class="ctx-item" onclick={() => onrestore(menu.entry)}>Restore</button>
+  {:else}
+    <button class="ctx-item" onclick={() => onreject(menu.entry)}>Reject</button>
+  {/if}
+  <div class="ctx-sep"></div>
+  <button class="ctx-item ctx-danger" onclick={() => onharddelete(menu.entry)}>Hard Delete…</button>
+</div>
+
+<style>
+  :global(.ctx-menu) {
+    position: fixed;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 5px;
+    padding: 3px 0;
+    z-index: 1000;
+    min-width: 140px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+
+  :global(.ctx-item) {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 5px 14px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  :global(.ctx-item:hover) { background: var(--bg-row-hover); color: var(--text-primary); }
+  :global(.ctx-item.ctx-danger) { color: var(--danger); }
+  :global(.ctx-item.ctx-danger:hover) { background: #2a1020; color: var(--danger); }
+
+  :global(.ctx-sep) {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 0;
+  }
+</style>
