@@ -1,11 +1,11 @@
 <script lang="ts">
   interface Props {
-    target:    { path: string; name: string }
-    onconfirm: () => void
-    oncancel:  () => void
+    target: { name: string };
+    onconfirm: () => void;
+    oncancel: () => void;
   }
 
-  let { target, onconfirm, oncancel }: Props = $props()
+  let { target, onconfirm, oncancel }: Props = $props();
 </script>
 
 <div class="modal-backdrop" onclick={oncancel}>
@@ -46,16 +46,34 @@
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
   }
 
-  :global(.modal-icon)     { font-size: 2rem; color: var(--danger); margin-bottom: 4px; }
-  :global(.modal-title)    { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+  :global(.modal-icon) {
+    font-size: 2rem;
+    color: var(--danger);
+    margin-bottom: 4px;
+  }
+  :global(.modal-title) {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
   :global(.modal-filename) {
-    font-family: 'Consolas', 'Fira Code', monospace;
+    font-family: "Consolas", "Fira Code", monospace;
     font-size: 0.82rem;
     color: var(--accent);
     word-break: break-all;
     text-align: center;
     margin: 0;
   }
-  :global(.modal-sub)  { font-size: 0.8rem; color: var(--text-secondary); text-align: center; margin: 0; }
-  :global(.modal-btns) { display: flex; gap: 10px; margin-top: 10px; }
+  :global(.modal-sub) {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-align: center;
+    margin: 0;
+  }
+  :global(.modal-btns) {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+  }
 </style>

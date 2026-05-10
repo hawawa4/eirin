@@ -17,14 +17,14 @@ dev:
 build-frontend:
     cd frontend && npm run build
 
-# Type-check Go and TypeScript without producing binaries
-check:
-    go build ./...
-    cd frontend && npx tsc --noEmit
-
 # Build only the Backend
 build-backend:
     go build ./
+
+# Type-check Go and TypeScript without producing binaries
+check:
+    go build ./...
+    cd frontend && npm run check
 
 # Build a production binary (handles frontend build internally)
 build:
@@ -35,6 +35,23 @@ build:
 # Build the Linux binary inside Docker; output written to ./dist/eirin
 docker-build:
     DOCKER_BUILDKIT=1 docker build --output type=local,dest=dist .
+
+# ── Linting & Formatting ─────────────────────────────────────────────────────
+
+# Run all linters (Go staticcheck + frontend ESLint/Prettier)
+lint: lint-go lint-frontend
+
+# Run staticcheck on all Go packages
+lint-go:
+    staticcheck ./
+
+# Run ESLint + Prettier check on the frontend
+lint-frontend:
+    cd frontend && npm run lint
+
+# Format frontend source with Prettier
+format:
+    cd frontend && npm run format
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 

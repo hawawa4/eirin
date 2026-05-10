@@ -1,32 +1,28 @@
 <script lang="ts">
-  import type { browser } from '../../wailsjs/go/models'
-  import type { CtxMenuState } from '../lib/types'
+  import type { browser } from "../../wailsjs/go/models";
+  import type { CtxMenuState } from "../lib/types";
 
   interface Props {
-    menu:         CtxMenuState
-    onclose:      () => void
-    onreject:     (entry: browser.EnrichedFileEntry) => void
-    onrestore:    (entry: browser.EnrichedFileEntry) => void
-    onharddelete: (entry: browser.EnrichedFileEntry) => void
+    menu: CtxMenuState;
+    onclose: () => void;
+    onreject: (entry: browser.EnrichedFileEntry) => void;
+    onrestore: (entry: browser.EnrichedFileEntry) => void;
+    onharddelete: (entry: browser.EnrichedFileEntry) => void;
   }
 
-  let { menu, onclose, onreject, onrestore, onharddelete }: Props = $props()
+  let { menu, onclose, onreject, onrestore, onharddelete }: Props = $props();
 
   $effect(() => {
     function onDoc(e: MouseEvent) {
-      const el = document.getElementById('ctx-menu')
-      if (el && !el.contains(e.target as Node)) onclose()
+      const el = document.getElementById("ctx-menu");
+      if (el && !el.contains(e.target as Node)) onclose();
     }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  })
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  });
 </script>
 
-<div
-  id="ctx-menu"
-  class="ctx-menu"
-  style="left: {menu.x}px; top: {menu.y}px"
->
+<div id="ctx-menu" class="ctx-menu" style="left: {menu.x}px; top: {menu.y}px">
   {#if menu.entry.isRejected}
     <button class="ctx-item" onclick={() => onrestore(menu.entry)}>Restore</button>
   {:else}
@@ -58,11 +54,21 @@
     padding: 5px 14px;
     font-size: 0.82rem;
     cursor: pointer;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
   }
-  :global(.ctx-item:hover) { background: var(--bg-row-hover); color: var(--text-primary); }
-  :global(.ctx-item.ctx-danger) { color: var(--danger); }
-  :global(.ctx-item.ctx-danger:hover) { background: #2a1020; color: var(--danger); }
+  :global(.ctx-item:hover) {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
+  :global(.ctx-item.ctx-danger) {
+    color: var(--danger);
+  }
+  :global(.ctx-item.ctx-danger:hover) {
+    background: #2a1020;
+    color: var(--danger);
+  }
 
   :global(.ctx-sep) {
     height: 1px;

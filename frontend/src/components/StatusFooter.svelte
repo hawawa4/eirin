@@ -1,17 +1,18 @@
 <script lang="ts">
-  import type { IndexProgress } from '../lib/types'
-  import { truncatePath } from '../lib/utils'
+  import type { IndexProgress } from "../lib/types";
+  import { truncatePath } from "../lib/utils";
 
   interface Props {
-    totalCount:    number
-    filteredCount: number
-    uncachedCount: number
-    indexRunning:  boolean
-    indexProgress: IndexProgress | null
-    rootFolder:    string
+    totalCount: number;
+    filteredCount: number;
+    uncachedCount: number;
+    indexRunning: boolean;
+    indexProgress: IndexProgress | null;
+    rootFolder: string;
   }
 
-  let { totalCount, filteredCount, uncachedCount, indexRunning, indexProgress, rootFolder }: Props = $props()
+  let { totalCount, filteredCount, uncachedCount, indexRunning, indexProgress, rootFolder }: Props =
+    $props();
 </script>
 
 <footer>
@@ -19,14 +20,14 @@
     {#if filteredCount !== totalCount}
       {filteredCount} of {totalCount} items
     {:else}
-      {totalCount} item{totalCount !== 1 ? 's' : ''}
+      {totalCount} item{totalCount !== 1 ? "s" : ""}
     {/if}
     {#if uncachedCount > 0 && !indexRunning}
       <span class="unindexed-hint" title="Click 'Build Index' to populate FITS metadata">
         · {uncachedCount} not indexed
       </span>
     {/if}
-    {#if indexProgress?.phase === 'done'}
+    {#if indexProgress?.phase === "done"}
       <span class="index-done-hint">· Index up to date</span>
     {/if}
   </span>
@@ -46,7 +47,10 @@
     flex-shrink: 0;
   }
 
-  .root-tag { font-family: 'Consolas', 'Fira Code', monospace; color: var(--text-dim); }
+  .root-tag {
+    font-family: "Consolas", "Fira Code", monospace;
+    color: var(--text-dim);
+  }
 
   .unindexed-hint {
     color: var(--text-dim);
