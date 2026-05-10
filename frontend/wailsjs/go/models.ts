@@ -17,6 +17,7 @@ export namespace browser {
 	    instrument: string;
 	    hasMeta: boolean;
 	    isRejected: boolean;
+	    rejectionReason: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new EnrichedFileEntry(source);
@@ -39,6 +40,7 @@ export namespace browser {
 	        this.instrument = source["instrument"];
 	        this.hasMeta = source["hasMeta"];
 	        this.isRejected = source["isRejected"];
+	        this.rejectionReason = source["rejectionReason"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

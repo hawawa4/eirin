@@ -45,21 +45,52 @@ func DefaultPrefs() Prefs {
 	}
 }
 
-// CachedFITSHeader holds the subset of FITS header fields stored in the local
-// cache table so directory listings can show metadata without re-reading files.
-// Files are treated as immutable (camera output), so no mtime tracking is needed.
-type CachedFITSHeader struct {
+// Frame holds all data stored about a single file in the frames table.
+// FITS header fields are populated by the indexer; WCS and quality fields are
+// filled later by plate-solving and Siril analysis; app metadata is set by the user.
+// CachedAt == 0 means FITS data has not yet been indexed for this path.
+type Frame struct {
+	NasPath  string
+	FileSize int64
+	LastSeen int64 // unix timestamp
+	CachedAt int64 // unix timestamp; 0 = not yet indexed
+
+	// FITS header
 	Object     string
 	Filter     string
 	ExpTime    float64
-	DateObs    string
 	Gain       float64
 	CCDTemp    float64
+	DateObs    string
 	Telescope  string
 	Instrument string
+
+	// Plate solve results (WCS)
+	RA         *float64
+	Dec        *float64
+	PixelScale *float64
+	Rotation   *float64
+	WCSSolved  bool
+
+	// Quality metrics from Siril
+	FWHM            *float64
+	FWHMUnit        string
+	Roundness       *float64
+	Background      *float64
+	Noise           *float64
+	SNR             *float64
+	StarCount       *int64
+	QualityAnalyzed bool
+
+	// App metadata
+	Approved        *bool
+	Rejected        bool
+	RejectionReason string
+	Tags            string // JSON array
+	Notes           string
 }
 
-// Store is the SQLite-backed preference repository.
+// Store is the SQLite-backed preference and frame repository.
 type Store struct {
 	db *sql.DB
 	qb sq.StatementBuilderType
@@ -140,20 +171,24 @@ func (s *Store) Set(key, value string) error {
 	return err
 }
 
-// UpsertFITSCache stores or updates the cached FITS header for a single file.
-func (s *Store) UpsertFITSCache(path string, h CachedFITSHeader) error {
+// UpsertFrame stores or updates the FITS header fields for a single frame.
+// Only the header-derived columns are written; user metadata (rejected, tags, etc.)
+// and analysis results (wcs, quality) are preserved if the row already exists.
+func (s *Store) UpsertFrame(path string, f Frame) error {
 	query, args, err := s.qb.
-		Insert("fits_cache").
-		Columns("path", "object", "filter", "exp_time", "date_obs",
-			"gain", "ccd_temp", "telescope", "instrument", "cached_at").
-		Values(path, h.Object, h.Filter, h.ExpTime, h.DateObs,
-			h.Gain, h.CCDTemp, h.Telescope, h.Instrument, time.Now().Unix()).
-		Suffix(`ON CONFLICT(path) DO UPDATE SET
-			object=excluded.object, filter=excluded.filter,
-			exp_time=excluded.exp_time, date_obs=excluded.date_obs,
-			gain=excluded.gain, ccd_temp=excluded.ccd_temp,
-			telescope=excluded.telescope, instrument=excluded.instrument,
-			cached_at=excluded.cached_at`).
+		Insert("frames").
+		Columns("nas_path", "file_size", "last_seen", "cached_at",
+			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs",
+			"telescope", "instrument").
+		Values(path, f.FileSize, f.LastSeen, time.Now().Unix(),
+			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
+			f.Telescope, f.Instrument).
+		Suffix(`ON CONFLICT(nas_path) DO UPDATE SET
+			file_size=excluded.file_size, last_seen=excluded.last_seen,
+			cached_at=excluded.cached_at,
+			object=excluded.object, filter=excluded.filter, exptime=excluded.exptime,
+			gain=excluded.gain, ccd_temp=excluded.ccd_temp, date_obs=excluded.date_obs,
+			telescope=excluded.telescope, instrument=excluded.instrument`).
 		ToSql()
 	if err != nil {
 		return err
@@ -162,38 +197,52 @@ func (s *Store) UpsertFITSCache(path string, h CachedFITSHeader) error {
 	return err
 }
 
-// RejectFile marks a file path as soft-deleted.
-func (s *Store) RejectFile(path string) error {
-	query, args, err := s.qb.
-		Insert("rejected_files").
-		Columns("path", "rejected_at").
-		Values(path, time.Now().Unix()).
-		Suffix("ON CONFLICT(path) DO NOTHING").
-		ToSql()
+// BatchUpsertFrames inserts or updates FITS header data for many frames in a
+// single transaction. Only header-derived columns are written; user metadata
+// and analysis results are preserved on conflict.
+func (s *Store) BatchUpsertFrames(entries map[string]Frame) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(query, args...)
-	return err
-}
+	defer func() { _ = tx.Rollback() }()
 
-// UnrejectFile removes the soft-delete mark from a file path.
-func (s *Store) UnrejectFile(path string) error {
-	query, args, err := s.qb.
-		Delete("rejected_files").
-		Where(sq.Eq{"path": path}).
-		ToSql()
+	stmt, err := tx.Prepare(`
+		INSERT INTO frames
+			(nas_path, file_size, last_seen, cached_at,
+			 object, filter, exptime, gain, ccd_temp, date_obs, telescope, instrument)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(nas_path) DO UPDATE SET
+			file_size=excluded.file_size, last_seen=excluded.last_seen,
+			cached_at=excluded.cached_at,
+			object=excluded.object, filter=excluded.filter, exptime=excluded.exptime,
+			gain=excluded.gain, ccd_temp=excluded.ccd_temp, date_obs=excluded.date_obs,
+			telescope=excluded.telescope, instrument=excluded.instrument
+	`)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(query, args...)
-	return err
+	defer stmt.Close()
+
+	now := time.Now().Unix()
+	for path, f := range entries {
+		if _, err := stmt.Exec(path, f.FileSize, f.LastSeen, now,
+			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
+			f.Telescope, f.Instrument); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
-// GetRejected returns which of the given paths are currently rejected.
-// Only paths present in the rejected_files table appear in the result.
-func (s *Store) GetRejected(paths []string) (map[string]bool, error) {
-	result := make(map[string]bool, len(paths))
+// GetFrames retrieves frames for the given file paths. Only paths present in
+// the frames table are included in the result. Queries are chunked to stay
+// within SQLite's variable limit.
+func (s *Store) GetFrames(paths []string) (map[string]Frame, error) {
+	result := make(map[string]Frame, len(paths))
 	if len(paths) == 0 {
 		return result, nil
 	}
@@ -203,18 +252,24 @@ func (s *Store) GetRejected(paths []string) (map[string]bool, error) {
 		if end > len(paths) {
 			end = len(paths)
 		}
-		if err := s.getRejectedChunk(paths[i:end], result); err != nil {
+		if err := s.getFramesChunk(paths[i:end], result); err != nil {
 			return nil, err
 		}
 	}
 	return result, nil
 }
 
-func (s *Store) getRejectedChunk(paths []string, out map[string]bool) error {
+func (s *Store) getFramesChunk(paths []string, out map[string]Frame) error {
 	query, args, err := s.qb.
-		Select("path").
-		From("rejected_files").
-		Where(sq.Eq{"path": paths}).
+		Select(
+			"nas_path", "file_size", "last_seen", "cached_at",
+			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
+			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"approved", "rejected", "rejection_reason", "tags", "notes",
+		).
+		From("frames").
+		Where(sq.Eq{"nas_path": paths}).
 		ToSql()
 	if err != nil {
 		return err
@@ -225,26 +280,164 @@ func (s *Store) getRejectedChunk(paths []string, out map[string]bool) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var p string
-		if err := rows.Scan(&p); err != nil {
+		path, f, err := scanFrame(rows)
+		if err != nil {
 			return err
 		}
-		out[p] = true
+		out[path] = f
 	}
 	return rows.Err()
 }
 
-// GetAllRejectedUnder returns all rejected paths that start with rootPath.
+func scanFrame(rows *sql.Rows) (string, Frame, error) {
+	var (
+		path     string
+		fileSize sql.NullInt64
+		lastSeen sql.NullInt64
+		cachedAt int64
+
+		object, filter, dateObs, telescope, instrument string
+		exptime, gain, ccdTemp                         float64
+
+		ra, dec, pixScale, rotation            sql.NullFloat64
+		wcsSolved                              int64
+		fwhm, roundness, background, noise, snr sql.NullFloat64
+		fwhmUnit                               sql.NullString
+		starCount                              sql.NullInt64
+		qualityAnalyzed                        int64
+
+		approved        sql.NullInt64
+		rejected        int64
+		rejectionReason sql.NullString
+		tags, notes     sql.NullString
+	)
+
+	err := rows.Scan(
+		&path, &fileSize, &lastSeen, &cachedAt,
+		&object, &filter, &exptime, &gain, &ccdTemp, &dateObs, &telescope, &instrument,
+		&ra, &dec, &pixScale, &rotation, &wcsSolved,
+		&fwhm, &fwhmUnit, &roundness, &background, &noise, &snr, &starCount, &qualityAnalyzed,
+		&approved, &rejected, &rejectionReason, &tags, &notes,
+	)
+	if err != nil {
+		return "", Frame{}, err
+	}
+
+	f := Frame{
+		NasPath:         path,
+		CachedAt:        cachedAt,
+		Object:          object,
+		Filter:          filter,
+		ExpTime:         exptime,
+		Gain:            gain,
+		CCDTemp:         ccdTemp,
+		DateObs:         dateObs,
+		Telescope:       telescope,
+		Instrument:      instrument,
+		WCSSolved:       wcsSolved != 0,
+		QualityAnalyzed: qualityAnalyzed != 0,
+		Rejected:        rejected != 0,
+	}
+	if fileSize.Valid {
+		f.FileSize = fileSize.Int64
+	}
+	if lastSeen.Valid {
+		f.LastSeen = lastSeen.Int64
+	}
+	if ra.Valid {
+		v := ra.Float64
+		f.RA = &v
+	}
+	if dec.Valid {
+		v := dec.Float64
+		f.Dec = &v
+	}
+	if pixScale.Valid {
+		v := pixScale.Float64
+		f.PixelScale = &v
+	}
+	if rotation.Valid {
+		v := rotation.Float64
+		f.Rotation = &v
+	}
+	if fwhm.Valid {
+		v := fwhm.Float64
+		f.FWHM = &v
+	}
+	if fwhmUnit.Valid {
+		f.FWHMUnit = fwhmUnit.String
+	}
+	if roundness.Valid {
+		v := roundness.Float64
+		f.Roundness = &v
+	}
+	if background.Valid {
+		v := background.Float64
+		f.Background = &v
+	}
+	if noise.Valid {
+		v := noise.Float64
+		f.Noise = &v
+	}
+	if snr.Valid {
+		v := snr.Float64
+		f.SNR = &v
+	}
+	if starCount.Valid {
+		f.StarCount = &starCount.Int64
+	}
+	if approved.Valid {
+		v := approved.Int64 != 0
+		f.Approved = &v
+	}
+	if rejectionReason.Valid {
+		f.RejectionReason = rejectionReason.String
+	}
+	if tags.Valid {
+		f.Tags = tags.String
+	}
+	if notes.Valid {
+		f.Notes = notes.String
+	}
+
+	return path, f, nil
+}
+
+// RejectFrame marks a file as rejected with an optional reason. If the file
+// does not yet have a frame record, one is created with only the rejection data.
+func (s *Store) RejectFrame(path, reason string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO frames (nas_path, rejected, rejection_reason, cached_at)
+		VALUES (?, 1, ?, 0)
+		ON CONFLICT(nas_path) DO UPDATE SET
+			rejected=1, rejection_reason=excluded.rejection_reason
+	`, path, reason)
+	return err
+}
+
+// UnrejectFrame clears the rejection status of a frame.
+func (s *Store) UnrejectFrame(path string) error {
+	_, err := s.db.Exec(
+		`UPDATE frames SET rejected=0, rejection_reason=NULL WHERE nas_path=?`,
+		path,
+	)
+	return err
+}
+
+// GetAllRejectedUnder returns all rejected nas_paths that start with rootPath.
 func (s *Store) GetAllRejectedUnder(rootPath string) ([]string, error) {
 	prefix := rootPath
 	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
 		prefix += "/"
 	}
 	query, args, err := s.qb.
-		Select("path").
-		From("rejected_files").
-		Where(sq.Like{"path": prefix + "%"}).
-		OrderBy("path").
+		Select("nas_path").
+		From("frames").
+		Where(sq.And{
+			sq.Like{"nas_path": prefix + "%"},
+			sq.Eq{"rejected": 1},
+		}).
+		OrderBy("nas_path").
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -265,104 +458,17 @@ func (s *Store) GetAllRejectedUnder(rootPath string) ([]string, error) {
 	return paths, rows.Err()
 }
 
-// DeleteFromCache removes a single entry from the fits_cache table.
-func (s *Store) DeleteFromCache(path string) error {
+// DeleteFrame removes a frame record entirely from the database.
+func (s *Store) DeleteFrame(path string) error {
 	query, args, err := s.qb.
-		Delete("fits_cache").
-		Where(sq.Eq{"path": path}).
+		Delete("frames").
+		Where(sq.Eq{"nas_path": path}).
 		ToSql()
 	if err != nil {
 		return err
 	}
 	_, err = s.db.Exec(query, args...)
 	return err
-}
-
-// BatchUpsertFITSCache inserts or updates many entries in a single transaction.
-// This is significantly faster than calling UpsertFITSCache in a loop.
-func (s *Store) BatchUpsertFITSCache(entries map[string]CachedFITSHeader) error {
-	if len(entries) == 0 {
-		return nil
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO fits_cache
-			(path, object, filter, exp_time, date_obs, gain, ccd_temp, telescope, instrument, cached_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(path) DO UPDATE SET
-			object=excluded.object, filter=excluded.filter,
-			exp_time=excluded.exp_time, date_obs=excluded.date_obs,
-			gain=excluded.gain, ccd_temp=excluded.ccd_temp,
-			telescope=excluded.telescope, instrument=excluded.instrument,
-			cached_at=excluded.cached_at
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	now := time.Now().Unix()
-	for path, h := range entries {
-		if _, err := stmt.Exec(path, h.Object, h.Filter, h.ExpTime, h.DateObs,
-			h.Gain, h.CCDTemp, h.Telescope, h.Instrument, now); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-// GetFITSCache retrieves cached FITS headers for the given file paths.
-// Only paths that have a cached entry are included in the returned map.
-// Queries are batched in chunks to stay within SQLite variable limits.
-func (s *Store) GetFITSCache(paths []string) (map[string]CachedFITSHeader, error) {
-	result := make(map[string]CachedFITSHeader, len(paths))
-	if len(paths) == 0 {
-		return result, nil
-	}
-	// SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999; use 900 to be safe.
-	const chunkSize = 900
-	for i := 0; i < len(paths); i += chunkSize {
-		end := i + chunkSize
-		if end > len(paths) {
-			end = len(paths)
-		}
-		if err := s.getFITSCacheChunk(paths[i:end], result); err != nil {
-			return nil, err
-		}
-	}
-	return result, nil
-}
-
-func (s *Store) getFITSCacheChunk(paths []string, out map[string]CachedFITSHeader) error {
-	query, args, err := s.qb.
-		Select("path", "object", "filter", "exp_time", "date_obs",
-			"gain", "ccd_temp", "telescope", "instrument").
-		From("fits_cache").
-		Where(sq.Eq{"path": paths}).
-		ToSql()
-	if err != nil {
-		return err
-	}
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var p string
-		var h CachedFITSHeader
-		if err := rows.Scan(&p, &h.Object, &h.Filter, &h.ExpTime, &h.DateObs,
-			&h.Gain, &h.CCDTemp, &h.Telescope, &h.Instrument); err != nil {
-			return err
-		}
-		out[p] = h
-	}
-	return rows.Err()
 }
 
 // getString retrieves a single value by key. Returns ("", false) when absent.
@@ -382,39 +488,60 @@ func (s *Store) getString(key string) (string, bool) {
 	return val, true
 }
 
-// migrate creates the schema if it does not already exist.
+// migrate creates the schema. The old fits_cache and rejected_files tables are
+// dropped on startup since data migration is not required during development.
 func migrate(db *sql.DB) error {
-	// Enable WAL mode for better read/write concurrency between the main thread
-	// (prefs saves) and the background index goroutine.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return err
 	}
 	_, err := db.Exec(`
+		DROP TABLE IF EXISTS fits_cache;
+		DROP TABLE IF EXISTS rejected_files;
 		CREATE TABLE IF NOT EXISTS preferences (
 			key   TEXT PRIMARY KEY NOT NULL,
 			value TEXT NOT NULL
 		);
-		CREATE TABLE IF NOT EXISTS fits_cache (
-			path       TEXT    PRIMARY KEY NOT NULL,
-			object     TEXT    NOT NULL DEFAULT '',
-			filter     TEXT    NOT NULL DEFAULT '',
-			exp_time   REAL    NOT NULL DEFAULT 0,
-			date_obs   TEXT    NOT NULL DEFAULT '',
-			gain       REAL    NOT NULL DEFAULT 0,
-			ccd_temp   REAL    NOT NULL DEFAULT 0,
-			telescope  TEXT    NOT NULL DEFAULT '',
-			instrument TEXT    NOT NULL DEFAULT '',
-			cached_at  INTEGER NOT NULL DEFAULT 0
+		CREATE TABLE IF NOT EXISTS frames (
+			nas_path    TEXT PRIMARY KEY NOT NULL,
+			file_size   INTEGER,
+			last_seen   INTEGER,
+			cached_at   INTEGER NOT NULL DEFAULT 0,
+
+			object      TEXT NOT NULL DEFAULT '',
+			filter      TEXT NOT NULL DEFAULT '',
+			exptime     REAL NOT NULL DEFAULT 0,
+			gain        REAL NOT NULL DEFAULT 0,
+			ccd_temp    REAL NOT NULL DEFAULT 0,
+			date_obs    TEXT NOT NULL DEFAULT '',
+			telescope   TEXT NOT NULL DEFAULT '',
+			instrument  TEXT NOT NULL DEFAULT '',
+
+			ra          REAL,
+			dec         REAL,
+			pixel_scale REAL,
+			rotation    REAL,
+			wcs_solved  INTEGER NOT NULL DEFAULT 0,
+
+			fwhm        REAL,
+			fwhm_unit   TEXT,
+			roundness   REAL,
+			background  REAL,
+			noise       REAL,
+			snr         REAL,
+			star_count  INTEGER,
+			quality_analyzed INTEGER NOT NULL DEFAULT 0,
+
+			approved         INTEGER,
+			rejected         INTEGER NOT NULL DEFAULT 0,
+			rejection_reason TEXT,
+			tags             TEXT,
+			notes            TEXT
 		);
-		CREATE INDEX IF NOT EXISTS idx_fits_cache_object   ON fits_cache(object);
-		CREATE INDEX IF NOT EXISTS idx_fits_cache_filter   ON fits_cache(filter);
-		CREATE INDEX IF NOT EXISTS idx_fits_cache_date_obs ON fits_cache(date_obs);
-		CREATE INDEX IF NOT EXISTS idx_fits_cache_obj_filt ON fits_cache(object, filter);
-		CREATE TABLE IF NOT EXISTS rejected_files (
-			path        TEXT    PRIMARY KEY NOT NULL,
-			rejected_at INTEGER NOT NULL DEFAULT 0
-		);
-		CREATE INDEX IF NOT EXISTS idx_rejected_files_path ON rejected_files(path);
+		CREATE INDEX IF NOT EXISTS idx_frames_object   ON frames(object);
+		CREATE INDEX IF NOT EXISTS idx_frames_filter   ON frames(filter);
+		CREATE INDEX IF NOT EXISTS idx_frames_date_obs ON frames(date_obs);
+		CREATE INDEX IF NOT EXISTS idx_frames_obj_filt ON frames(object, filter);
+		CREATE INDEX IF NOT EXISTS idx_frames_rejected ON frames(rejected);
 	`)
 	return err
 }
