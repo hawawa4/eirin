@@ -25,10 +25,16 @@ export function ReadFITSHeader(arg1:string):Promise<app.FITSHeader>;
 
 export function RejectFile(arg1:string):Promise<void>;
 
+export function ScanImportCandidates(arg1:string):Promise<Array<app.ImportCandidate>>;
+
 export function SelectRootFolder():Promise<string>;
+
+export function SelectSourceFolder():Promise<string>;
 
 export function SetFrameType(arg1:string,arg2:string):Promise<void>;
 
 export function SetPref(arg1:string,arg2:string):Promise<void>;
+
+export function StartImport(arg1:string):Promise<void>;
 
 export function UnrejectFile(arg1:string):Promise<void>;
