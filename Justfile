@@ -17,6 +17,15 @@ dev:
 build-frontend:
     cd frontend && npm run build
 
+# Type-check Go and TypeScript without producing binaries
+check:
+    go build ./...
+    cd frontend && npx tsc --noEmit
+
+# Build only the Backend
+build-backend:
+    go build ./
+
 # Build a production binary (handles frontend build internally)
 build:
     wails build -tags webkit2_41

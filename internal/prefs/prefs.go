@@ -47,6 +47,7 @@ func DefaultPrefs() Prefs {
 
 // CachedFITSHeader holds the subset of FITS header fields stored in the local
 // cache table so directory listings can show metadata without re-reading files.
+// Files are treated as immutable (camera output), so no mtime tracking is needed.
 type CachedFITSHeader struct {
 	Object     string
 	Filter     string
@@ -161,13 +162,67 @@ func (s *Store) UpsertFITSCache(path string, h CachedFITSHeader) error {
 	return err
 }
 
+// BatchUpsertFITSCache inserts or updates many entries in a single transaction.
+// This is significantly faster than calling UpsertFITSCache in a loop.
+func (s *Store) BatchUpsertFITSCache(entries map[string]CachedFITSHeader) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO fits_cache
+			(path, object, filter, exp_time, date_obs, gain, ccd_temp, telescope, instrument, cached_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			object=excluded.object, filter=excluded.filter,
+			exp_time=excluded.exp_time, date_obs=excluded.date_obs,
+			gain=excluded.gain, ccd_temp=excluded.ccd_temp,
+			telescope=excluded.telescope, instrument=excluded.instrument,
+			cached_at=excluded.cached_at
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().Unix()
+	for path, h := range entries {
+		if _, err := stmt.Exec(path, h.Object, h.Filter, h.ExpTime, h.DateObs,
+			h.Gain, h.CCDTemp, h.Telescope, h.Instrument, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // GetFITSCache retrieves cached FITS headers for the given file paths.
 // Only paths that have a cached entry are included in the returned map.
+// Queries are batched in chunks to stay within SQLite variable limits.
 func (s *Store) GetFITSCache(paths []string) (map[string]CachedFITSHeader, error) {
 	result := make(map[string]CachedFITSHeader, len(paths))
 	if len(paths) == 0 {
 		return result, nil
 	}
+	// SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999; use 900 to be safe.
+	const chunkSize = 900
+	for i := 0; i < len(paths); i += chunkSize {
+		end := i + chunkSize
+		if end > len(paths) {
+			end = len(paths)
+		}
+		if err := s.getFITSCacheChunk(paths[i:end], result); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) getFITSCacheChunk(paths []string, out map[string]CachedFITSHeader) error {
 	query, args, err := s.qb.
 		Select("path", "object", "filter", "exp_time", "date_obs",
 			"gain", "ccd_temp", "telescope", "instrument").
@@ -175,11 +230,11 @@ func (s *Store) GetFITSCache(paths []string) (map[string]CachedFITSHeader, error
 		Where(sq.Eq{"path": paths}).
 		ToSql()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -187,11 +242,11 @@ func (s *Store) GetFITSCache(paths []string) (map[string]CachedFITSHeader, error
 		var h CachedFITSHeader
 		if err := rows.Scan(&p, &h.Object, &h.Filter, &h.ExpTime, &h.DateObs,
 			&h.Gain, &h.CCDTemp, &h.Telescope, &h.Instrument); err != nil {
-			return nil, err
+			return err
 		}
-		result[p] = h
+		out[p] = h
 	}
-	return result, rows.Err()
+	return rows.Err()
 }
 
 // getString retrieves a single value by key. Returns ("", false) when absent.
@@ -213,6 +268,11 @@ func (s *Store) getString(key string) (string, bool) {
 
 // migrate creates the schema if it does not already exist.
 func migrate(db *sql.DB) error {
+	// Enable WAL mode for better read/write concurrency between the main thread
+	// (prefs saves) and the background index goroutine.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return err
+	}
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS preferences (
 			key   TEXT PRIMARY KEY NOT NULL,
@@ -229,7 +289,11 @@ func migrate(db *sql.DB) error {
 			telescope  TEXT    NOT NULL DEFAULT '',
 			instrument TEXT    NOT NULL DEFAULT '',
 			cached_at  INTEGER NOT NULL DEFAULT 0
-		)
+		);
+		CREATE INDEX IF NOT EXISTS idx_fits_cache_object   ON fits_cache(object);
+		CREATE INDEX IF NOT EXISTS idx_fits_cache_filter   ON fits_cache(filter);
+		CREATE INDEX IF NOT EXISTS idx_fits_cache_date_obs ON fits_cache(date_obs);
+		CREATE INDEX IF NOT EXISTS idx_fits_cache_obj_filt ON fits_cache(object, filter);
 	`)
 	return err
 }
