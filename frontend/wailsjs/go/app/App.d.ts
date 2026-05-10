@@ -3,11 +3,17 @@
 import {app} from '../models';
 import {prefs} from '../models';
 
+export function AddFramesToProject(arg1:string,arg2:Array<string>,arg3:string):Promise<void>;
+
 export function BuildIndex(arg1:string):Promise<void>;
 
 export function CancelIndex():Promise<void>;
 
 export function CheckSiril():Promise<app.SirilInfo>;
+
+export function CreateProject(arg1:string,arg2:string):Promise<app.Project>;
+
+export function DeleteProject(arg1:number):Promise<void>;
 
 export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
@@ -17,13 +23,21 @@ export function GetAppInfo():Promise<app.AppInfo>;
 
 export function GetLibraryFrames(arg1:string):Promise<Array<app.LibraryFrame>>;
 
+export function GetProjectFrames(arg1:string):Promise<Array<string>>;
+
+export function GetProjectsFolder():Promise<string>;
+
 export function HardDeleteFile(arg1:string):Promise<void>;
 
 export function ListDirectory(arg1:string):Promise<Array<app.FileEntry>>;
 
 export function ListDirectoryEnriched(arg1:string):Promise<Array<app.EnrichedFileEntry>>;
 
+export function ListProjects():Promise<Array<app.Project>>;
+
 export function LoadPrefs():Promise<prefs.Prefs>;
+
+export function OpenProjectInSiril(arg1:string):Promise<void>;
 
 export function OpenWithSiril(arg1:string):Promise<void>;
 
@@ -32,6 +46,8 @@ export function ReadFITSHeader(arg1:string):Promise<app.FITSHeader>;
 export function RejectFile(arg1:string):Promise<void>;
 
 export function ScanImportCandidates(arg1:string):Promise<Array<app.ImportCandidate>>;
+
+export function SelectProjectsFolder():Promise<string>;
 
 export function SelectRootFolder():Promise<string>;
 
@@ -42,6 +58,8 @@ export function SelectSourceFolder():Promise<string>;
 export function SetFrameType(arg1:string,arg2:string):Promise<void>;
 
 export function SetPref(arg1:string,arg2:string):Promise<void>;
+
+export function SetProjectsFolder(arg1:string):Promise<void>;
 
 export function SetSirilPath(arg1:string):Promise<void>;
 

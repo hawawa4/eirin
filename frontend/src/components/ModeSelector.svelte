@@ -20,6 +20,7 @@
     { value: "browser", label: "Browse", icon: "⊞", requiresRoot: true },
     { value: "library", label: "Library", icon: "◈", requiresRoot: true },
     { value: "import", label: "Import", icon: "⇪", requiresRoot: true },
+    { value: "projects", label: "Projects", icon: "◧", requiresRoot: false },
     { value: "settings", label: "Settings", icon: "⚙", requiresRoot: false },
   ];
 </script>

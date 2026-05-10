@@ -4,28 +4,42 @@
     CheckSiril,
     SelectSirilExecutable,
     SetSirilPath,
+    SelectProjectsFolder,
+    SetProjectsFolder,
   } from "../../wailsjs/go/app/App.js";
   import type { AppInfo, IndexProgress, SirilInfo } from "../lib/types";
 
   interface Props {
     rootFolder: string;
+    projectsFolder: string;
     appInfo: AppInfo;
     indexRunning: boolean;
     indexProgress: IndexProgress | null;
     onselectfolder: () => void;
     onbuildindex: () => void;
     onsirilchange: (info: SirilInfo) => void;
+    onprojectsfolderset: (path: string) => void;
   }
 
   let {
     rootFolder,
+    projectsFolder,
     appInfo,
     indexRunning,
     indexProgress,
     onselectfolder,
     onbuildindex,
     onsirilchange,
+    onprojectsfolderset,
   }: Props = $props();
+
+  // ── Projects folder ────────────────────────────────────────────────────────
+  async function browseProjectsFolder() {
+    const path = await SelectProjectsFolder();
+    if (!path) return;
+    await SetProjectsFolder(path);
+    onprojectsfolderset(path);
+  }
 
   // ── Clipboard copy ────────────────────────────────────────────────────────
   let copied = $state("");
@@ -112,6 +126,24 @@
           </p>
         </div>
       {/if}
+    </section>
+
+    <!-- ── Projects Folder ─────────────────────────────────────────────────── -->
+    <section class="card">
+      <h2 class="section-title">Projects Folder</h2>
+      <p class="section-desc">
+        Local folder where Siril projects are stored. Each project gets its own subfolder
+        containing a <code>lights/</code> directory with symlinks or copies of your frames.
+      </p>
+
+      <div class="path-row">
+        <span class="path-value" title={projectsFolder || "Not set"}>
+          {projectsFolder || "No folder selected"}
+        </span>
+        <button class="btn-secondary" onclick={browseProjectsFolder}>
+          {projectsFolder ? "Change" : "Select"}
+        </button>
+      </div>
     </section>
 
     <!-- ── Siril ─────────────────────────────────────────────────────────── -->

@@ -13,6 +13,7 @@
     GetAppInfo,
     CheckSiril,
     OpenWithSiril,
+    GetProjectsFolder,
   } from "../wailsjs/go/app/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
   import type { app } from "../wailsjs/go/models";
@@ -34,6 +35,7 @@
   import FileList from "./components/FileList.svelte";
   import LibraryView from "./components/LibraryView.svelte";
   import ImportView from "./components/ImportView.svelte";
+  import ProjectsView from "./components/ProjectsView.svelte";
   import SettingsView from "./components/SettingsView.svelte";
   import PreviewPane from "./components/PreviewPane.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
@@ -76,6 +78,9 @@
   let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
   let sirilAvailable = $derived(sirilInfo.available);
 
+  // ── Projects ───────────────────────────────────────────────────────────────
+  let projectsFolder = $state("");
+
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ path: string; name: string } | null>(null);
@@ -108,9 +113,15 @@
   let libraryView = $state<{ reload: () => void } | null>(null);
 
   onMount(async () => {
-    const [p, info, siril] = await Promise.all([LoadPrefs(), GetAppInfo(), CheckSiril()]);
+    const [p, info, siril, pf] = await Promise.all([
+      LoadPrefs(),
+      GetAppInfo(),
+      CheckSiril(),
+      GetProjectsFolder(),
+    ]);
     appInfo = info;
     sirilInfo = siril;
+    projectsFolder = pf;
 
     stretchEnabled = p.stretchEnabled;
     stretchLevel = p.stretchLevel;
@@ -442,15 +453,21 @@
     </div>
   {:else if appMode === "import"}
     <ImportView {rootFolder} />
+  {:else if appMode === "projects"}
+    <ProjectsView {rootFolder} {projectsFolder} />
   {:else if appMode === "settings"}
     <SettingsView
       {rootFolder}
+      {projectsFolder}
       {appInfo}
       {indexRunning}
       {indexProgress}
       onselectfolder={selectFolder}
       onbuildindex={startBuildIndex}
       onsirilchange={(info) => (sirilInfo = info)}
+      onprojectsfolderset={(path) => {
+        projectsFolder = path;
+      }}
     />
   {/if}
 </div>

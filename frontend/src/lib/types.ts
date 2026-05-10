@@ -46,7 +46,7 @@ export interface SirilInfo {
 
 export type ViewMode = "files" | "rejected";
 
-export type AppMode = "browser" | "library" | "import" | "settings";
+export type AppMode = "browser" | "library" | "import" | "projects" | "settings";
 
 export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "processed";
 
@@ -76,6 +76,14 @@ export interface ImportProgress {
   copied: number;
   skipped: number;
   error?: string;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  description: string;
+  folder: string;
+  createdAt: string;
 }
 
 export interface LibraryGroup {

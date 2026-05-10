@@ -19,6 +19,7 @@ const (
 	KeyColumnConfig        = "column_config"
 	KeyLibraryColumnConfig = "library_column_config"
 	KeySirilPath           = "siril_path"
+	KeyProjectsFolder      = "projects_folder"
 )
 
 // Prefs is the typed snapshot of all user preferences, serialised to/from the
@@ -32,6 +33,7 @@ type Prefs struct {
 	ColumnConfig        string `json:"columnConfig"`
 	LibraryColumnConfig string `json:"libraryColumnConfig"`
 	SirilPath           string `json:"sirilPath"`
+	ProjectsFolder      string `json:"projectsFolder"`
 }
 
 // DefaultPrefs returns the out-of-the-box preference values.
@@ -75,6 +77,9 @@ func (s *Store) Load() Prefs {
 	}
 	if v, ok := s.getString(KeySirilPath); ok {
 		p.SirilPath = v
+	}
+	if v, ok := s.getString(KeyProjectsFolder); ok {
+		p.ProjectsFolder = v
 	}
 	return p
 }
