@@ -11,6 +11,8 @@ export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
 export function GeneratePreviewRaw(arg1:string):Promise<app.RawPreviewData>;
 
+export function GetAppInfo():Promise<app.AppInfo>;
+
 export function GetLibraryFrames(arg1:string):Promise<Array<app.LibraryFrame>>;
 
 export function HardDeleteFile(arg1:string):Promise<void>;

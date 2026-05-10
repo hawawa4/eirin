@@ -11,9 +11,13 @@ import (
 
 // Store is the SQLite-backed preference and frame repository.
 type Store struct {
-	db *sql.DB
-	qb sq.StatementBuilderType
+	db   *sql.DB
+	qb   sq.StatementBuilderType
+	path string // filesystem path of the database file
 }
+
+// DBPath returns the filesystem path of the SQLite database file.
+func (s *Store) DBPath() string { return s.path }
 
 // NewStore opens (or creates) the SQLite database in the platform config dir
 // ($XDG_CONFIG_HOME/eirin/prefs.db on Linux, ~/Library/… on macOS, etc.).
@@ -40,7 +44,7 @@ func NewStore() (*Store, error) {
 	}
 
 	qb := sq.StatementBuilder.PlaceholderFormat(sq.Question)
-	return &Store{db: db, qb: qb}, nil
+	return &Store{db: db, qb: qb, path: dbPath}, nil
 }
 
 // Close releases the database connection.
@@ -54,10 +58,10 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return err
 	}
+	// DROP TABLE IF EXISTS fits_cache;
+	// DROP TABLE IF EXISTS rejected_files;
+	// DROP TABLE IF EXISTS frames;
 	_, err := db.Exec(`
-		DROP TABLE IF EXISTS fits_cache;
-		DROP TABLE IF EXISTS rejected_files;
-		DROP TABLE IF EXISTS frames;
 		CREATE TABLE IF NOT EXISTS preferences (
 			key   TEXT PRIMARY KEY NOT NULL,
 			value TEXT NOT NULL

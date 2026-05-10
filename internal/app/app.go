@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/TaruDesigns/eirin/internal/prefs"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -11,6 +12,7 @@ type App struct {
 	ctx     context.Context
 	prefs   *prefs.Store
 	indexer indexer
+	server  *http.Server
 }
 
 func NewApp() *App {
@@ -25,10 +27,12 @@ func (a *App) Startup(ctx context.Context) {
 		return
 	}
 	a.prefs = store
+	a.startServer()
 }
 
 func (a *App) Shutdown(_ context.Context) {
 	a.CancelIndex()
+	a.stopServer()
 	if a.prefs != nil {
 		_ = a.prefs.Close()
 	}

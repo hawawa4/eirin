@@ -1,5 +1,23 @@
 export namespace app {
 	
+	export class AppInfo {
+	    dbPath: string;
+	    serverPort: number;
+	    serverUrl: string;
+	    portSource: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dbPath = source["dbPath"];
+	        this.serverPort = source["serverPort"];
+	        this.serverUrl = source["serverUrl"];
+	        this.portSource = source["portSource"];
+	    }
+	}
 	export class ChannelStats {
 	    median: number;
 	    sigma: number;

@@ -10,12 +10,14 @@
     HardDeleteFile,
     LoadPrefs,
     SetPref,
+    GetAppInfo,
   } from "../wailsjs/go/app/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
   import type { app } from "../wailsjs/go/models";
   import {
     DEFAULT_COLUMNS,
     DEFAULT_LIBRARY_COLUMNS,
+    type AppInfo,
     type AppMode,
     type ColumnDef,
     type CtxMenuState,
@@ -28,6 +30,7 @@
   import FileList from "./components/FileList.svelte";
   import LibraryView from "./components/LibraryView.svelte";
   import ImportView from "./components/ImportView.svelte";
+  import SettingsView from "./components/SettingsView.svelte";
   import PreviewPane from "./components/PreviewPane.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import HardDeleteModal from "./components/HardDeleteModal.svelte";
@@ -62,6 +65,9 @@
     indexProgress !== null && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled",
   );
 
+  // ── App info (DB path, server URL) ────────────────────────────────────────
+  let appInfo = $state<AppInfo>({ dbPath: "", serverPort: 7070, serverUrl: "", portSource: "" });
+
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ path: string; name: string } | null>(null);
@@ -94,7 +100,9 @@
   let libraryView = $state<{ reload: () => void } | null>(null);
 
   onMount(async () => {
-    const p = await LoadPrefs();
+    const [p, info] = await Promise.all([LoadPrefs(), GetAppInfo()]);
+    appInfo = info;
+
     stretchEnabled = p.stretchEnabled;
     stretchLevel = p.stretchLevel;
     basicCollapsed = p.basicCollapsed;
@@ -259,7 +267,6 @@
   // ── Library preview ───────────────────────────────────────────────────────
   function onLibraryFileClick(nasPath: string) {
     libraryPreviewPath = nasPath;
-    // Synthesise a minimal EnrichedFileEntry so PreviewPane can display it
     const parts = nasPath.split("/");
     selectedEntry = {
       name: parts[parts.length - 1],
@@ -312,17 +319,19 @@
 <div class="layout">
   <AppHeader
     {rootFolder}
-    {indexRunning}
     {appMode}
-    onselectfolder={selectFolder}
-    onbuildindex={startBuildIndex}
     onmodechange={(m) => {
       appMode = m;
       clearPreview();
     }}
   />
 
-  {#if !rootFolder}
+  <!-- Global index progress bar — visible in all modes while indexing -->
+  {#if indexRunning && indexProgress}
+    <IndexProgressBar progress={indexProgress} oncancel={() => CancelIndex()} />
+  {/if}
+
+  {#if !rootFolder && appMode !== "settings"}
     <div class="empty-state">
       <div class="empty-icon">◎</div>
       <p class="empty-title">No folder selected</p>
@@ -331,10 +340,6 @@
     </div>
   {:else if appMode === "browser"}
     <NavToolbar {currentPath} canGoBack={pathHistory.length > 0} onnavigateBack={navigateBack} />
-
-    {#if indexProgress && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled"}
-      <IndexProgressBar progress={indexProgress} oncancel={() => CancelIndex()} />
-    {/if}
 
     <div class="content-area">
       <div class="file-list-pane" style={leftStyle}>
@@ -386,11 +391,6 @@
       {rootFolder}
     />
   {:else if appMode === "library"}
-    <!-- Library mode -->
-    {#if indexProgress && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled"}
-      <IndexProgressBar progress={indexProgress} oncancel={() => CancelIndex()} />
-    {/if}
-
     <div class="content-area">
       <div class="file-list-pane" style={leftStyle}>
         <LibraryView
@@ -425,8 +425,16 @@
       {/if}
     </div>
   {:else if appMode === "import"}
-    <!-- Import mode -->
     <ImportView {rootFolder} />
+  {:else if appMode === "settings"}
+    <SettingsView
+      {rootFolder}
+      {appInfo}
+      {indexRunning}
+      {indexProgress}
+      onselectfolder={selectFolder}
+      onbuildindex={startBuildIndex}
+    />
   {/if}
 </div>
 
@@ -497,6 +505,11 @@
     color: var(--text-secondary);
     max-width: 340px;
     text-align: center;
+  }
+
+  .btn-large {
+    padding: 9px 24px;
+    font-size: 0.9rem;
   }
 
   /* ── Resize divider ─────────────────────────────────────────────────────── */

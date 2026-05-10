@@ -39,13 +39,20 @@ export interface CtxMenuState {
 
 export type ViewMode = "files" | "rejected";
 
-export type AppMode = "browser" | "library" | "import";
+export type AppMode = "browser" | "library" | "import" | "settings";
 
 export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "processed";
 
 export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
 
 export type ImportState = "idle" | "scanning" | "scanned" | "importing" | "done" | "error";
+
+export interface AppInfo {
+  dbPath: string;
+  serverPort: number;
+  serverUrl: string;
+  portSource: string;
+}
 
 export interface ImportCandidate {
   sourcePath: string;
