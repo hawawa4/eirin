@@ -226,11 +226,11 @@ export namespace app {
 	    snr: number;
 	    starCount: number;
 	    qualityAnalyzed: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LibraryFrame(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.nasPath = source["nasPath"];

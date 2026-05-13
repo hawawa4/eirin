@@ -88,6 +88,7 @@
   // ── Selected file / preview ───────────────────────────────────────────────
   let selectedEntry = $state<app.EnrichedFileEntry | null>(null);
   let libraryPreviewPath = $state<string | null>(null);
+  let librarySelectedFrame = $state<app.LibraryFrame | null>(null);
 
   // ── Stretch / section collapse (persisted) ────────────────────────────────
   let stretchEnabled = $state(true);
@@ -255,6 +256,7 @@
   function clearPreview() {
     selectedEntry = null;
     libraryPreviewPath = null;
+    librarySelectedFrame = null;
   }
 
   // ── File operations ───────────────────────────────────────────────────────
@@ -291,25 +293,25 @@
   }
 
   // ── Library preview ───────────────────────────────────────────────────────
-  function onLibraryFileClick(nasPath: string) {
-    libraryPreviewPath = nasPath;
-    const parts = nasPath.split("/");
+  function onLibraryFileClick(frame: app.LibraryFrame) {
+    libraryPreviewPath = frame.nasPath;
+    librarySelectedFrame = frame;
     selectedEntry = {
-      name: parts[parts.length - 1],
-      path: nasPath,
+      name: frame.fileName,
+      path: frame.nasPath,
       isDir: false,
-      modTime: new Date().toISOString(),
-      size: 0,
-      object: "",
-      filter: "",
-      expTime: 0,
-      dateObs: "",
-      gain: 0,
-      ccdTemp: 0,
-      telescope: "",
-      instrument: "",
+      modTime: frame.dateObs || new Date().toISOString(),
+      size: frame.fileSize,
+      object: frame.object,
+      filter: frame.filter,
+      expTime: frame.expTime,
+      dateObs: frame.dateObs,
+      gain: frame.gain,
+      ccdTemp: frame.ccdTemp,
+      telescope: frame.telescope,
+      instrument: frame.instrument,
       hasMeta: true,
-      isRejected: false,
+      isRejected: frame.isRejected,
       rejectionReason: "",
     } as app.EnrichedFileEntry;
   }
@@ -423,7 +425,7 @@
           bind:this={libraryView}
           {rootFolder}
           columns={libraryColumns}
-          selectedNasPath={selectedEntry?.path ?? null}
+          selectedNasPath={librarySelectedFrame?.nasPath ?? null}
           {sirilAvailable}
           onfileclick={onLibraryFileClick}
           onsavecolumns={saveLibraryColumnConfig}
@@ -443,6 +445,7 @@
 
         <PreviewPane
           entry={selectedEntry}
+          qualityFrame={librarySelectedFrame}
           bind:stretchEnabled
           bind:stretchLevel
           bind:basicCollapsed

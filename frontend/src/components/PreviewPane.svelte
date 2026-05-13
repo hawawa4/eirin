@@ -11,6 +11,7 @@
     stretchLevel: number;
     basicCollapsed: boolean;
     advancedCollapsed: boolean;
+    qualityFrame?: app.LibraryFrame | null;
     onclose: () => void;
   }
 
@@ -20,8 +21,11 @@
     stretchLevel = $bindable(),
     basicCollapsed = $bindable(),
     advancedCollapsed = $bindable(),
+    qualityFrame = null,
     onclose,
   }: Props = $props();
+
+  let statsCollapsed = $state(false);
 
   // ── Preview load state ───────────────────────────────────────────────────
   let previewLoading = $state(false);
@@ -478,6 +482,54 @@ void main() {
           {/each}
         {/if}
       </div>
+      {#if qualityFrame}
+        <div class="meta-section">
+          <button class="meta-section-hdr" onclick={() => (statsCollapsed = !statsCollapsed)}>
+            <span>Statistics</span>
+            {#if qualityFrame.qualityAnalyzed}
+              <span class="stats-badge">✦</span>
+            {/if}
+            <span class="meta-caret">{statsCollapsed ? "›" : "⌄"}</span>
+          </button>
+          {#if !statsCollapsed}
+            {#if qualityFrame.qualityAnalyzed}
+              <div class="meta-row">
+                <span class="meta-key">Stars</span>
+                <span class="meta-val">{qualityFrame.starCount}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">FWHM</span>
+                <span class="meta-val">{qualityFrame.fwhm.toFixed(2)} {qualityFrame.fwhmUnit || "px"}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Roundness</span>
+                <span class="meta-val fwhm-bar-row">
+                  {qualityFrame.roundness.toFixed(3)}
+                  <span class="quality-bar">
+                    <span class="quality-bar-fill" style="width:{Math.min(100, qualityFrame.roundness * 100)}%"></span>
+                  </span>
+                </span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Background</span>
+                <span class="meta-val">{qualityFrame.background.toFixed(1)} ADU</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Noise</span>
+                <span class="meta-val">{qualityFrame.noise.toFixed(2)} ADU</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">SNR</span>
+                <span class="meta-val">{qualityFrame.snr.toFixed(1)} dB</span>
+              </div>
+            {:else}
+              <div class="meta-row stats-hint">
+                <span class="meta-val">Not analyzed. Use <strong>✦ Analyze</strong> in the Library View.</span>
+              </div>
+            {/if}
+          {/if}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -669,5 +721,47 @@ void main() {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .stats-badge {
+    font-size: 0.6rem;
+    color: var(--accent);
+    margin-left: 4px;
+    margin-right: auto;
+  }
+
+  .fwhm-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .quality-bar {
+    display: inline-block;
+    width: 50px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .quality-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  .stats-hint {
+    opacity: 0.7;
+    font-style: italic;
+  }
+
+  .stats-hint .meta-val {
+    text-align: left;
+    white-space: normal;
+    font-size: 0.73rem;
   }
 </style>

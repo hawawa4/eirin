@@ -6,8 +6,16 @@ export function AddFramesToProject(arg1, arg2, arg3) {
   return window['go']['app']['App']['AddFramesToProject'](arg1, arg2, arg3);
 }
 
+export function AnalyzeFrames(arg1) {
+  return window['go']['app']['App']['AnalyzeFrames'](arg1);
+}
+
 export function BuildIndex(arg1) {
   return window['go']['app']['App']['BuildIndex'](arg1);
+}
+
+export function CancelAnalysis() {
+  return window['go']['app']['App']['CancelAnalysis']();
 }
 
 export function CancelIndex() {
