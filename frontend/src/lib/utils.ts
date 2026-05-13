@@ -105,6 +105,23 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
   }
 }
 
+export function formatRA(degrees: number): string {
+  const hours = degrees / 15;
+  const h = Math.floor(hours);
+  const m = Math.floor((hours - h) * 60);
+  const s = ((hours - h) * 60 - m) * 60;
+  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${s.toFixed(1).padStart(4, "0")}s`;
+}
+
+export function formatDec(degrees: number): string {
+  const sign = degrees < 0 ? "−" : "+";
+  const abs = Math.abs(degrees);
+  const d = Math.floor(abs);
+  const m = Math.floor((abs - d) * 60);
+  const s = ((abs - d) * 60 - m) * 60;
+  return `${sign}${String(d).padStart(2, "0")}° ${String(m).padStart(2, "0")}' ${s.toFixed(1).padStart(4, "0")}"`;
+}
+
 export interface MetaRow {
   key: string;
   val: string;

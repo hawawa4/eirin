@@ -329,6 +329,24 @@ func (s *Store) UpdateFrameQuality(nasPath string, q FrameQuality) error {
 	return err
 }
 
+// WCSResult holds plate-solve coordinates produced by Siril.
+type WCSResult struct {
+	RA         float64
+	Dec        float64
+	PixelScale float64 // arcsec/pixel
+	Rotation   float64 // degrees
+}
+
+// UpdateWCS persists plate-solve results for a frame.
+func (s *Store) UpdateWCS(nasPath string, r WCSResult) error {
+	_, err := s.db.Exec(`
+		UPDATE frames SET
+			ra=?, dec=?, pixel_scale=?, rotation=?, wcs_solved=1
+		WHERE nas_path=?
+	`, r.RA, r.Dec, r.PixelScale, r.Rotation, nasPath)
+	return err
+}
+
 // DeleteFrame removes a frame record entirely from the database.
 func (s *Store) DeleteFrame(path string) error {
 	query, args, err := s.qb.
