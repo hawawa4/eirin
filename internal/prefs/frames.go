@@ -305,6 +305,30 @@ func (s *Store) GetAllFrameBasenames() (map[string]bool, error) {
 	return result, rows.Err()
 }
 
+// FrameQuality holds quality metrics produced by Siril headless analysis.
+type FrameQuality struct {
+	FWHM       float64
+	FWHMUnit   string  // "px" or "arcsec"
+	Roundness  float64
+	Background float64
+	Noise      float64
+	SNR        float64
+	StarCount  int64
+}
+
+// UpdateFrameQuality persists Siril quality metrics for a frame.
+// The row must already exist (frames are created by the indexer).
+func (s *Store) UpdateFrameQuality(nasPath string, q FrameQuality) error {
+	_, err := s.db.Exec(`
+		UPDATE frames SET
+			fwhm=?, fwhm_unit=?, roundness=?, background=?, noise=?, snr=?,
+			star_count=?, quality_analyzed=1
+		WHERE nas_path=?
+	`, q.FWHM, q.FWHMUnit, q.Roundness, q.Background, q.Noise, q.SNR,
+		q.StarCount, nasPath)
+	return err
+}
+
 // DeleteFrame removes a frame record entirely from the database.
 func (s *Store) DeleteFrame(path string) error {
 	query, args, err := s.qb.

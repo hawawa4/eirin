@@ -90,6 +90,16 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
       return frame.telescope || "—";
     case "instrument":
       return frame.instrument || "—";
+    case "fwhm":
+      return frame.qualityAnalyzed && frame.fwhm
+        ? `${frame.fwhm.toFixed(2)} ${frame.fwhmUnit || "px"}`
+        : "—";
+    case "starCount":
+      return frame.qualityAnalyzed && frame.starCount ? String(frame.starCount) : "—";
+    case "roundness":
+      return frame.qualityAnalyzed && frame.roundness ? frame.roundness.toFixed(2) : "—";
+    case "snr":
+      return frame.qualityAnalyzed && frame.snr ? `${frame.snr.toFixed(1)} dB` : "—";
     default:
       return "—";
   }

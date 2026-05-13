@@ -44,6 +44,14 @@ export interface SirilInfo {
   available: boolean;
 }
 
+export interface AnalysisProgress {
+  phase: "analyzing" | "done" | "cancelled";
+  total: number;
+  done: number;
+  current: string;
+  errors: number;
+}
+
 export type ViewMode = "files" | "rejected";
 
 export type AppMode = "browser" | "library" | "import" | "projects" | "settings";
@@ -111,6 +119,10 @@ export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [
   { id: "ccdTemp", label: "Temp", visible: false, width: 75, order: 8 },
   { id: "telescope", label: "Telescope", visible: false, width: 120, order: 9 },
   { id: "instrument", label: "Camera", visible: false, width: 120, order: 10 },
+  { id: "fwhm", label: "FWHM", visible: false, width: 75, order: 11 },
+  { id: "starCount", label: "Stars", visible: false, width: 55, order: 12 },
+  { id: "roundness", label: "Round.", visible: false, width: 65, order: 13 },
+  { id: "snr", label: "SNR", visible: false, width: 65, order: 14 },
 ];
 
 export const DEFAULT_COLUMNS: ColumnDef[] = [

@@ -7,9 +7,12 @@
     UnrejectFile,
     HardDeleteFile,
     OpenWithSiril,
+    AnalyzeFrames,
+    CancelAnalysis,
   } from "../../wailsjs/go/app/App.js";
+  import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import type { app } from "../../wailsjs/go/models";
-  import type { ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy } from "../lib/types";
+  import type { AnalysisProgress, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy } from "../lib/types";
   import { getLibraryCellValue } from "../lib/utils";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
@@ -44,6 +47,38 @@
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ path: string; name: string } | null>(null);
+
+  // ── Siril analysis ────────────────────────────────────────────────────────
+  let analyzingGroup = $state<string | null>(null);
+  let analysisProgress = $state<AnalysisProgress | null>(null);
+
+  $effect(() => {
+    const unsubProgress = EventsOn("analysis:progress", (data: AnalysisProgress) => {
+      analysisProgress = data;
+    });
+    const unsubUpdated = EventsOn("library:updated", () => {
+      reload();
+    });
+    return () => {
+      unsubProgress();
+      unsubUpdated();
+    };
+  });
+
+  async function analyzeGroup(group: LibGroup) {
+    const lightPaths = group.frames
+      .filter((f) => f.frameType === "light")
+      .map((f) => f.nasPath);
+    if (!lightPaths.length) return;
+    analyzingGroup = group.key;
+    analysisProgress = null;
+    try {
+      await AnalyzeFrames(lightPaths);
+    } finally {
+      analyzingGroup = null;
+      analysisProgress = null;
+    }
+  }
 
   // ── Group collapse — empty set = all collapsed (default) ─────────────────
   let expandedGroups = $state<Set<string>>(new Set());
@@ -182,6 +217,10 @@
   }
 
   const TYPE_ORDER = ["light", "stacked", "processed", "flat", "dark", "bias"];
+
+  function lightPaths(group: LibGroup): string[] {
+    return group.frames.filter((f) => f.frameType === "light").map((f) => f.nasPath);
+  }
 
   function groupTypeBreakdown(frames: app.LibraryFrame[]) {
     const counts = new Map<string, number>();
@@ -453,6 +492,30 @@
                   </span>
                 {/each}
               </span>
+              {#if group.frames.some((f) => f.qualityAnalyzed)}
+                <span class="quality-dot" title="Quality data available">✦</span>
+              {/if}
+              <span class="group-spacer"></span>
+              {#if sirilAvailable && group.frames.some((f) => f.frameType === "light")}
+                {#if analyzingGroup === group.key}
+                  <span class="analysis-status">
+                    ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ?? lightPaths(group).length}
+                    {#if analysisProgress?.current}· {analysisProgress.current}{/if}
+                  </span>
+                  <button
+                    class="btn-cancel-analysis"
+                    onclick={(e) => { e.stopPropagation(); CancelAnalysis(); }}
+                    title="Cancel analysis"
+                  >✕</button>
+                {:else}
+                  <button
+                    class="btn-analyze"
+                    onclick={(e) => { e.stopPropagation(); analyzeGroup(group); }}
+                    disabled={analyzingGroup !== null}
+                    title="Analyze light frames with Siril (findstar)"
+                  >✦ Analyze</button>
+                {/if}
+              {/if}
             </td>
           </tr>
 
@@ -799,6 +862,8 @@
     border-top: 1px solid var(--border-accent);
     border-bottom: 1px solid var(--border-accent);
     padding: 4px 10px;
+    display: flex;
+    align-items: center;
   }
 
   .group-chevron {
@@ -837,6 +902,70 @@
     padding: 1px 6px;
     border-radius: 3px;
     letter-spacing: 0.04em;
+  }
+
+  .group-spacer {
+    flex: 1;
+  }
+
+  .quality-dot {
+    font-size: 0.6rem;
+    color: var(--accent);
+    margin-left: 6px;
+    opacity: 0.75;
+  }
+
+  .btn-analyze {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .btn-analyze:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--bg-base);
+  }
+
+  .btn-analyze:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .analysis-status {
+    font-size: 0.68rem;
+    color: var(--accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+    animation: pulse-opacity 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-opacity {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .btn-cancel-analysis {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    background: transparent;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 4px;
+    flex-shrink: 0;
+  }
+
+  .btn-cancel-analysis:hover {
+    border-color: #ef4444;
+    color: #ef4444;
   }
 
   /* ── Frame rows ──────────────────────────────────────────────────────────── */

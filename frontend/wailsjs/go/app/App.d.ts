@@ -5,7 +5,11 @@ import {prefs} from '../models';
 
 export function AddFramesToProject(arg1:string,arg2:Array<string>,arg3:string):Promise<void>;
 
+export function AnalyzeFrames(arg1:Array<string>):Promise<void>;
+
 export function BuildIndex(arg1:string):Promise<void>;
+
+export function CancelAnalysis():Promise<void>;
 
 export function CancelIndex():Promise<void>;
 
