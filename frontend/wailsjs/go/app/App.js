@@ -46,12 +46,20 @@ export function GetProjectFrames(arg1) {
   return window['go']['app']['App']['GetProjectFrames'](arg1);
 }
 
+export function GetProjectOutputFiles(arg1) {
+  return window['go']['app']['App']['GetProjectOutputFiles'](arg1);
+}
+
 export function GetProjectsFolder() {
   return window['go']['app']['App']['GetProjectsFolder']();
 }
 
 export function HardDeleteFile(arg1) {
   return window['go']['app']['App']['HardDeleteFile'](arg1);
+}
+
+export function ImportOutputFiles(arg1, arg2) {
+  return window['go']['app']['App']['ImportOutputFiles'](arg1, arg2);
 }
 
 export function ListDirectory(arg1) {

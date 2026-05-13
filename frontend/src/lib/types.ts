@@ -86,6 +86,13 @@ export interface Project {
   createdAt: string;
 }
 
+export interface ProjectOutputFile {
+  name: string;
+  path: string;
+  size: number;
+  modTime: string;
+}
+
 export interface LibraryGroup {
   key: string;
   label: string;

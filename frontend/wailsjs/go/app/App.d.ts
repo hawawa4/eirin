@@ -25,9 +25,13 @@ export function GetLibraryFrames(arg1:string):Promise<Array<app.LibraryFrame>>;
 
 export function GetProjectFrames(arg1:string):Promise<Array<string>>;
 
+export function GetProjectOutputFiles(arg1:string):Promise<Array<app.ProjectOutputFile>>;
+
 export function GetProjectsFolder():Promise<string>;
 
 export function HardDeleteFile(arg1:string):Promise<void>;
+
+export function ImportOutputFiles(arg1:Array<string>,arg2:string):Promise<void>;
 
 export function ListDirectory(arg1:string):Promise<Array<app.FileEntry>>;
 
