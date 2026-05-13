@@ -22,6 +22,16 @@ type LibraryFrame struct {
 	Instrument string  `json:"instrument"`
 	FileSize   int64   `json:"fileSize"`
 	IsRejected bool    `json:"isRejected"`
+
+	// Quality metrics from Siril analysis (zero-value when not yet analyzed)
+	FWHM            float64 `json:"fwhm"`
+	FWHMUnit        string  `json:"fwhmUnit"`   // "px" or "arcsec"
+	Roundness       float64 `json:"roundness"`
+	Background      float64 `json:"background"`
+	Noise           float64 `json:"noise"`
+	SNR             float64 `json:"snr"`
+	StarCount       int64   `json:"starCount"`
+	QualityAnalyzed bool    `json:"qualityAnalyzed"`
 }
 
 // GetLibraryFrames returns all indexed frames under rootPath, converted to the
@@ -35,22 +45,44 @@ func (a *App) GetLibraryFrames(rootPath string) []LibraryFrame {
 	result := make([]LibraryFrame, 0, len(frames))
 	for _, f := range frames {
 		result = append(result, LibraryFrame{
-			NasPath:    f.NasPath,
-			FileName:   filepath.Base(f.NasPath),
-			FrameType:  f.FrameType,
-			Object:     f.Object,
-			Filter:     f.Filter,
-			ExpTime:    f.ExpTime,
-			DateObs:    f.DateObs,
-			Gain:       f.Gain,
-			CCDTemp:    f.CCDTemp,
-			Telescope:  f.Telescope,
-			Instrument: f.Instrument,
-			FileSize:   f.FileSize,
-			IsRejected: f.Rejected,
+			NasPath:         f.NasPath,
+			FileName:        filepath.Base(f.NasPath),
+			FrameType:       f.FrameType,
+			Object:          f.Object,
+			Filter:          f.Filter,
+			ExpTime:         f.ExpTime,
+			DateObs:         f.DateObs,
+			Gain:            f.Gain,
+			CCDTemp:         f.CCDTemp,
+			Telescope:       f.Telescope,
+			Instrument:      f.Instrument,
+			FileSize:        f.FileSize,
+			IsRejected:      f.Rejected,
+			FWHM:            derefFloat(f.FWHM),
+			FWHMUnit:        f.FWHMUnit,
+			Roundness:       derefFloat(f.Roundness),
+			Background:      derefFloat(f.Background),
+			Noise:           derefFloat(f.Noise),
+			SNR:             derefFloat(f.SNR),
+			StarCount:       derefInt64(f.StarCount),
+			QualityAnalyzed: f.QualityAnalyzed,
 		})
 	}
 	return result
+}
+
+func derefFloat(p *float64) float64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // SetFrameType lets the user manually override the classified type for a frame

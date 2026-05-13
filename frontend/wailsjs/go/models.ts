@@ -218,11 +218,19 @@ export namespace app {
 	    instrument: string;
 	    fileSize: number;
 	    isRejected: boolean;
-	
+	    fwhm: number;
+	    fwhmUnit: string;
+	    roundness: number;
+	    background: number;
+	    noise: number;
+	    snr: number;
+	    starCount: number;
+	    qualityAnalyzed: boolean;
+
 	    static createFrom(source: any = {}) {
 	        return new LibraryFrame(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.nasPath = source["nasPath"];
@@ -238,6 +246,14 @@ export namespace app {
 	        this.instrument = source["instrument"];
 	        this.fileSize = source["fileSize"];
 	        this.isRejected = source["isRejected"];
+	        this.fwhm = source["fwhm"];
+	        this.fwhmUnit = source["fwhmUnit"];
+	        this.roundness = source["roundness"];
+	        this.background = source["background"];
+	        this.noise = source["noise"];
+	        this.snr = source["snr"];
+	        this.starCount = source["starCount"];
+	        this.qualityAnalyzed = source["qualityAnalyzed"];
 	    }
 	}
 	export class Project {
