@@ -32,11 +32,10 @@ type LibraryFrame struct {
 
 	// Quality metrics from Siril analysis (zero-value when not yet analyzed)
 	FWHM            float64 `json:"fwhm"`
-	FWHMUnit        string  `json:"fwhmUnit"`   // "px" or "arcsec"
-	Roundness       float64 `json:"roundness"`
+	FWHMUnit        string  `json:"fwhmUnit"` // "px" or "arcsec"
 	Background      float64 `json:"background"`
 	Noise           float64 `json:"noise"`
-	SNR             float64 `json:"snr"`
+	SNR             float64 `json:"snr"` // Background/Noise ratio
 	StarCount       int64   `json:"starCount"`
 	QualityAnalyzed bool    `json:"qualityAnalyzed"`
 }
@@ -72,7 +71,6 @@ func (a *App) GetLibraryFrames(rootPath string) []LibraryFrame {
 			WCSSolved:       f.WCSSolved,
 			FWHM:            derefFloat(f.FWHM),
 			FWHMUnit:        f.FWHMUnit,
-			Roundness:       derefFloat(f.Roundness),
 			Background:      derefFloat(f.Background),
 			Noise:           derefFloat(f.Noise),
 			SNR:             derefFloat(f.SNR),

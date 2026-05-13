@@ -225,7 +225,6 @@ export namespace app {
 	    wcsSolved: boolean;
 	    fwhm: number;
 	    fwhmUnit: string;
-	    roundness: number;
 	    background: number;
 	    noise: number;
 	    snr: number;
@@ -258,7 +257,6 @@ export namespace app {
 	        this.wcsSolved = source["wcsSolved"];
 	        this.fwhm = source["fwhm"];
 	        this.fwhmUnit = source["fwhmUnit"];
-	        this.roundness = source["roundness"];
 	        this.background = source["background"];
 	        this.noise = source["noise"];
 	        this.snr = source["snr"];

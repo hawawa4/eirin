@@ -550,27 +550,24 @@ void main() {
                 <span class="meta-key">FWHM</span>
                 <span class="meta-val">{qualityFrame.fwhm.toFixed(2)} {qualityFrame.fwhmUnit || "px"}</span>
               </div>
-              <div class="meta-row">
-                <span class="meta-key">Roundness</span>
-                <span class="meta-val fwhm-bar-row">
-                  {qualityFrame.roundness.toFixed(3)}
-                  <span class="quality-bar">
-                    <span class="quality-bar-fill" style="width:{Math.min(100, qualityFrame.roundness * 100)}%"></span>
-                  </span>
-                </span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">Background</span>
-                <span class="meta-val">{qualityFrame.background.toFixed(1)} ADU</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">Noise</span>
-                <span class="meta-val">{qualityFrame.noise.toFixed(2)} ADU</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-key">SNR</span>
-                <span class="meta-val">{qualityFrame.snr.toFixed(1)} dB</span>
-              </div>
+              {#if qualityFrame.background}
+                <div class="meta-row">
+                  <span class="meta-key">Background</span>
+                  <span class="meta-val">{qualityFrame.background.toFixed(1)} ADU</span>
+                </div>
+              {/if}
+              {#if qualityFrame.noise}
+                <div class="meta-row">
+                  <span class="meta-key">Noise</span>
+                  <span class="meta-val">{qualityFrame.noise.toFixed(2)} ADU</span>
+                </div>
+              {/if}
+              {#if qualityFrame.snr}
+                <div class="meta-row">
+                  <span class="meta-key">SNR</span>
+                  <span class="meta-val">{qualityFrame.snr.toFixed(1)}</span>
+                </div>
+              {/if}
             {:else}
               <div class="meta-row stats-hint">
                 <span class="meta-val">Not analyzed. Use <strong>✦ Analyze</strong> in the Library View.</span>
@@ -777,30 +774,6 @@ void main() {
     color: var(--accent);
     margin-left: 4px;
     margin-right: auto;
-  }
-
-  .fwhm-bar-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-
-  .quality-bar {
-    display: inline-block;
-    width: 50px;
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-
-  .quality-bar-fill {
-    display: block;
-    height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
   }
 
   .stats-hint {

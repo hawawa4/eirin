@@ -121,8 +121,9 @@ export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [
   { id: "instrument", label: "Camera", visible: false, width: 120, order: 10 },
   { id: "fwhm", label: "FWHM", visible: false, width: 75, order: 11 },
   { id: "starCount", label: "Stars", visible: false, width: 55, order: 12 },
-  { id: "roundness", label: "Round.", visible: false, width: 65, order: 13 },
-  { id: "snr", label: "SNR", visible: false, width: 65, order: 14 },
+  { id: "background", label: "BG", visible: false, width: 75, order: 13 },
+  { id: "noise", label: "Noise", visible: false, width: 65, order: 14 },
+  { id: "snr", label: "SNR", visible: false, width: 65, order: 15 },
 ];
 
 export const DEFAULT_COLUMNS: ColumnDef[] = [
