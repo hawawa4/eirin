@@ -8,9 +8,11 @@
     AddFramesToProject,
     OpenProjectInSiril,
     GetLibraryFrames,
+    GetProjectOutputFiles,
+    ImportOutputFiles,
   } from "../../wailsjs/go/app/App.js";
   import type { app } from "../../wailsjs/go/models";
-  import type { Project } from "../lib/types";
+  import type { Project, ProjectOutputFile } from "../lib/types";
 
   interface Props {
     rootFolder: string;
@@ -24,9 +26,39 @@
   let selected = $state<Project | null>(null);
   let loadingProjects = $state(false);
 
-  // ── Project frames (lights/ folder scan) ──────────────────────────────────
+  // ── Lights (collapsible) ──────────────────────────────────────────────────
+  let lightsCollapsed = $state(false);
   let projectFrames = $state<string[]>([]);
   let loadingFrames = $state(false);
+
+  // ── Output files (polled) ─────────────────────────────────────────────────
+  let outputFiles = $state<ProjectOutputFile[]>([]);
+
+  // Poll the project root for new output files while a project is selected.
+  // The poll runs every 3 s; the effect re-starts whenever `selected` changes.
+  $effect(() => {
+    const proj = selected;
+    if (!proj) {
+      outputFiles = [];
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const files = await GetProjectOutputFiles(proj.folder);
+        if (!cancelled) outputFiles = files;
+      } catch {
+        /* ignore transient errors */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  });
 
   // ── Create form ───────────────────────────────────────────────────────────
   let showCreate = $state(false);
@@ -35,7 +67,7 @@
   let creating = $state(false);
   let createError = $state("");
 
-  // ── Frame picker ──────────────────────────────────────────────────────────
+  // ── Frame picker (Add lights) ─────────────────────────────────────────────
   let showPicker = $state(false);
   let allLights = $state<app.LibraryFrame[]>([]);
   let pickerFilter = $state("");
@@ -43,6 +75,13 @@
   let addMode = $state<"symlink" | "copy">("symlink");
   let adding = $state(false);
   let addError = $state("");
+
+  // ── Import outputs to NAS ─────────────────────────────────────────────────
+  let showImport = $state(false);
+  let importSelected = $state<Set<string>>(new Set());
+  let importSubfolder = $state("");
+  let importing = $state(false);
+  let importError = $state("");
 
   // ── Delete confirm ────────────────────────────────────────────────────────
   let confirmDelete = $state<Project | null>(null);
@@ -62,6 +101,7 @@
 
   async function selectProject(p: Project) {
     selected = p;
+    importSubfolder = p.name;
     await reloadFrames();
   }
 
@@ -103,6 +143,7 @@
     }
   }
 
+  // ── Lights picker ─────────────────────────────────────────────────────────
   async function openPicker() {
     pickerFilter = "";
     pickerSelected = new Set();
@@ -129,12 +170,11 @@
     pickerSelected = next;
   }
 
-  function toggleAll() {
-    if (pickerSelected.size === filteredLights.length) {
-      pickerSelected = new Set();
-    } else {
-      pickerSelected = new Set(filteredLights.map((f) => f.nasPath));
-    }
+  function toggleAllLights() {
+    pickerSelected =
+      pickerSelected.size === filteredLights.length
+        ? new Set()
+        : new Set(filteredLights.map((f) => f.nasPath));
   }
 
   async function doAddFrames() {
@@ -152,6 +192,46 @@
     }
   }
 
+  // ── Import outputs ────────────────────────────────────────────────────────
+  function openImport() {
+    importSelected = new Set(outputFiles.map((f) => f.path));
+    importSubfolder = selected?.name ?? "";
+    importError = "";
+    showImport = true;
+  }
+
+  function toggleImportFile(path: string) {
+    const next = new Set(importSelected);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    importSelected = next;
+  }
+
+  function toggleAllImport() {
+    importSelected =
+      importSelected.size === outputFiles.length
+        ? new Set()
+        : new Set(outputFiles.map((f) => f.path));
+  }
+
+  async function doImportOutputs() {
+    if (!rootFolder || importSelected.size === 0) return;
+    importing = true;
+    importError = "";
+    try {
+      const destFolder = importSubfolder.trim()
+        ? `${rootFolder}/${importSubfolder.trim()}`
+        : rootFolder;
+      await ImportOutputFiles([...importSelected], destFolder);
+      showImport = false;
+    } catch (e) {
+      importError = String(e);
+    } finally {
+      importing = false;
+    }
+  }
+
+  // ── Misc ──────────────────────────────────────────────────────────────────
   async function doOpenInSiril() {
     if (!selected) return;
     await OpenProjectInSiril(selected.folder);
@@ -167,6 +247,12 @@
     } catch {
       return iso;
     }
+  }
+
+  function formatSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 </script>
 
@@ -194,9 +280,7 @@
           bind:value={createDesc}
           spellcheck="false"
         />
-        {#if createError}
-          <p class="form-error">{createError}</p>
-        {/if}
+        {#if createError}<p class="form-error">{createError}</p>{/if}
         <div class="create-actions">
           <button class="btn-primary" onclick={doCreate} disabled={creating || !createName.trim()}>
             {creating ? "Creating…" : "Create"}
@@ -245,64 +329,111 @@
         <p class="empty-sub">Choose a project from the list, or create a new one.</p>
       </div>
     {:else}
+      <!-- Header -->
       <div class="detail-header">
         <div class="detail-meta">
           <h2 class="detail-name">{selected.name}</h2>
-          {#if selected.description}
-            <p class="detail-desc">{selected.description}</p>
-          {/if}
+          {#if selected.description}<p class="detail-desc">{selected.description}</p>{/if}
           <p class="detail-folder" title={selected.folder}>{selected.folder}</p>
         </div>
         <div class="detail-actions">
-          <button class="btn-primary siril-btn" onclick={doOpenInSiril} title="Open project folder in Siril">
-            Open in Siril
-          </button>
+          <button class="btn-primary" onclick={doOpenInSiril}>Open in Siril</button>
           <button
             class="btn-ghost danger-btn"
             onclick={() => (confirmDelete = selected)}
-            title="Remove project from list (does not delete files)"
-          >
-            Remove
-          </button>
+            title="Remove from list — does not delete files"
+          >Remove</button>
         </div>
       </div>
 
-      <!-- Lights section -->
-      <div class="lights-section">
-        <div class="lights-header">
-          <span class="lights-title">
-            Lights
-            {#if !loadingFrames}
-              <span class="lights-count">{projectFrames.length}</span>
-            {/if}
-          </span>
-          <button class="btn-secondary" onclick={openPicker}>Add frames…</button>
-        </div>
-
-        {#if loadingFrames}
-          <p class="hint">Loading…</p>
-        {:else if projectFrames.length === 0}
-          <p class="hint">No frames yet. Click "Add frames" to link light frames from your library.</p>
-        {:else}
-          <div class="frame-list-scroll">
-            <table class="frame-table">
-              <thead>
-                <tr><th>Filename</th></tr>
-              </thead>
-              <tbody>
-                {#each projectFrames as name (name)}
-                  <tr><td class="frame-name">{name}</td></tr>
-                {/each}
-              </tbody>
-            </table>
+      <div class="detail-body">
+        <!-- ── Lights section (collapsible) ─────────────────────────────── -->
+        <section class="detail-section">
+          <div class="section-hdr-row">
+            <button
+              class="section-hdr"
+              onclick={() => (lightsCollapsed = !lightsCollapsed)}
+            >
+              <span class="section-chevron">{lightsCollapsed ? "▶" : "▼"}</span>
+              <span class="section-title">Lights</span>
+              <span class="section-count">{projectFrames.length}</span>
+            </button>
+            <button
+              class="btn-secondary small"
+              onclick={() => openPicker()}
+            >Add frames…</button>
           </div>
-        {/if}
+
+          {#if !lightsCollapsed}
+            <div class="section-body">
+              {#if loadingFrames}
+                <p class="hint">Loading…</p>
+              {:else if projectFrames.length === 0}
+                <p class="hint">No frames yet. Click "Add frames" to link light frames from your library.</p>
+              {:else}
+                <div class="file-scroll">
+                  <table class="file-table">
+                    <thead><tr><th>Filename</th></tr></thead>
+                    <tbody>
+                      {#each projectFrames as name (name)}
+                        <tr><td class="mono-cell">{name}</td></tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </section>
+
+        <!-- ── Project outputs (auto-watched) ───────────────────────────── -->
+        <section class="detail-section">
+          <div class="section-hdr no-toggle">
+            <span class="section-title">Project Outputs</span>
+            <span class="section-count">{outputFiles.length}</span>
+            <span class="pulse-dot" title="Watching for new files"></span>
+            <span class="section-spacer"></span>
+            {#if outputFiles.length > 0}
+              <button class="btn-secondary small" onclick={openImport}>Import to NAS…</button>
+            {/if}
+          </div>
+
+          <div class="section-body">
+            {#if outputFiles.length === 0}
+              <p class="hint">
+                No output files yet. Process your lights in Siril and save the results to
+                <code>{selected.folder}</code>.
+              </p>
+            {:else}
+              <div class="file-scroll">
+                <table class="file-table">
+                  <thead>
+                    <tr>
+                      <th>Filename</th>
+                      <th class="col-size">Size</th>
+                      <th class="col-date">Modified</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each outputFiles as f (f.path)}
+                      <tr>
+                        <td class="mono-cell">{f.name}</td>
+                        <td class="col-size dim-cell">{formatSize(f.size)}</td>
+                        <td class="col-date dim-cell">{f.modTime.slice(0, 10)}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {/if}
+          </div>
+        </section>
       </div>
     {/if}
   </main>
 </div>
 
-<!-- ── Delete confirm modal ──────────────────────────────────────────────────── -->
+<!-- ── Delete confirm ─────────────────────────────────────────────────────── -->
 {#if confirmDelete}
   <div class="modal-backdrop" onclick={() => (confirmDelete = null)}>
     <div class="modal" onclick={(e) => e.stopPropagation()}>
@@ -316,12 +447,12 @@
   </div>
 {/if}
 
-<!-- ── Frame picker modal ─────────────────────────────────────────────────────── -->
+<!-- ── Add lights modal ───────────────────────────────────────────────────── -->
 {#if showPicker}
   <div class="modal-backdrop" onclick={() => (showPicker = false)}>
     <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
       <div class="picker-header">
-        <span class="picker-title">Add light frames to "{selected?.name}"</span>
+        <span class="picker-title">Add light frames — {selected?.name}</span>
         <button class="btn-ghost" onclick={() => (showPicker = false)}>✕</button>
       </div>
 
@@ -332,7 +463,7 @@
           placeholder="Filter by name or object…"
           bind:value={pickerFilter}
         />
-        <button class="btn-ghost small" onclick={toggleAll}>
+        <button class="btn-ghost small" onclick={toggleAllLights}>
           {pickerSelected.size === filteredLights.length && filteredLights.length > 0
             ? "Deselect all"
             : "Select all"}
@@ -342,9 +473,9 @@
 
       <div class="picker-list-scroll">
         {#if allLights.length === 0}
-          <p class="hint">No indexed light frames found. Run Build Index first.</p>
+          <p class="hint padded">No indexed light frames found. Run Build Index first.</p>
         {:else if filteredLights.length === 0}
-          <p class="hint">No frames match the filter.</p>
+          <p class="hint padded">No frames match the filter.</p>
         {:else}
           <table class="picker-table">
             <thead>
@@ -372,9 +503,9 @@
                     />
                   </td>
                   <td class="col-name">{f.fileName}</td>
-                  <td class="col-obj">{f.object || "—"}</td>
-                  <td class="col-filt">{f.filter || "—"}</td>
-                  <td class="col-date">{f.dateObs ? f.dateObs.slice(0, 10) : "—"}</td>
+                  <td class="dim-cell">{f.object || "—"}</td>
+                  <td class="dim-cell">{f.filter || "—"}</td>
+                  <td class="dim-cell">{f.dateObs ? f.dateObs.slice(0, 10) : "—"}</td>
                 </tr>
               {/each}
             </tbody>
@@ -384,27 +515,95 @@
 
       <div class="picker-footer">
         <div class="mode-toggle">
-          <label class="mode-opt">
-            <input type="radio" name="addMode" value="symlink" bind:group={addMode} />
-            Symlink
-          </label>
-          <label class="mode-opt">
-            <input type="radio" name="addMode" value="copy" bind:group={addMode} />
-            Copy
-          </label>
+          <label class="mode-opt"><input type="radio" name="addMode" value="symlink" bind:group={addMode} /> Symlink</label>
+          <label class="mode-opt"><input type="radio" name="addMode" value="copy" bind:group={addMode} /> Copy</label>
         </div>
-        {#if addError}
-          <p class="form-error">{addError}</p>
-        {/if}
+        {#if addError}<p class="form-error">{addError}</p>{/if}
         <div class="picker-actions">
-          <button
-            class="btn-primary"
-            onclick={doAddFrames}
-            disabled={adding || pickerSelected.size === 0}
-          >
+          <button class="btn-primary" onclick={doAddFrames} disabled={adding || pickerSelected.size === 0}>
             {adding ? "Adding…" : `Add ${pickerSelected.size} frame${pickerSelected.size !== 1 ? "s" : ""}`}
           </button>
           <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Import outputs modal ───────────────────────────────────────────────── -->
+{#if showImport}
+  <div class="modal-backdrop" onclick={() => (showImport = false)}>
+    <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
+      <div class="picker-header">
+        <span class="picker-title">Import outputs to NAS</span>
+        <button class="btn-ghost" onclick={() => (showImport = false)}>✕</button>
+      </div>
+
+      <div class="picker-toolbar">
+        <button class="btn-ghost small" onclick={toggleAllImport}>
+          {importSelected.size === outputFiles.length && outputFiles.length > 0
+            ? "Deselect all"
+            : "Select all"}
+        </button>
+        <span class="picker-count">{importSelected.size} selected</span>
+      </div>
+
+      <div class="picker-list-scroll">
+        <table class="picker-table">
+          <thead>
+            <tr>
+              <th class="col-check"></th>
+              <th>Filename</th>
+              <th class="col-size">Size</th>
+              <th class="col-date">Modified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each outputFiles as f (f.path)}
+              <tr
+                class="picker-row"
+                class:picked={importSelected.has(f.path)}
+                onclick={() => toggleImportFile(f.path)}
+              >
+                <td class="col-check">
+                  <input
+                    type="checkbox"
+                    checked={importSelected.has(f.path)}
+                    onclick={(e) => e.stopPropagation()}
+                    onchange={() => toggleImportFile(f.path)}
+                  />
+                </td>
+                <td class="col-name mono-cell">{f.name}</td>
+                <td class="col-size dim-cell">{formatSize(f.size)}</td>
+                <td class="col-date dim-cell">{f.modTime.slice(0, 10)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="picker-footer">
+        <div class="dest-row">
+          <span class="dest-label">Destination</span>
+          <span class="dest-root">{rootFolder}/</span>
+          <input
+            class="dest-input"
+            type="text"
+            placeholder="subfolder (optional)"
+            bind:value={importSubfolder}
+            spellcheck="false"
+          />
+        </div>
+        {#if importError}<p class="form-error">{importError}</p>{/if}
+        <div class="picker-actions">
+          <button
+            class="btn-primary"
+            onclick={doImportOutputs}
+            disabled={importing || importSelected.size === 0 || !rootFolder}
+          >
+            {importing ? "Copying…" : `Copy ${importSelected.size} file${importSelected.size !== 1 ? "s" : ""} to NAS`}
+          </button>
+          <button class="btn-ghost" onclick={() => (showImport = false)}>Cancel</button>
         </div>
       </div>
     </div>
@@ -454,9 +653,8 @@
     color: var(--text-secondary);
     padding: 16px 12px;
     line-height: 1.5;
+    margin: 0;
   }
-
-  /* ── Create form ─────────────────────────────────────────────────────────── */
 
   .create-form {
     padding: 10px 12px;
@@ -486,14 +684,6 @@
     display: flex;
     gap: 6px;
   }
-
-  .form-error {
-    font-size: 0.75rem;
-    color: var(--danger);
-    margin: 0;
-  }
-
-  /* ── Project list ────────────────────────────────────────────────────────── */
 
   .project-list {
     list-style: none;
@@ -632,69 +822,150 @@
     border-color: var(--danger) !important;
   }
 
-  /* ── Lights section ──────────────────────────────────────────────────────── */
+  /* ── Detail body ─────────────────────────────────────────────────────────── */
 
-  .lights-section {
+  .detail-body {
     flex: 1;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    padding: 16px 24px;
-    gap: 10px;
+    gap: 0;
   }
 
-  .lights-header {
+  .detail-body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .detail-body::-webkit-scrollbar-thumb {
+    background: var(--border-accent);
+    border-radius: 3px;
+  }
+
+  /* ── Collapsible sections ────────────────────────────────────────────────── */
+
+  .detail-section {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-hdr-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    background: var(--bg-panel);
+    padding-right: 12px;
+  }
+
+  .section-hdr-row:hover > .section-hdr {
+    background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
+  }
+
+  .section-hdr {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1;
+    padding: 10px 24px;
+    background: var(--bg-panel);
+    border: none;
+    cursor: pointer;
+    user-select: none;
+    text-align: left;
+    transition: background 0.12s;
+  }
+
+  .section-hdr:hover {
+    background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
+  }
+
+
+  .section-hdr.no-toggle {
+    cursor: default;
+  }
+
+  .section-hdr.no-toggle:hover {
+    background: var(--bg-panel);
+  }
+
+  .section-chevron {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    width: 10px;
     flex-shrink: 0;
   }
 
-  .lights-title {
-    font-size: 0.82rem;
+  .section-title {
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
 
-  .lights-count {
-    font-weight: 400;
+  .section-count {
+    font-size: 0.75rem;
     color: var(--accent);
-    font-size: 0.78rem;
+    font-weight: 400;
   }
+
+  .section-spacer {
+    flex: 1;
+  }
+
+  /* Live-watch indicator */
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.7;
+    animation: pulse 2.5s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.9; }
+  }
+
+  .section-body {
+    padding: 10px 24px 14px;
+  }
+
+  /* ── File tables ─────────────────────────────────────────────────────────── */
 
   .hint {
     font-size: 0.82rem;
     color: var(--text-secondary);
     margin: 0;
+    line-height: 1.5;
   }
 
-  .frame-list-scroll {
-    flex: 1;
-    overflow-y: auto;
+  .hint code {
+    font-family: monospace;
+    color: var(--accent);
+    font-size: 0.78rem;
+  }
+
+  .file-scroll {
     border: 1px solid var(--border);
     border-radius: 5px;
+    overflow-y: auto;
+    max-height: 220px;
   }
 
-  .frame-list-scroll::-webkit-scrollbar {
+  .file-scroll::-webkit-scrollbar {
     width: 6px;
   }
-  .frame-list-scroll::-webkit-scrollbar-thumb {
+  .file-scroll::-webkit-scrollbar-thumb {
     background: var(--border-accent);
     border-radius: 3px;
   }
 
-  .frame-table {
+  .file-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.82rem;
   }
 
-  .frame-table thead th {
+  .file-table thead th {
     padding: 5px 10px;
     text-align: left;
     font-size: 0.7rem;
@@ -708,14 +979,36 @@
     top: 0;
   }
 
-  .frame-name {
+  .file-table td {
     padding: 5px 10px;
-    color: var(--text-primary);
-    font-family: monospace;
     border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
   }
 
-  /* ── Modals ──────────────────────────────────────────────────────────────── */
+  .file-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .mono-cell {
+    font-family: monospace;
+  }
+
+  .dim-cell {
+    color: var(--text-secondary) !important;
+    font-size: 0.78rem;
+  }
+
+  .col-size {
+    text-align: right;
+    width: 72px;
+  }
+
+  .col-date {
+    width: 90px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Modals (shared) ─────────────────────────────────────────────────────── */
 
   .modal-backdrop {
     position: fixed;
@@ -758,7 +1051,7 @@
     margin-top: 4px;
   }
 
-  /* ── Frame picker modal ──────────────────────────────────────────────────── */
+  /* ── Picker modal ────────────────────────────────────────────────────────── */
 
   .picker-modal {
     background: var(--bg-panel);
@@ -887,13 +1180,6 @@
     font-family: monospace;
   }
 
-  .col-obj,
-  .col-filt,
-  .col-date {
-    color: var(--text-secondary) !important;
-    font-size: 0.78rem;
-  }
-
   .picker-footer {
     padding: 10px 16px;
     border-top: 1px solid var(--border);
@@ -927,8 +1213,61 @@
     gap: 8px;
   }
 
+  /* ── Destination row (import modal) ──────────────────────────────────────── */
+
+  .dest-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.82rem;
+  }
+
+  .dest-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .dest-root {
+    color: var(--text-secondary);
+    font-family: monospace;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+
+  .dest-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: monospace;
+    font-size: 0.82rem;
+    min-width: 0;
+  }
+
+  /* ── Shared ──────────────────────────────────────────────────────────────── */
+
+  .form-error {
+    font-size: 0.75rem;
+    color: var(--danger);
+    margin: 0;
+  }
+
   .small {
     font-size: 0.75rem;
     padding: 2px 8px;
+  }
+
+  .hint.padded {
+    padding: 16px;
   }
 </style>

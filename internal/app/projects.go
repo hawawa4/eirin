@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/TaruDesigns/eirin/internal/prefs"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -126,6 +127,58 @@ func (a *App) OpenProjectInSiril(projectFolder string) error {
 		return err
 	}
 	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// ProjectOutputFile describes a file in the project root (outside lights/).
+type ProjectOutputFile struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	ModTime string `json:"modTime"`
+}
+
+// GetProjectOutputFiles lists files directly in the project root folder,
+// skipping all subdirectories (including lights/). These are the processed
+// outputs created by Siril.
+func (a *App) GetProjectOutputFiles(projectFolder string) ([]ProjectOutputFile, error) {
+	entries, err := os.ReadDir(projectFolder)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ProjectOutputFile{}, nil
+		}
+		return nil, err
+	}
+	files := make([]ProjectOutputFile, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, ProjectOutputFile{
+			Name:    e.Name(),
+			Path:    filepath.Join(projectFolder, e.Name()),
+			Size:    info.Size(),
+			ModTime: info.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+	return files, nil
+}
+
+// ImportOutputFiles copies project output files to destFolder on the NAS.
+func (a *App) ImportOutputFiles(filePaths []string, destFolder string) error {
+	if err := os.MkdirAll(destFolder, 0o750); err != nil {
+		return fmt.Errorf("creating destination: %w", err)
+	}
+	for _, src := range filePaths {
+		dst := filepath.Join(destFolder, filepath.Base(src))
+		if err := copyFileProject(src, dst); err != nil {
+			return fmt.Errorf("copying %s: %w", filepath.Base(src), err)
+		}
+	}
 	return nil
 }
 
