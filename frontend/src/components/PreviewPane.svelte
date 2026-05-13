@@ -3,7 +3,7 @@
   import { untrack } from "svelte";
   import type { app } from "../../wailsjs/go/models";
   import { GeneratePreviewRaw, ReadFITSHeader } from "../../wailsjs/go/app/App.js";
-  import { basicRows, advancedRows } from "../lib/utils";
+  import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
 
   interface Props {
     entry: app.EnrichedFileEntry;
@@ -26,6 +26,7 @@
   }: Props = $props();
 
   let statsCollapsed = $state(false);
+  let coordsCollapsed = $state(false);
 
   // ── Preview load state ───────────────────────────────────────────────────
   let previewLoading = $state(false);
@@ -468,6 +469,54 @@ void main() {
           {/each}
         {/if}
       </div>
+      {#if qualityFrame || fitsHeader?.ra}
+        <div class="meta-section">
+          <button class="meta-section-hdr" onclick={() => (coordsCollapsed = !coordsCollapsed)}>
+            <span>Coordinates</span>
+            {#if qualityFrame?.wcsSolved}
+              <span class="stats-badge">✦</span>
+            {/if}
+            <span class="meta-caret">{coordsCollapsed ? "›" : "⌄"}</span>
+          </button>
+          {#if !coordsCollapsed}
+            {#if qualityFrame?.wcsSolved}
+              <div class="meta-row">
+                <span class="meta-key">RA</span>
+                <span class="meta-val">{formatRA(qualityFrame.ra)}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Dec</span>
+                <span class="meta-val">{formatDec(qualityFrame.dec)}</span>
+              </div>
+              {#if qualityFrame.pixelScale}
+                <div class="meta-row">
+                  <span class="meta-key">Scale</span>
+                  <span class="meta-val">{qualityFrame.pixelScale.toFixed(2)} "/px</span>
+                </div>
+              {/if}
+              {#if qualityFrame.rotation}
+                <div class="meta-row">
+                  <span class="meta-key">Rotation</span>
+                  <span class="meta-val">{qualityFrame.rotation.toFixed(1)}°</span>
+                </div>
+              {/if}
+            {:else if fitsHeader?.ra}
+              <div class="meta-row">
+                <span class="meta-key">RA</span>
+                <span class="meta-val">{formatRA(fitsHeader.ra)}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Dec</span>
+                <span class="meta-val">{formatDec(fitsHeader.dec)}</span>
+              </div>
+            {:else if qualityFrame}
+              <div class="meta-row stats-hint">
+                <span class="meta-val">Not plate solved. Use <strong>✦ Analyze</strong> in the Library View.</span>
+              </div>
+            {/if}
+          {/if}
+        </div>
+      {/if}
       <div class="meta-section">
         <button class="meta-section-hdr" onclick={() => (advancedCollapsed = !advancedCollapsed)}>
           <span>Advanced</span>

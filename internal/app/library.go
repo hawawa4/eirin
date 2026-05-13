@@ -23,6 +23,13 @@ type LibraryFrame struct {
 	FileSize   int64   `json:"fileSize"`
 	IsRejected bool    `json:"isRejected"`
 
+	// Plate solve results (zero when not solved)
+	RA         float64 `json:"ra"`
+	Dec        float64 `json:"dec"`
+	PixelScale float64 `json:"pixelScale"` // arcsec/pixel
+	Rotation   float64 `json:"rotation"`   // degrees
+	WCSSolved  bool    `json:"wcsSolved"`
+
 	// Quality metrics from Siril analysis (zero-value when not yet analyzed)
 	FWHM            float64 `json:"fwhm"`
 	FWHMUnit        string  `json:"fwhmUnit"`   // "px" or "arcsec"
@@ -58,6 +65,11 @@ func (a *App) GetLibraryFrames(rootPath string) []LibraryFrame {
 			Instrument:      f.Instrument,
 			FileSize:        f.FileSize,
 			IsRejected:      f.Rejected,
+			RA:              derefFloat(f.RA),
+			Dec:             derefFloat(f.Dec),
+			PixelScale:      derefFloat(f.PixelScale),
+			Rotation:        derefFloat(f.Rotation),
+			WCSSolved:       f.WCSSolved,
 			FWHM:            derefFloat(f.FWHM),
 			FWHMUnit:        f.FWHMUnit,
 			Roundness:       derefFloat(f.Roundness),

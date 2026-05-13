@@ -218,6 +218,11 @@ export namespace app {
 	    instrument: string;
 	    fileSize: number;
 	    isRejected: boolean;
+	    ra: number;
+	    dec: number;
+	    pixelScale: number;
+	    rotation: number;
+	    wcsSolved: boolean;
 	    fwhm: number;
 	    fwhmUnit: string;
 	    roundness: number;
@@ -246,6 +251,11 @@ export namespace app {
 	        this.instrument = source["instrument"];
 	        this.fileSize = source["fileSize"];
 	        this.isRejected = source["isRejected"];
+	        this.ra = source["ra"];
+	        this.dec = source["dec"];
+	        this.pixelScale = source["pixelScale"];
+	        this.rotation = source["rotation"];
+	        this.wcsSolved = source["wcsSolved"];
 	        this.fwhm = source["fwhm"];
 	        this.fwhmUnit = source["fwhmUnit"];
 	        this.roundness = source["roundness"];
