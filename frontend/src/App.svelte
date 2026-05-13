@@ -293,6 +293,12 @@
   }
 
   // ── Library preview ───────────────────────────────────────────────────────
+  function onLibraryFramesReloaded(freshFrames: app.LibraryFrame[]) {
+    if (!librarySelectedFrame) return;
+    const updated = freshFrames.find((f) => f.nasPath === librarySelectedFrame!.nasPath);
+    if (updated) librarySelectedFrame = updated;
+  }
+
   function onLibraryFileClick(frame: app.LibraryFrame) {
     libraryPreviewPath = frame.nasPath;
     librarySelectedFrame = frame;
@@ -429,6 +435,7 @@
           {sirilAvailable}
           onfileclick={onLibraryFileClick}
           onsavecolumns={saveLibraryColumnConfig}
+          onframesreloaded={onLibraryFramesReloaded}
         />
       </div>
 

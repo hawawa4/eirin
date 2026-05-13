@@ -96,10 +96,14 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
         : "—";
     case "starCount":
       return frame.qualityAnalyzed && frame.starCount ? String(frame.starCount) : "—";
-    case "roundness":
-      return frame.qualityAnalyzed && frame.roundness ? frame.roundness.toFixed(2) : "—";
+    case "background":
+      return frame.qualityAnalyzed && frame.background
+        ? `${frame.background.toFixed(1)} ADU`
+        : "—";
+    case "noise":
+      return frame.qualityAnalyzed && frame.noise ? `${frame.noise.toFixed(2)} ADU` : "—";
     case "snr":
-      return frame.qualityAnalyzed && frame.snr ? `${frame.snr.toFixed(1)} dB` : "—";
+      return frame.qualityAnalyzed && frame.snr ? frame.snr.toFixed(1) : "—";
     default:
       return "—";
   }

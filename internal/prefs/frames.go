@@ -308,11 +308,10 @@ func (s *Store) GetAllFrameBasenames() (map[string]bool, error) {
 // FrameQuality holds quality metrics produced by Siril headless analysis.
 type FrameQuality struct {
 	FWHM       float64
-	FWHMUnit   string  // "px" or "arcsec"
-	Roundness  float64
+	FWHMUnit   string // "px" or "arcsec"
 	Background float64
 	Noise      float64
-	SNR        float64
+	SNR        float64 // derived as Background/Noise
 	StarCount  int64
 }
 
@@ -321,10 +320,10 @@ type FrameQuality struct {
 func (s *Store) UpdateFrameQuality(nasPath string, q FrameQuality) error {
 	_, err := s.db.Exec(`
 		UPDATE frames SET
-			fwhm=?, fwhm_unit=?, roundness=?, background=?, noise=?, snr=?,
+			fwhm=?, fwhm_unit=?, background=?, noise=?, snr=?,
 			star_count=?, quality_analyzed=1
 		WHERE nas_path=?
-	`, q.FWHM, q.FWHMUnit, q.Roundness, q.Background, q.Noise, q.SNR,
+	`, q.FWHM, q.FWHMUnit, q.Background, q.Noise, q.SNR,
 		q.StarCount, nasPath)
 	return err
 }

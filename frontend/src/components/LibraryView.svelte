@@ -24,9 +24,10 @@
     sirilAvailable: boolean;
     onfileclick: (frame: app.LibraryFrame) => void;
     onsavecolumns: () => void;
+    onframesreloaded?: (frames: app.LibraryFrame[]) => void;
   }
 
-  let { rootFolder, columns, selectedNasPath, sirilAvailable, onfileclick, onsavecolumns }: Props = $props();
+  let { rootFolder, columns, selectedNasPath, sirilAvailable, onfileclick, onsavecolumns, onframesreloaded }: Props = $props();
 
   // ── Data ─────────────────────────────────────────────────────────────────
   let frames = $state<app.LibraryFrame[]>([]);
@@ -55,11 +56,12 @@
 
   function sortValue(f: app.LibraryFrame, col: string): number | string {
     switch (col) {
-      case "fwhm":      return f.qualityAnalyzed ? f.fwhm      : Infinity;
-      case "starCount": return f.qualityAnalyzed ? -f.starCount : Infinity; // invert: more stars = better
-      case "roundness": return f.qualityAnalyzed ? -f.roundness : Infinity;
-      case "snr":       return f.qualityAnalyzed ? -f.snr       : Infinity;
-      case "expTime":   return -f.expTime;
+      case "fwhm":       return f.qualityAnalyzed ? f.fwhm       : Infinity;
+      case "starCount":  return f.qualityAnalyzed ? -f.starCount  : Infinity; // more = better
+      case "background": return f.qualityAnalyzed ? f.background  : Infinity;
+      case "noise":      return f.qualityAnalyzed ? f.noise       : Infinity;
+      case "snr":        return f.qualityAnalyzed ? -f.snr        : Infinity; // higher = better
+      case "expTime":    return -f.expTime;
       case "dateObs":   return f.dateObs;
       case "gain":      return f.gain;
       case "size":      return -f.fileSize;
@@ -109,6 +111,7 @@
     } finally {
       analyzingGroup = null;
       analysisProgress = null;
+      reload();
     }
   }
 
@@ -154,11 +157,12 @@
   });
 
   async function reload() {
-    if (!rootFolder) return;
+    if (!rootFolder || loading) return;
     loading = true;
     error = "";
     try {
       frames = (await GetLibraryFrames(rootFolder)) ?? [];
+      onframesreloaded?.(frames);
     } catch (e) {
       error = String(e);
       frames = [];
