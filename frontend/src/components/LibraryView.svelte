@@ -22,7 +22,7 @@
     columns: ColumnDef[];
     selectedNasPath: string | null;
     sirilAvailable: boolean;
-    onfileclick: (nasPath: string) => void;
+    onfileclick: (frame: app.LibraryFrame) => void;
     onsavecolumns: () => void;
   }
 
@@ -39,6 +39,38 @@
   let typeFilter = $state<FrameType | "all">("all");
   let search = $state("");
   let showColumnMenu = $state(false);
+
+  // ── Sort state ────────────────────────────────────────────────────────────
+  let sortCol = $state<string | null>(null);
+  let sortDir = $state<"asc" | "desc">("asc");
+
+  function toggleSort(colId: string) {
+    if (sortCol === colId) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortCol = colId;
+      sortDir = "asc";
+    }
+  }
+
+  function sortValue(f: app.LibraryFrame, col: string): number | string {
+    switch (col) {
+      case "fwhm":      return f.qualityAnalyzed ? f.fwhm      : Infinity;
+      case "starCount": return f.qualityAnalyzed ? -f.starCount : Infinity; // invert: more stars = better
+      case "roundness": return f.qualityAnalyzed ? -f.roundness : Infinity;
+      case "snr":       return f.qualityAnalyzed ? -f.snr       : Infinity;
+      case "expTime":   return -f.expTime;
+      case "dateObs":   return f.dateObs;
+      case "gain":      return f.gain;
+      case "size":      return -f.fileSize;
+      default:          return String((f as unknown as Record<string, unknown>)[col] ?? "");
+    }
+  }
+
+  // ── Quality filters ───────────────────────────────────────────────────────
+  let fwhmMax = $state(0);   // 0 = disabled
+  let starsMin = $state(0);  // 0 = disabled
+  let hideUnanalyzed = $state(false);
 
   // ── Column drag ───────────────────────────────────────────────────────────
   let dragSourceId = "";
@@ -150,6 +182,9 @@
     frames.filter((f) => {
       if (showRejected ? !f.isRejected : f.isRejected) return false;
       if (typeFilter !== "all" && f.frameType !== typeFilter) return false;
+      if (hideUnanalyzed && !f.qualityAnalyzed) return false;
+      if (fwhmMax > 0 && f.qualityAnalyzed && f.fwhm > fwhmMax) return false;
+      if (starsMin > 0 && f.qualityAnalyzed && f.starCount < starsMin) return false;
       if (!search) return true;
       const q = search.toLowerCase();
       return (
@@ -160,13 +195,26 @@
     }),
   );
 
+  let sorted = $derived(
+    sortCol
+      ? [...filtered].sort((a, b) => {
+          const av = sortValue(a, sortCol!);
+          const bv = sortValue(b, sortCol!);
+          const mul = sortDir === "asc" ? 1 : -1;
+          if (av < bv) return -1 * mul;
+          if (av > bv) return 1 * mul;
+          return 0;
+        })
+      : filtered,
+  );
+
   interface LibGroup {
     key: string;
     label: string;
     frames: app.LibraryFrame[];
   }
 
-  let groups = $derived<LibGroup[]>(buildGroups(filtered));
+  let groups = $derived<LibGroup[]>(buildGroups(sorted));
 
   function buildGroups(items: app.LibraryFrame[]): LibGroup[] {
     const map = new Map<string, app.LibraryFrame[]>();
@@ -398,12 +446,29 @@
   <div class="toolbar-right">
     <button class="tool-btn" onclick={expandAll} title="Expand all groups">⊞</button>
     <button class="tool-btn" onclick={collapseAll} title="Collapse all groups">⊟</button>
+    {#if sortCol}
+      <button class="tool-btn sort-clear" onclick={() => { sortCol = null; }} title="Clear sort">
+        ✕ sort
+      </button>
+    {/if}
     <select class="type-filter" bind:value={typeFilter}>
       <option value="all">All types</option>
       {#each Object.entries(FRAME_TYPE_META) as [val, meta]}
         <option value={val}>{meta.label}</option>
       {/each}
     </select>
+    <div class="quality-filters" title="Quality filters (only apply to analyzed frames)">
+      <span class="qf-label">FWHM≤</span>
+      <input class="qf-input" type="number" min="0" step="0.1" placeholder="—"
+        bind:value={fwhmMax} title="Hide frames with FWHM above this value (0 = off)" />
+      <span class="qf-label">Stars≥</span>
+      <input class="qf-input" type="number" min="0" step="1" placeholder="—"
+        bind:value={starsMin} title="Hide frames with fewer stars (0 = off)" />
+      <label class="qf-check" title="Hide frames that have not been analyzed">
+        <input type="checkbox" bind:checked={hideUnanalyzed} />
+        <span>Analyzed</span>
+      </label>
+    </div>
     <input class="search-input" type="search" placeholder="Search…" bind:value={search} />
     <div class="column-selector" id="lib-col-menu-root">
       <button
@@ -455,7 +520,9 @@
           {#each visibleColumns as col, i (col.id)}
             <th
               class:drag-over={dragOverIndex === i}
+              class:sorted={sortCol === col.id}
               draggable={col.id !== "frameType" && col.id !== "name"}
+              onclick={() => toggleSort(col.id)}
               ondragstart={(e) => onColDragStart(e, i)}
               ondragover={(e) => onColDragOver(e, i)}
               ondrop={(e) => onColDrop(e, i)}
@@ -465,9 +532,12 @@
               }}
             >
               <span class="th-text">{col.label}</span>
+              {#if sortCol === col.id}
+                <span class="sort-indicator">{sortDir === "asc" ? "▲" : "▼"}</span>
+              {/if}
               <span
                 class="resize-handle"
-                onmousedown={(e) => startColResize(e, col.id)}
+                onmousedown={(e) => { startColResize(e, col.id); }}
                 role="separator"
                 aria-label="Resize column"
               ></span>
@@ -480,6 +550,7 @@
           <!-- Group header row -->
           <tr class="group-header-row" onclick={() => toggleGroup(group.key)}>
             <td colspan={visibleColumns.length}>
+              <div class="group-hdr-inner">
               <span class="group-chevron">{expandedGroups.has(group.key) ? "▼" : "▶"}</span>
               <span class="group-label">{group.label}</span>
               <span class="group-count"
@@ -516,6 +587,7 @@
                   >✦ Analyze</button>
                 {/if}
               {/if}
+              </div>
             </td>
           </tr>
 
@@ -525,7 +597,7 @@
             <tr
               class="frame-row"
               class:selected={selectedNasPath === frame.nasPath}
-              onclick={() => onfileclick(frame.nasPath)}
+              onclick={() => onfileclick(frame)}
               oncontextmenu={(e) => openCtxMenu(e, frame)}
             >
               {#each visibleColumns as col (col.id)}
@@ -723,6 +795,62 @@
     border-color: var(--accent);
   }
 
+  .sort-clear {
+    color: var(--accent);
+    border-color: var(--accent);
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  .quality-filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-left: 1px solid var(--border);
+    padding-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .qf-label {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .qf-input {
+    width: 52px;
+    font-size: 0.78rem;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-primary);
+    padding: 2px 5px;
+    outline: none;
+  }
+  .qf-input:focus { border-color: var(--accent); }
+
+  .qf-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .sort-indicator {
+    font-size: 0.55rem;
+    color: var(--accent);
+    margin-left: 3px;
+    flex-shrink: 0;
+  }
+
+  th.sorted .th-text {
+    color: var(--accent);
+  }
+
   .column-selector {
     position: relative;
     flex-shrink: 0;
@@ -862,8 +990,12 @@
     border-top: 1px solid var(--border-accent);
     border-bottom: 1px solid var(--border-accent);
     padding: 4px 10px;
+  }
+
+  .group-hdr-inner {
     display: flex;
     align-items: center;
+    width: 100%;
   }
 
   .group-chevron {
