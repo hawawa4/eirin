@@ -371,6 +371,7 @@ export namespace prefs {
 	    libraryColumnConfig: string;
 	    sirilPath: string;
 	    projectsFolder: string;
+	    theme: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Prefs(source);
@@ -387,6 +388,7 @@ export namespace prefs {
 	        this.libraryColumnConfig = source["libraryColumnConfig"];
 	        this.sirilPath = source["sirilPath"];
 	        this.projectsFolder = source["projectsFolder"];
+	        this.theme = source["theme"];
 	    }
 	}
 

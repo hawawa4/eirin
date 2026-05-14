@@ -339,7 +339,7 @@
         <div class="detail-actions">
           <button class="btn-primary" onclick={doOpenInSiril}>Open in Siril</button>
           <button
-            class="btn-ghost danger-btn"
+            class="btn-ghost danger"
             onclick={() => (confirmDelete = selected)}
             title="Remove from list — does not delete files"
           >Remove</button>
@@ -815,11 +815,6 @@
     gap: 8px;
     flex-shrink: 0;
     align-items: flex-start;
-  }
-
-  .danger-btn {
-    color: var(--danger) !important;
-    border-color: var(--danger) !important;
   }
 
   /* ── Detail body ─────────────────────────────────────────────────────────── */
