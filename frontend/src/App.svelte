@@ -27,6 +27,7 @@
     type CtxMenuState,
     type IndexProgress,
     type SirilInfo,
+    type Theme,
   } from "./lib/types";
   import { isFits } from "./lib/utils";
   import AppHeader from "./components/AppHeader.svelte";
@@ -49,9 +50,13 @@
   const PREF_STRETCH_LEVEL = "stretch_level";
   const PREF_COLUMN_CONFIG = "column_config";
   const PREF_LIBRARY_COLUMN_CONFIG = "library_column_config";
+  const PREF_THEME = "theme";
 
   // ── App mode ──────────────────────────────────────────────────────────────
   let appMode = $state<AppMode>("browser");
+
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  let theme = $state<Theme>("blue");
 
   // ── File browser state ────────────────────────────────────────────────────
   let rootFolder = $state("");
@@ -128,6 +133,7 @@
     stretchLevel = p.stretchLevel;
     basicCollapsed = p.basicCollapsed;
     advancedCollapsed = p.advancedCollapsed;
+    if (p.theme === "red" || p.theme === "grey") theme = p.theme;
 
     if (p.columnConfig) {
       try {
@@ -166,6 +172,15 @@
         if (appMode === "library") setTimeout(() => libraryView?.reload(), 400);
       }
     });
+  });
+
+  $effect(() => {
+    if (theme === "blue") {
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      document.documentElement.setAttribute("data-theme", theme);
+    }
+    if (prefsLoaded) SetPref(PREF_THEME, theme);
   });
 
   $effect(() => {
@@ -354,9 +369,13 @@
   <AppHeader
     {rootFolder}
     {appMode}
+    {theme}
     onmodechange={(m) => {
       appMode = m;
       clearPreview();
+    }}
+    onthemechange={(t) => {
+      theme = t;
     }}
   />
 

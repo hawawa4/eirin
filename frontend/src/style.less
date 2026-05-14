@@ -15,6 +15,40 @@
   --success: #5cb8a0;
 }
 
+[data-theme="red"] {
+  --bg-base: #130c0c;
+  --bg-panel: #1c1111;
+  --bg-row: #221515;
+  --bg-row-hover: #2e1c1c;
+  --bg-row-dir: #281919;
+  --accent: #e07060;
+  --accent-dim: #6b2a24;
+  --text-primary: #f0e0de;
+  --text-secondary: #ae8a88;
+  --text-dim: #6b3d3b;
+  --border: #2c1818;
+  --border-accent: #5a2c2c;
+  --danger: #e05c7e;
+  --success: #5cb8a0;
+}
+
+[data-theme="grey"] {
+  --bg-base: #111115;
+  --bg-panel: #18181e;
+  --bg-row: #1d1d24;
+  --bg-row-hover: #252530;
+  --bg-row-dir: #21212b;
+  --accent: #9ba4b8;
+  --accent-dim: #44495a;
+  --text-primary: #e4e4ec;
+  --text-secondary: #848490;
+  --text-dim: #4a4a56;
+  --border: #25252e;
+  --border-accent: #363644;
+  --danger: #e05c7e;
+  --success: #5cb8a0;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -113,6 +147,36 @@ body {
 .btn-icon:disabled {
   opacity: 0.3;
   cursor: default;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 13px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+.btn-ghost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn-ghost.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.btn-ghost.danger:hover:not(:disabled) {
+  opacity: 0.8;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .btn-danger {

@@ -775,14 +775,23 @@
   /* ── Right side toolbar ──────────────────────────────────────────────────── */
 
   .type-filter {
+    appearance: none;
+    -webkit-appearance: none;
     font-size: 0.78rem;
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-primary);
-    padding: 2px 6px;
+    padding: 2px 20px 2px 6px;
     cursor: pointer;
-    max-width: 100px;
+    max-width: 110px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+  }
+  .type-filter option {
+    background: var(--bg-panel);
+    color: var(--text-primary);
   }
 
   .search-input {
@@ -1170,7 +1179,7 @@
   .type-select {
     appearance: none;
     -webkit-appearance: none;
-    border: none;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 3px;
     font-size: 0.68rem;
     font-weight: 600;
@@ -1180,6 +1189,11 @@
     width: 100%;
     text-align: center;
     outline: none;
+    transition: border-color 0.12s;
+  }
+
+  .type-select:hover {
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .type-select option {
