@@ -9,6 +9,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// EnvDBPath is the environment variable that overrides the default database path.
+// Set it to a custom file path to redirect the database away from the platform
+// config directory — used in tests and for user-configurable storage locations.
+const EnvDBPath = "EIRIN_DB_PATH"
+
 // Store is the SQLite-backed preference and frame repository.
 type Store struct {
 	db   *sql.DB
@@ -19,20 +24,27 @@ type Store struct {
 // DBPath returns the filesystem path of the SQLite database file.
 func (s *Store) DBPath() string { return s.path }
 
-// NewStore opens (or creates) the SQLite database in the platform config dir
-// ($XDG_CONFIG_HOME/eirin/prefs.db on Linux, ~/Library/… on macOS, etc.).
+// NewStore opens (or creates) the SQLite database. If the EIRIN_DB_PATH
+// environment variable is set, it is used as the path; otherwise the platform
+// config directory ($XDG_CONFIG_HOME/eirin/prefs.db on Linux, etc.) is used.
 func NewStore() (*Store, error) {
+	if path := os.Getenv(EnvDBPath); path != "" {
+		return NewStoreAt(path)
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = "."
 	}
-	dir = filepath.Join(dir, "eirin")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	return NewStoreAt(filepath.Join(dir, "eirin", "prefs.db"))
+}
+
+// NewStoreAt opens (or creates) a SQLite database at an explicit path.
+// The parent directory is created automatically when it does not exist.
+func NewStoreAt(path string) (*Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err
 	}
-
-	dbPath := filepath.Join(dir, "prefs.db")
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +56,7 @@ func NewStore() (*Store, error) {
 	}
 
 	qb := sq.StatementBuilder.PlaceholderFormat(sq.Question)
-	return &Store{db: db, qb: qb, path: dbPath}, nil
+	return &Store{db: db, qb: qb, path: path}, nil
 }
 
 // Close releases the database connection.
