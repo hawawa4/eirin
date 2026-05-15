@@ -21,6 +21,10 @@ build-frontend:
 build-backend:
     go build ./
 
+# Run Go unit tests
+test:
+    go test ./internal/...
+
 # Type-check Go and TypeScript without producing binaries
 check:
     go build ./...
