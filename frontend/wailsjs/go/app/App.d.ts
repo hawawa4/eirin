@@ -53,7 +53,7 @@ export function ReadFITSHeader(arg1:string):Promise<app.FITSHeader>;
 
 export function RejectFile(arg1:string):Promise<void>;
 
-export function ScanImportCandidates(arg1:string):Promise<Array<app.ImportCandidate>>;
+export function ScanImportCandidates(arg1:string,arg2:Array<string>):Promise<Array<app.ImportCandidate>>;
 
 export function SelectProjectsFolder():Promise<string>;
 
@@ -71,6 +71,6 @@ export function SetProjectsFolder(arg1:string):Promise<void>;
 
 export function SetSirilPath(arg1:string):Promise<void>;
 
-export function StartImport(arg1:string):Promise<void>;
+export function StartImport(arg1:string,arg2:Array<string>,arg3:boolean):Promise<void>;
 
 export function UnrejectFile(arg1:string):Promise<void>;

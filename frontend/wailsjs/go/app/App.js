@@ -102,8 +102,8 @@ export function RejectFile(arg1) {
   return window['go']['app']['App']['RejectFile'](arg1);
 }
 
-export function ScanImportCandidates(arg1) {
-  return window['go']['app']['App']['ScanImportCandidates'](arg1);
+export function ScanImportCandidates(arg1, arg2) {
+  return window['go']['app']['App']['ScanImportCandidates'](arg1, arg2);
 }
 
 export function SelectProjectsFolder() {
@@ -138,8 +138,8 @@ export function SetSirilPath(arg1) {
   return window['go']['app']['App']['SetSirilPath'](arg1);
 }
 
-export function StartImport(arg1) {
-  return window['go']['app']['App']['StartImport'](arg1);
+export function StartImport(arg1, arg2, arg3) {
+  return window['go']['app']['App']['StartImport'](arg1, arg2, arg3);
 }
 
 export function UnrejectFile(arg1) {

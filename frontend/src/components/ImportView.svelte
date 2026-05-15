@@ -21,6 +21,30 @@
   let errorMsg = $state("");
   let collapsed = $state(new Set<string>());
 
+  // ── Import options ────────────────────────────────────────────────────────
+
+  const FORMAT_GROUPS: { key: string; label: string; exts: string[] }[] = [
+    { key: "fits", label: "FITS",  exts: ["fit", "fits"] },
+    { key: "png",  label: "PNG",   exts: ["png"] },
+    { key: "jpeg", label: "JPEG",  exts: ["jpg", "jpeg"] },
+    { key: "tiff", label: "TIFF",  exts: ["tif", "tiff"] },
+  ];
+
+  let selectedFormats = $state(new Set<string>(["fits"]));
+  let deleteAfterCopy = $state(false);
+
+  let extensions = $derived(
+    FORMAT_GROUPS.filter((g) => selectedFormats.has(g.key)).flatMap((g) => g.exts),
+  );
+
+  function toggleFormat(key: string) {
+    const next = new Set(selectedFormats);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    selectedFormats = next;
+    if (phase === "scanned") scan();
+  }
+
   // ── Tree building ─────────────────────────────────────────────────────────
 
   interface FolderNode {
@@ -126,7 +150,7 @@
     phase = "scanning";
     errorMsg = "";
     try {
-      const result = await ScanImportCandidates(sourceFolder);
+      const result = await ScanImportCandidates(sourceFolder, extensions);
       candidates = result ?? [];
       phase = "scanned";
     } catch (e) {
@@ -139,7 +163,7 @@
     phase = "importing";
     progress = null;
     try {
-      await StartImport(sourceFolder);
+      await StartImport(sourceFolder, extensions, deleteAfterCopy);
     } catch (e) {
       errorMsg = String(e);
       phase = "error";
@@ -194,7 +218,20 @@
         Select a source folder to find files not yet in your library and copy them to
         <strong>{rootFolder}</strong>
       </p>
-      <button class="btn-primary btn-large" onclick={selectSource}>Select Source Folder</button>
+      <div class="format-row">
+        <span class="format-label">Import:</span>
+        {#each FORMAT_GROUPS as g}
+          <button
+            class="fmt-btn"
+            class:active={selectedFormats.has(g.key)}
+            onclick={() => toggleFormat(g.key)}
+          >{g.label}</button>
+        {/each}
+      </div>
+      <button
+        class="btn-primary btn-large"
+        disabled={selectedFormats.size === 0}
+        onclick={selectSource}>Select Source Folder</button>
       {#if errorMsg}
         <p class="error-msg">{errorMsg}</p>
       {/if}
@@ -208,22 +245,39 @@
   {:else if phase === "scanned"}
     <div class="scanned-panel">
       <div class="scan-header">
-        <div class="source-info">
-          <span class="source-label">Source:</span>
-          <span class="source-path" title={sourceFolder}>{sourceFolder}</span>
+        <div class="scan-header-row">
+          <div class="source-info">
+            <span class="source-label">Source:</span>
+            <span class="source-path" title={sourceFolder}>{sourceFolder}</span>
+          </div>
+          <div class="scan-actions">
+            {#if candidates.length > 0}
+              <button class="btn-ghost" onclick={expandAll} title="Expand all folders">⊞</button>
+              <button class="btn-ghost" onclick={collapseAll} title="Collapse all folders">⊟</button>
+            {/if}
+            <button class="btn-secondary" onclick={selectSource}>Change Folder</button>
+            {#if candidates.length > 0}
+              <button class="btn-primary" class:btn-danger={deleteAfterCopy} onclick={startImport}>
+                Import {candidates.length}
+                {candidates.length === 1 ? "file" : "files"}
+              </button>
+            {/if}
+          </div>
         </div>
-        <div class="scan-actions">
-          {#if candidates.length > 0}
-            <button class="btn-ghost" onclick={expandAll} title="Expand all folders">⊞</button>
-            <button class="btn-ghost" onclick={collapseAll} title="Collapse all folders">⊟</button>
-          {/if}
-          <button class="btn-secondary" onclick={selectSource}>Change Folder</button>
-          {#if candidates.length > 0}
-            <button class="btn-primary" onclick={startImport}>
-              Import {candidates.length}
-              {candidates.length === 1 ? "file" : "files"}
-            </button>
-          {/if}
+        <div class="scan-options">
+          <span class="format-label">Formats:</span>
+          {#each FORMAT_GROUPS as g}
+            <button
+              class="fmt-btn"
+              class:active={selectedFormats.has(g.key)}
+              onclick={() => toggleFormat(g.key)}
+            >{g.label}</button>
+          {/each}
+          <div class="opt-sep"></div>
+          <label class="delete-toggle" class:delete-active={deleteAfterCopy}>
+            <input type="checkbox" bind:checked={deleteAfterCopy} />
+            Delete from source after copying
+          </label>
         </div>
       </div>
 
@@ -409,13 +463,19 @@
 
   .scan-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
+    flex-direction: column;
+    padding: 8px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-panel);
-    gap: 12px;
+    gap: 6px;
     flex-shrink: 0;
+  }
+
+  .scan-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
 
   .source-info {
@@ -445,6 +505,79 @@
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
+  }
+
+  /* ── Format + options row ────────────────────────────────────────────────── */
+
+  .format-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .scan-options {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .format-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .fmt-btn {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .fmt-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+  .fmt-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .opt-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    margin: 0 4px;
+    flex-shrink: 0;
+  }
+
+  .delete-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .delete-toggle input {
+    accent-color: var(--danger);
+    cursor: pointer;
+  }
+  .delete-toggle.delete-active {
+    color: var(--danger);
+  }
+
+  .btn-danger {
+    background: var(--danger) !important;
+    border-color: var(--danger) !important;
   }
 
   .candidate-meta {
