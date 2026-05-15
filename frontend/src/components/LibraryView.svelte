@@ -100,14 +100,14 @@
   });
 
   async function analyzeGroup(group: LibGroup) {
-    const lightPaths = group.frames
-      .filter((f) => f.frameType === "light")
+    const paths = group.frames
+      .filter((f) => !f.qualityAnalyzed)
       .map((f) => f.nasPath);
-    if (!lightPaths.length) return;
+    if (!paths.length) return;
     analyzingGroup = group.key;
     analysisProgress = null;
     try {
-      await AnalyzeFrames(lightPaths);
+      await AnalyzeFrames(paths);
     } finally {
       analyzingGroup = null;
       analysisProgress = null;
@@ -270,8 +270,8 @@
 
   const TYPE_ORDER = ["light", "stacked", "processed", "flat", "dark", "bias"];
 
-  function lightPaths(group: LibGroup): string[] {
-    return group.frames.filter((f) => f.frameType === "light").map((f) => f.nasPath);
+  function unanalyzedPaths(group: LibGroup): string[] {
+    return group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
   }
 
   function groupTypeBreakdown(frames: app.LibraryFrame[]) {
@@ -571,10 +571,10 @@
                 <span class="quality-dot" title="Quality data available">✦</span>
               {/if}
               <span class="group-spacer"></span>
-              {#if sirilAvailable && group.frames.some((f) => f.frameType === "light")}
+              {#if sirilAvailable && group.frames.some((f) => !f.qualityAnalyzed)}
                 {#if analyzingGroup === group.key}
                   <span class="analysis-status">
-                    ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ?? lightPaths(group).length}
+                    ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ?? unanalyzedPaths(group).length}
                     {#if analysisProgress?.current}· {analysisProgress.current}{/if}
                   </span>
                   <button
