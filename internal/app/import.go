@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/TaruDesigns/eirin/internal/prefs"
@@ -42,10 +43,29 @@ func (a *App) SelectSourceFolder() (string, error) {
 	return path, nil
 }
 
-// ScanImportCandidates walks sourceFolder and returns all files whose basename
-// does not already appear in the frames database. The destination path is
-// flattened: nasRoot/immediateParentDir/filename (one level of subdirectory).
-func (a *App) ScanImportCandidates(sourceFolder string) ([]ImportCandidate, error) {
+// matchesExtensions reports whether name has one of the given extensions
+// (case-insensitive, without leading dot). An empty slice matches everything.
+func matchesExtensions(name string, exts []string) bool {
+	if len(exts) == 0 {
+		return true
+	}
+	lower := strings.ToLower(filepath.Ext(name))
+	if lower != "" {
+		lower = lower[1:] // strip leading dot
+	}
+	for _, e := range exts {
+		if lower == strings.ToLower(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// ScanImportCandidates walks sourceFolder and returns files whose basename does
+// not already appear in the frames database. extensions limits which file types
+// are included (e.g. ["fit","fits","png"]); an empty slice includes everything.
+// The destination path is flattened: nasRoot/immediateParentDir/filename.
+func (a *App) ScanImportCandidates(sourceFolder string, extensions []string) ([]ImportCandidate, error) {
 	nasRoot := a.prefs.Load().RootFolder
 	if nasRoot == "" {
 		return nil, fmt.Errorf("no NAS root folder configured")
@@ -59,6 +79,9 @@ func (a *App) ScanImportCandidates(sourceFolder string) ([]ImportCandidate, erro
 	var candidates []ImportCandidate
 	err = filepath.Walk(sourceFolder, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !matchesExtensions(info.Name(), extensions) {
 			return nil
 		}
 		if known[info.Name()] {
@@ -91,19 +114,21 @@ func (a *App) ScanImportCandidates(sourceFolder string) ([]ImportCandidate, erro
 	return candidates, nil
 }
 
-// StartImport re-scans sourceFolder, then copies all new files to the NAS
-// root in a background goroutine. FITS files are indexed into the database
-// immediately after being copied. Progress is reported via "import:progress" events.
-func (a *App) StartImport(sourceFolder string) error {
-	candidates, err := a.ScanImportCandidates(sourceFolder)
+// StartImport re-scans sourceFolder, then copies qualifying files to the NAS
+// root in a background goroutine. extensions filters by file type (empty = all).
+// When deleteAfterCopy is true, each source file is removed after a successful copy.
+// FITS files are indexed into the database immediately after being copied.
+// Progress is reported via "import:progress" events.
+func (a *App) StartImport(sourceFolder string, extensions []string, deleteAfterCopy bool) error {
+	candidates, err := a.ScanImportCandidates(sourceFolder, extensions)
 	if err != nil {
 		return err
 	}
-	go a.runImport(candidates)
+	go a.runImport(candidates, deleteAfterCopy)
 	return nil
 }
 
-func (a *App) runImport(candidates []ImportCandidate) {
+func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 	total := len(candidates)
 	copied, skipped := 0, 0
 
@@ -133,6 +158,11 @@ func (a *App) runImport(candidates []ImportCandidate) {
 		} else {
 			copied++
 			a.indexImportedFile(c)
+			if deleteAfterCopy {
+				if rmErr := os.Remove(c.SourcePath); rmErr != nil {
+					runtime.LogWarningf(a.ctx, "import: delete source %s: %v", c.RelativePath, rmErr)
+				}
+			}
 		}
 	}
 
