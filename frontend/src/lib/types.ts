@@ -29,6 +29,7 @@ export interface CtxEntry {
   path: string;
   name: string;
   isRejected: boolean;
+  frameType: string;
 }
 
 export interface CtxMenuState {
@@ -108,6 +109,15 @@ export interface LibraryGroup {
   label: string;
   frames: app.LibraryFrame[];
 }
+
+export const FRAME_TYPE_META: Record<string, { label: string; short: string; color: string; bg: string }> = {
+  light:     { label: "Light",     short: "LIGHT", color: "#60a5fa", bg: "#1e3a5f" },
+  dark:      { label: "Dark",      short: "DARK",  color: "#94a3b8", bg: "#1e2a3a" },
+  flat:      { label: "Flat",      short: "FLAT",  color: "#fbbf24", bg: "#3d2a00" },
+  bias:      { label: "Bias",      short: "BIAS",  color: "#a78bfa", bg: "#2d1f4a" },
+  stacked:   { label: "Stacked",   short: "STACK", color: "#34d399", bg: "#0d3a2a" },
+  processed: { label: "Processed", short: "PROC",  color: "#f59e0b", bg: "#3d2d00" },
+};
 
 export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [
   { id: "frameType", label: "Type", visible: true, width: 70, order: 0 },

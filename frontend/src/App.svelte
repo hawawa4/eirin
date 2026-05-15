@@ -404,7 +404,12 @@
           {loading}
           onfileclick={onRowClick}
           oncontextmenu={(x, y, entry) => {
-            ctxMenu = { x, y, entry, sirilAvailable };
+            ctxMenu = {
+              x,
+              y,
+              entry: { path: entry.path, name: entry.name, isRejected: false, frameType: "" },
+              sirilAvailable,
+            };
           }}
           onsavecolumns={saveColumnConfig}
           onfilteredcountchange={(n) => {
@@ -511,6 +516,7 @@
     onrestore={restoreFile}
     onharddelete={openHardDeleteConfirm}
     onopensiril={doOpenWithSiril}
+    onchangetype={() => {}}
   />
 {/if}
 

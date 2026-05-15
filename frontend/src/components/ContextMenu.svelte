@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CtxEntry, CtxMenuState } from "../lib/types";
+  import { FRAME_TYPE_META } from "../lib/types";
 
   interface Props {
     menu: CtxMenuState;
@@ -8,9 +9,10 @@
     onrestore: (entry: CtxEntry) => void;
     onharddelete: (entry: CtxEntry) => void;
     onopensiril: (entry: CtxEntry) => void;
+    onchangetype: (entry: CtxEntry, newType: string) => void;
   }
 
-  let { menu, onclose, onreject, onrestore, onharddelete, onopensiril }: Props = $props();
+  let { menu, onclose, onreject, onrestore, onharddelete, onopensiril, onchangetype }: Props = $props();
 
   $effect(() => {
     function onDoc(e: MouseEvent) {
@@ -32,6 +34,19 @@
   >
     Open with Siril
   </button>
+  <div class="ctx-sep"></div>
+  <span class="ctx-label">Set type</span>
+  {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
+    <button
+      class="ctx-item ctx-type-item"
+      class:ctx-type-current={menu.entry.frameType === type}
+      onclick={() => { onchangetype(menu.entry, type); onclose(); }}
+    >
+      <span class="ctx-type-dot" style="color:{meta.color}">●</span>
+      {meta.label}
+      {#if menu.entry.frameType === type}<span class="ctx-type-check">✓</span>{/if}
+    </button>
+  {/each}
   <div class="ctx-sep"></div>
   {#if menu.entry.isRejected}
     <button class="ctx-item" onclick={() => onrestore(menu.entry)}>Restore</button>
@@ -98,5 +113,39 @@
     height: 1px;
     background: var(--border);
     margin: 3px 0;
+  }
+
+  :global(.ctx-label) {
+    display: block;
+    padding: 3px 14px 1px;
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    opacity: 0.65;
+  }
+
+  :global(.ctx-type-item) {
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+  }
+
+  :global(.ctx-type-dot) {
+    font-size: 0.55rem;
+    flex-shrink: 0;
+  }
+
+  :global(.ctx-type-current) {
+    background: var(--accent-dim);
+    color: var(--text-primary) !important;
+  }
+
+  :global(.ctx-type-check) {
+    margin-left: auto;
+    color: var(--accent);
+    font-size: 0.8rem;
   }
 </style>

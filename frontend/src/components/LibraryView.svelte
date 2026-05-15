@@ -13,6 +13,7 @@
   import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import type { app } from "../../wailsjs/go/models";
   import type { AnalysisProgress, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy } from "../lib/types";
+  import { FRAME_TYPE_META } from "../lib/types";
   import { getLibraryCellValue } from "../lib/utils";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
@@ -37,7 +38,6 @@
   // ── Toolbar state ─────────────────────────────────────────────────────────
   let showRejected = $state(false);
   let groupBy = $state<LibraryGroupBy>("object");
-  let typeFilter = $state<FrameType | "all">("all");
   let search = $state("");
   let showColumnMenu = $state(false);
 
@@ -51,6 +51,96 @@
     } else {
       sortCol = colId;
       sortDir = "asc";
+    }
+  }
+
+  // ── Column filters ────────────────────────────────────────────────────────
+  interface ColFilter {
+    text?: string;
+    numOp?: "<" | ">";
+    numVal?: number | null;
+    types?: FrameType[];
+  }
+
+  const TEXT_FILTER_COLS = new Set(["name", "object", "filter", "telescope", "instrument", "dateObs"]);
+  const NUMERIC_FILTER_COLS = new Set(["expTime", "size", "gain", "ccdTemp", "fwhm", "starCount", "background", "noise", "snr"]);
+
+  let colFilters = $state<Record<string, ColFilter>>({});
+  let typeFilterPos = $state<{ x: number; y: number } | null>(null);
+
+  function getColFilterActive(colId: string): boolean {
+    const cf = colFilters[colId];
+    if (!cf) return false;
+    if (colId === "frameType") return (cf.types?.length ?? 0) > 0;
+    if (TEXT_FILTER_COLS.has(colId)) return !!(cf.text);
+    if (NUMERIC_FILTER_COLS.has(colId)) return cf.numOp != null && cf.numVal != null;
+    return false;
+  }
+
+  let anyColFilterActive = $derived(Object.keys(colFilters).some((k) => getColFilterActive(k)));
+
+  function clearColFilters() {
+    colFilters = {};
+    typeFilterPos = null;
+  }
+
+  function clearAllFilters() {
+    clearColFilters();
+    search = "";
+  }
+
+  const textDebounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+  function setTextFilter(colId: string, text: string) {
+    colFilters = { ...colFilters, [colId]: { ...colFilters[colId], text: text || undefined } };
+  }
+
+  function setTextFilterDebounced(colId: string, text: string) {
+    clearTimeout(textDebounceTimers[colId]);
+    textDebounceTimers[colId] = setTimeout(() => setTextFilter(colId, text), 100);
+  }
+
+  function setNumFilter(colId: string, val: number | null) {
+    const op = colFilters[colId]?.numOp ?? "<";
+    colFilters = { ...colFilters, [colId]: { ...colFilters[colId], numOp: op, numVal: val } };
+  }
+
+  function toggleNumOp(colId: string) {
+    const current = colFilters[colId]?.numOp ?? "<";
+    const newOp: "<" | ">" = current === "<" ? ">" : "<";
+    colFilters = { ...colFilters, [colId]: { ...colFilters[colId], numOp: newOp } };
+  }
+
+  function toggleTypeFilter(type: FrameType) {
+    const current = colFilters["frameType"]?.types ?? [];
+    const next = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
+    colFilters = { ...colFilters, frameType: { ...colFilters["frameType"], types: next } };
+  }
+
+  function getFrameTextVal(f: app.LibraryFrame, colId: string): string {
+    switch (colId) {
+      case "name":       return f.fileName;
+      case "object":     return f.object;
+      case "filter":     return f.filter;
+      case "telescope":  return f.telescope;
+      case "instrument": return f.instrument;
+      case "dateObs":    return f.dateObs;
+      default:           return "";
+    }
+  }
+
+  function getFrameNumVal(f: app.LibraryFrame, colId: string): number | null {
+    switch (colId) {
+      case "expTime":    return f.expTime;
+      case "size":       return f.fileSize;
+      case "gain":       return f.gain;
+      case "ccdTemp":    return f.ccdTemp;
+      case "fwhm":       return f.qualityAnalyzed ? f.fwhm : null;
+      case "starCount":  return f.qualityAnalyzed ? f.starCount : null;
+      case "background": return f.qualityAnalyzed ? f.background : null;
+      case "noise":      return f.qualityAnalyzed ? f.noise : null;
+      case "snr":        return f.qualityAnalyzed ? f.snr : null;
+      default:           return null;
     }
   }
 
@@ -68,11 +158,6 @@
       default:          return String((f as unknown as Record<string, unknown>)[col] ?? "");
     }
   }
-
-  // ── Quality filters ───────────────────────────────────────────────────────
-  let fwhmMax = $state(0);   // 0 = disabled
-  let starsMin = $state(0);  // 0 = disabled
-  let hideUnanalyzed = $state(false);
 
   // ── Column drag ───────────────────────────────────────────────────────────
   let dragSourceId = "";
@@ -140,17 +225,6 @@
     { value: "frameType", label: "Type" },
   ];
 
-  const FRAME_TYPE_META: Record<
-    string,
-    { label: string; short: string; color: string; bg: string }
-  > = {
-    light: { label: "Light", short: "LIGHT", color: "#60a5fa", bg: "#1e3a5f" },
-    dark: { label: "Dark", short: "DARK", color: "#94a3b8", bg: "#1e2a3a" },
-    flat: { label: "Flat", short: "FLAT", color: "#fbbf24", bg: "#3d2a00" },
-    bias: { label: "Bias", short: "BIAS", color: "#a78bfa", bg: "#2d1f4a" },
-    stacked: { label: "Stacked", short: "STACK", color: "#34d399", bg: "#0d3a2a" },
-    processed: { label: "Processed", short: "PROC", color: "#f59e0b", bg: "#3d2d00" },
-  };
 
   onMount(() => {
     reload();
@@ -185,17 +259,27 @@
   let filtered = $derived(
     frames.filter((f) => {
       if (showRejected ? !f.isRejected : f.isRejected) return false;
-      if (typeFilter !== "all" && f.frameType !== typeFilter) return false;
-      if (hideUnanalyzed && !f.qualityAnalyzed) return false;
-      if (fwhmMax > 0 && f.qualityAnalyzed && f.fwhm > fwhmMax) return false;
-      if (starsMin > 0 && f.qualityAnalyzed && f.starCount < starsMin) return false;
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return (
-        f.fileName.toLowerCase().includes(q) ||
-        f.object.toLowerCase().includes(q) ||
-        f.filter.toLowerCase().includes(q)
-      );
+      if (search) {
+        const q = search.toLowerCase();
+        if (
+          !f.fileName.toLowerCase().includes(q) &&
+          !f.object.toLowerCase().includes(q) &&
+          !f.filter.toLowerCase().includes(q)
+        ) return false;
+      }
+      for (const [colId, cf] of Object.entries(colFilters)) {
+        if (colId === "frameType") {
+          if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType)) return false;
+        } else if (TEXT_FILTER_COLS.has(colId) && cf.text) {
+          if (!getFrameTextVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase())) return false;
+        } else if (NUMERIC_FILTER_COLS.has(colId) && cf.numOp && cf.numVal != null) {
+          const val = getFrameNumVal(f, colId);
+          if (val === null) continue;
+          if (cf.numOp === "<" && val >= cf.numVal) return false;
+          if (cf.numOp === ">" && val <= cf.numVal) return false;
+        }
+      }
+      return true;
     }),
   );
 
@@ -357,6 +441,17 @@
     return () => document.removeEventListener("mousedown", onDoc);
   });
 
+  // Close type-filter popup on outside click
+  $effect(() => {
+    if (!typeFilterPos) return;
+    function onDoc(e: MouseEvent) {
+      const el = document.getElementById("type-filter-popup");
+      if (el && !el.contains(e.target as Node)) typeFilterPos = null;
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  });
+
   // ── Frame type change ─────────────────────────────────────────────────────
   async function changeFrameType(nasPath: string, newType: string, e: Event) {
     e.stopPropagation();
@@ -370,9 +465,15 @@
     ctxMenu = {
       x: e.clientX,
       y: e.clientY,
-      entry: { path: frame.nasPath, name: frame.fileName, isRejected: frame.isRejected },
+      entry: { path: frame.nasPath, name: frame.fileName, isRejected: frame.isRejected, frameType: frame.frameType },
       sirilAvailable,
     };
+  }
+
+  async function onCtxChangeType(entry: CtxEntry, newType: string) {
+    ctxMenu = null;
+    await SetFrameType(entry.path, newType);
+    frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, frameType: newType } : f));
   }
 
   async function onCtxOpenWithSiril(entry: CtxEntry) {
@@ -408,91 +509,70 @@
 
 <!-- ── Toolbar ───────────────────────────────────────────────────────────── -->
 <div class="toolbar">
-  <div class="toolbar-left">
-    <div class="view-tabs">
-      <button
-        class="view-tab"
-        class:active={!showRejected}
-        onclick={() => {
-          showRejected = false;
-        }}>Frames</button
-      >
-      <button
-        class="view-tab"
-        class:active={showRejected}
-        onclick={() => {
-          showRejected = true;
-        }}
-      >
-        Rejected
-        {#if rejectedCount > 0}<span class="tab-badge">{rejectedCount}</span>{/if}
-      </button>
-    </div>
-
-    {#if !showRejected}
-      <div class="group-by">
-        <span class="label">Group</span>
-        <div class="segmented">
-          {#each GROUP_BY_OPTIONS as opt}
-            <button
-              class="seg-btn"
-              class:active={groupBy === opt.value}
-              onclick={() => {
-                groupBy = opt.value;
-              }}>{opt.label}</button
-            >
-          {/each}
-        </div>
-      </div>
-    {/if}
+  <div class="view-tabs">
+    <button
+      class="view-tab"
+      class:active={!showRejected}
+      onclick={() => { showRejected = false; }}>Frames</button
+    >
+    <button
+      class="view-tab"
+      class:active={showRejected}
+      onclick={() => { showRejected = true; }}
+    >
+      Rejected
+      {#if rejectedCount > 0}<span class="tab-badge">{rejectedCount}</span>{/if}
+    </button>
   </div>
 
-  <div class="toolbar-right">
-    <button class="tool-btn" onclick={expandAll} title="Expand all groups">⊞</button>
-    <button class="tool-btn" onclick={collapseAll} title="Collapse all groups">⊟</button>
-    {#if sortCol}
-      <button class="tool-btn sort-clear" onclick={() => { sortCol = null; }} title="Clear sort">
-        ✕ sort
-      </button>
+  {#if !showRejected}
+    <div class="group-by">
+      <span class="label">Group</span>
+      <div class="segmented">
+        {#each GROUP_BY_OPTIONS as opt}
+          <button
+            class="seg-btn"
+            class:active={groupBy === opt.value}
+            onclick={() => { groupBy = opt.value; }}>{opt.label}</button
+          >
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  <div class="toolbar-sep"></div>
+
+  <button class="tool-btn" onclick={expandAll} title="Expand all groups">⊞</button>
+  <button class="tool-btn" onclick={collapseAll} title="Collapse all groups">⊟</button>
+  {#if sortCol}
+    <button class="tool-btn sort-clear" onclick={() => { sortCol = null; }} title="Clear sort">
+      ✕ sort
+    </button>
+  {/if}
+  {#if anyColFilterActive}
+    <button class="tool-btn filter-clear" onclick={clearColFilters} title="Clear all column filters">
+      ✕ filters
+    </button>
+  {/if}
+  <input class="search-input" type="search" placeholder="Search…" bind:value={search} />
+  <div class="column-selector" id="lib-col-menu-root">
+    <button
+      class="tool-btn"
+      onclick={() => (showColumnMenu = !showColumnMenu)}
+      title="Show/hide columns">Cols ▾</button
+    >
+    {#if showColumnMenu}
+      <div class="column-menu">
+        {#each [...columns].sort((a, b) => a.order - b.order) as col (col.id)}
+          {#if col.id !== "frameType" && col.id !== "name"}
+            <label class="column-menu-item">
+              <input type="checkbox" checked={col.visible} onchange={() => toggleColumn(col.id)} />
+              {col.label}
+            </label>
+          {/if}
+        {/each}
+      </div>
     {/if}
-    <select class="type-filter" bind:value={typeFilter}>
-      <option value="all">All types</option>
-      {#each Object.entries(FRAME_TYPE_META) as [val, meta]}
-        <option value={val}>{meta.label}</option>
-      {/each}
-    </select>
-    <div class="quality-filters" title="Quality filters (only apply to analyzed frames)">
-      <span class="qf-label">FWHM≤</span>
-      <input class="qf-input" type="number" min="0" step="0.1" placeholder="—"
-        bind:value={fwhmMax} title="Hide frames with FWHM above this value (0 = off)" />
-      <span class="qf-label">Stars≥</span>
-      <input class="qf-input" type="number" min="0" step="1" placeholder="—"
-        bind:value={starsMin} title="Hide frames with fewer stars (0 = off)" />
-      <label class="qf-check" title="Hide frames that have not been analyzed">
-        <input type="checkbox" bind:checked={hideUnanalyzed} />
-        <span>Analyzed</span>
-      </label>
-    </div>
-    <input class="search-input" type="search" placeholder="Search…" bind:value={search} />
-    <div class="column-selector" id="lib-col-menu-root">
-      <button
-        class="tool-btn"
-        onclick={() => (showColumnMenu = !showColumnMenu)}
-        title="Show/hide columns">Cols ▾</button
-      >
-      {#if showColumnMenu}
-        <div class="column-menu">
-          {#each [...columns].sort((a, b) => a.order - b.order) as col (col.id)}
-            {#if col.id !== "frameType" && col.id !== "name"}
-              <label class="column-menu-item">
-                <input type="checkbox" checked={col.visible} onchange={() => toggleColumn(col.id)} />
-                {col.label}
-              </label>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-    </div>
   </div>
 </div>
 
@@ -501,16 +581,6 @@
   <div class="status-row">Loading library…</div>
 {:else if error}
   <div class="status-row error">{error}</div>
-{:else if groups.length === 0}
-  <div class="status-row">
-    {#if showRejected}
-      No rejected frames.
-    {:else if frames.filter((f) => !f.isRejected).length === 0}
-      No indexed frames found. Run Build Index first.
-    {:else}
-      No frames match the current filter.
-    {/if}
-  </div>
 {:else}
   <div class="table-scroll-wrapper">
     <table class="lib-table" style="width: {Math.max(totalColWidth, 100)}px; min-width: 100%">
@@ -536,6 +606,9 @@
               }}
             >
               <span class="th-text">{col.label}</span>
+              {#if getColFilterActive(col.id)}
+                <span class="filter-indicator" title="Filter active">▽</span>
+              {/if}
               {#if sortCol === col.id}
                 <span class="sort-indicator">{sortDir === "asc" ? "▲" : "▼"}</span>
               {/if}
@@ -548,8 +621,81 @@
             </th>
           {/each}
         </tr>
+        <!-- Filter row -->
+        <tr class="filter-row">
+          {#each visibleColumns as col (col.id)}
+            <th class="filter-th">
+              {#if col.id === "frameType"}
+                <button
+                  class="filter-type-btn"
+                  class:filter-active={getColFilterActive("frameType")}
+                  onclick={(e) => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    typeFilterPos = typeFilterPos ? null : { x: rect.left, y: rect.bottom + 2 };
+                  }}
+                >
+                  {#if (colFilters.frameType?.types?.length ?? 0) > 0}
+                    {colFilters.frameType!.types!.length} ✓
+                  {:else}
+                    All ▽
+                  {/if}
+                </button>
+              {:else if TEXT_FILTER_COLS.has(col.id)}
+                <input
+                  class="filter-text"
+                  class:filter-active={getColFilterActive(col.id)}
+                  type="text"
+                  placeholder="…"
+                  value={colFilters[col.id]?.text ?? ""}
+                  oninput={(e) => setTextFilterDebounced(col.id, (e.target as HTMLInputElement).value)}
+                />
+              {:else if NUMERIC_FILTER_COLS.has(col.id)}
+                <div class="filter-num">
+                  <button
+                    class="filter-num-op"
+                    onclick={() => toggleNumOp(col.id)}
+                    title="Toggle < / >"
+                  >{colFilters[col.id]?.numOp ?? "<"}</button>
+                  <input
+                    class="filter-num-val"
+                    class:filter-active={getColFilterActive(col.id)}
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="—"
+                    value={colFilters[col.id]?.numVal ?? ""}
+                    oninput={(e) => {
+                      const v = parseFloat((e.target as HTMLInputElement).value);
+                      setNumFilter(col.id, isNaN(v) ? null : v);
+                    }}
+                  />
+                </div>
+              {/if}
+            </th>
+          {/each}
+        </tr>
       </thead>
       <tbody>
+        {#if groups.length === 0}
+          <tr class="empty-row">
+            <td colspan={visibleColumns.length}>
+              <div class="empty-msg">
+                {#if showRejected}
+                  No rejected frames.
+                {:else if frames.filter((f) => !f.isRejected).length === 0}
+                  No indexed frames found. Run Build Index first.
+                {:else}
+                  No frames match the current filter.
+                  {#if anyColFilterActive || search}
+                    <button class="btn-clear-filters-inline" onclick={clearAllFilters}>
+                      Remove filters
+                    </button>
+                  {/if}
+                {/if}
+              </div>
+            </td>
+          </tr>
+        {/if}
         {#each groups as group (group.key)}
           <!-- Group header row -->
           <tr class="group-header-row" onclick={() => toggleGroup(group.key)}>
@@ -641,6 +787,21 @@
   </div>
 {/if}
 
+{#if typeFilterPos}
+  <div class="type-filter-popup" id="type-filter-popup" style="left: {typeFilterPos.x}px; top: {typeFilterPos.y}px">
+    {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
+      <label class="filter-popup-item">
+        <input
+          type="checkbox"
+          checked={colFilters.frameType?.types?.includes(type as FrameType) ?? false}
+          onchange={() => toggleTypeFilter(type as FrameType)}
+        />
+        <span style="color:{meta.color}">{meta.label}</span>
+      </label>
+    {/each}
+  </div>
+{/if}
+
 {#if ctxMenu}
   <ContextMenu
     menu={ctxMenu}
@@ -651,6 +812,7 @@
     onrestore={onCtxRestore}
     onharddelete={onCtxHardDelete}
     onopensiril={onCtxOpenWithSiril}
+    onchangetype={onCtxChangeType}
   />
 {/if}
 
@@ -670,19 +832,20 @@
   .toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
     padding: 5px 8px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
-  .toolbar-left,
-  .toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  .toolbar-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 2px;
   }
 
   /* ── View tabs ───────────────────────────────────────────────────────────── */
@@ -774,26 +937,6 @@
 
   /* ── Right side toolbar ──────────────────────────────────────────────────── */
 
-  .type-filter {
-    appearance: none;
-    -webkit-appearance: none;
-    font-size: 0.78rem;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    padding: 2px 20px 2px 6px;
-    cursor: pointer;
-    max-width: 110px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 6px center;
-  }
-  .type-filter option {
-    background: var(--bg-panel);
-    color: var(--text-primary);
-  }
-
   .search-input {
     font-size: 0.8rem;
     background: var(--bg-base);
@@ -815,42 +958,35 @@
     white-space: nowrap;
   }
 
-  .quality-filters {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    border-left: 1px solid var(--border);
-    padding-left: 8px;
-    flex-shrink: 0;
-  }
+  /* ── Empty state inside table ────────────────────────────────────────────── */
 
-  .qf-label {
-    font-size: 0.72rem;
+  .empty-row td {
+    padding: 32px 0;
+    text-align: center;
     color: var(--text-secondary);
-    white-space: nowrap;
+    font-size: 0.875rem;
   }
 
-  .qf-input {
-    width: 52px;
+  .empty-msg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn-clear-filters-inline {
     font-size: 0.78rem;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-primary);
-    padding: 2px 5px;
-    outline: none;
-  }
-  .qf-input:focus { border-color: var(--accent); }
-
-  .qf-check {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.72rem;
-    color: var(--text-secondary);
+    padding: 4px 14px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 4px;
     cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
+    transition: background 0.12s, color 0.12s;
+  }
+  .btn-clear-filters-inline:hover {
+    background: var(--accent);
+    color: var(--bg-base);
   }
 
   .sort-indicator {
@@ -1200,5 +1336,137 @@
     background: var(--bg-panel);
     color: var(--text-primary);
     font-weight: normal;
+  }
+
+  /* ── Filter row ──────────────────────────────────────────────────────────── */
+
+  .filter-row th {
+    padding: 2px 4px;
+    background: color-mix(in srgb, var(--bg-panel) 55%, var(--bg-base) 45%);
+    border-bottom: 2px solid var(--border-accent);
+  }
+
+  .filter-text {
+    width: 100%;
+    font-size: 0.72rem;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-primary);
+    padding: 2px 4px;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .filter-text:focus,
+  .filter-text.filter-active {
+    border-color: var(--accent);
+  }
+
+  .filter-num {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .filter-num-op {
+    font-size: 0.72rem;
+    padding: 1px 4px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: monospace;
+    line-height: 1.5;
+  }
+  .filter-num-op:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .filter-num-val {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.72rem;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-primary);
+    padding: 2px 3px;
+    outline: none;
+  }
+  .filter-num-val:focus,
+  .filter-num-val.filter-active {
+    border-color: var(--accent);
+  }
+
+  .filter-type-btn {
+    font-size: 0.68rem;
+    padding: 2px 5px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .filter-type-btn.filter-active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .filter-type-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  .filter-indicator {
+    font-size: 0.5rem;
+    color: var(--accent);
+    margin-left: 2px;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
+
+  .filter-clear {
+    color: var(--accent);
+    border-color: var(--accent);
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* ── Type-filter popup (position: fixed, outside scroll wrapper) ─────────── */
+
+  .type-filter-popup {
+    position: fixed;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 5px;
+    padding: 4px 0;
+    z-index: 300;
+    min-width: 120px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  }
+
+  .filter-popup-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .filter-popup-item:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
+  .filter-popup-item input {
+    accent-color: var(--accent);
+    cursor: pointer;
   }
 </style>
