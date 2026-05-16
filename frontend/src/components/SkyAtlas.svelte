@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { app } from "../../wailsjs/go/models";
-  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog } from "../../wailsjs/go/app/App.js";
+  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog, GeneratePreview } from "../../wailsjs/go/app/App.js";
 
   interface Props {
     rootPath: string;
@@ -25,11 +25,9 @@
   let loading = $state(true);
   let loadError = $state("");
 
-  // Size cache: nasPath → pixel dimensions (plain Map, not $state — sizesVersion drives redraws)
+  // Size cache: nasPath → pixel dimensions (plain Map; sizesVersion drives redraws)
   const sizes = new Map<string, { width: number; height: number }>();
   let sizesVersion = $state(0);
-
-  // In-flight fetch tracker
   const fetchingPaths = new Set<string>();
 
   // Pan state
@@ -45,8 +43,29 @@
   let hoverY = $state(0);
   let selectedEntry = $state<app.AtlasIndexEntry | null>(null);
 
+  // Preview for selected frame
+  let previewUrl     = $state<string | null>(null);
+  let previewLoading = $state(false);
+
   let lazyTimer: ReturnType<typeof setTimeout> | null = null;
-  const LAZY_PPD = 8; // min pixPerDeg before footprint sizes are fetched
+  const LAZY_PPD = 8;
+
+  // ── Preview loading ───────────────────────────────────────────────────────
+
+  $effect(() => {
+    if (!selectedEntry) {
+      previewUrl = null;
+      previewLoading = false;
+      return;
+    }
+    const path = selectedEntry.nasPath;
+    previewLoading = true;
+    previewUrl = null;
+    GeneratePreview(path, 2)
+      .then((url) => { if (selectedEntry?.nasPath === path) previewUrl = url; })
+      .catch(() => {})
+      .finally(() => { if (selectedEntry?.nasPath === path) previewLoading = false; });
+  });
 
   // ── Projection ────────────────────────────────────────────────────────────
 
@@ -72,16 +91,13 @@
   function unproject(x: number, y: number): [number, number] {
     const xi  = (-(x - canvasW / 2) / pixPerDeg) * Math.PI / 180;
     const eta = (-(y - canvasH / 2) / pixPerDeg) * Math.PI / 180;
-
     const dec0 = viewDec * Math.PI / 180;
     const ra0  = viewRA  * Math.PI / 180;
     const rho  = Math.sqrt(xi * xi + eta * eta);
     if (rho < 1e-10) return [viewRA, viewDec];
-
     const c   = Math.atan(rho);
     const dec = Math.asin(Math.cos(c) * Math.sin(dec0) + (eta * Math.sin(c) * Math.cos(dec0)) / rho);
     const ra  = ra0 + Math.atan2(xi * Math.sin(c), rho * Math.cos(dec0) * Math.cos(c) - eta * Math.sin(dec0) * Math.sin(c));
-
     return [((ra * 180 / Math.PI) + 360) % 360, dec * 180 / Math.PI];
   }
 
@@ -96,7 +112,6 @@
     const hh = (sz.height / 2) * scaleDeg;
     const θ  = entry.rotation * Math.PI / 180;
     const cosDec = Math.cos(entry.dec * Math.PI / 180);
-
     return (
       [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]] as [number, number][]
     ).map(([dx, dy]) => {
@@ -129,24 +144,21 @@
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     ctx.clearRect(0, 0, canvasW, canvasH);
     ctx.fillStyle = "#050610";
     ctx.fillRect(0, 0, canvasW, canvasH);
-
     drawGrid(ctx);
     drawCatalog(ctx);
     drawFrames(ctx);
     drawCompass(ctx);
   }
 
-  // Draw text with a dark background rect for readability.
   function labelBg(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
     const tw = ctx.measureText(text).width;
-    const savedFill = ctx.fillStyle;
-    ctx.fillStyle = "rgba(5,6,16,0.65)";
+    const saved = ctx.fillStyle;
+    ctx.fillStyle = "rgba(5,6,16,0.7)";
     ctx.fillRect(x - 2, y - 10, tw + 4, 13);
-    ctx.fillStyle = savedFill;
+    ctx.fillStyle = saved;
     ctx.fillText(text, x, y);
   }
 
@@ -160,7 +172,6 @@
     const decStep = pixPerDeg >= 30 ? 5 : 10;
     const raStep  = pixPerDeg >= 50 ? 5 : 15;
 
-    // Dec parallels
     for (let dec = -90; dec <= 90; dec += decStep) {
       const pts: [number, number][] = [];
       for (let ra = 0; ra <= 360; ra += 2) {
@@ -174,7 +185,6 @@
       ctx.stroke();
     }
 
-    // RA meridians
     for (let ra = 0; ra < 360; ra += raStep) {
       const pts: [number, number][] = [];
       for (let dec = -85; dec <= 85; dec += 2) {
@@ -190,8 +200,8 @@
 
     ctx.setLineDash([]);
 
-    // RA labels (blue-ish) — at current Dec centre
-    ctx.fillStyle = "rgba(150,175,225,0.92)";
+    // RA labels (blue-ish) at current Dec centre
+    ctx.fillStyle = "rgba(155,180,230,0.92)";
     for (let ra = 0; ra < 360; ra += raStep) {
       const lp = project(ra, viewDec);
       if (lp && lp[0] >= 20 && lp[0] <= canvasW - 20 && lp[1] >= 14 && lp[1] <= canvasH - 4) {
@@ -199,7 +209,7 @@
       }
     }
 
-    // Dec labels (teal-ish) — at current RA centre
+    // Dec labels (teal-ish) at current RA centre
     ctx.fillStyle = "rgba(110,215,190,0.92)";
     for (let dec = -80; dec <= 80; dec += decStep) {
       const lp = project(viewRA, dec);
@@ -256,9 +266,9 @@
       const [cx, cy] = cp;
       if (cx < -100 || cx > canvasW + 100 || cy < -100 || cy > canvasH + 100) continue;
 
-      const sz = sizes.get(entry.nasPath);
-      const isSel  = entry === selectedEntry;
-      const isHov  = entry === hoveredEntry;
+      const sz   = sizes.get(entry.nasPath);
+      const isSel = entry === selectedEntry;
+      const isHov = entry === hoveredEntry;
 
       if (sz && pixPerDeg >= LAZY_PPD) {
         const corners = footprintCorners(entry, sz);
@@ -283,7 +293,6 @@
         ctx.fillText(entry.object || entry.name, cx, cy + 4);
         ctx.textAlign = "left";
       } else {
-        // Dot until size is loaded (or too zoomed out)
         const r = isSel ? 5 : isHov ? 4 : 3;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -356,9 +365,10 @@
 
     pixPerDeg = Math.max(0.3, Math.min(8000, pixPerDeg * factor));
 
+    // Keep the sky point under the cursor fixed after zoom
     const [nx, ny] = project(skyRA, skyDec) ?? [canvasW / 2, canvasH / 2];
-    viewRA  = viewRA  + (mx - nx) / pixPerDeg * (-1) / Math.cos(viewDec * Math.PI / 180);
-    viewDec = viewDec + (my - ny) / pixPerDeg;
+    viewRA  += (mx - nx) / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
+    viewDec += (my - ny) / pixPerDeg;
     scheduleLazyLoad();
   }
 
@@ -379,14 +389,16 @@
     if (isPanning) {
       const dx = e.clientX - panStartX;
       const dy = e.clientY - panStartY;
-      viewRA  = panStartRA  - dx / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
-      viewDec = Math.max(-89, Math.min(89, panStartDec - dy / pixPerDeg));
+      // Positive dx (drag right) → viewRA increases → sky shifts eastward (left)
+      // which feels like "the sky follows your hand" toward the right
+      viewRA  = panStartRA  + dx / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
+      viewDec = Math.max(-89, Math.min(89, panStartDec + dy / pixPerDeg));
       hoveredEntry = null;
       scheduleLazyLoad();
       return;
     }
 
-    // Hit-test: footprint polygon when size is loaded, dot circle otherwise
+    // Hit-test footprint polygon (if size loaded) or dot circle
     let found: app.AtlasIndexEntry | null = null;
     for (const entry of index) {
       const sz = sizes.get(entry.nasPath);
@@ -410,13 +422,8 @@
   function onMouseUp(e: MouseEvent) {
     const wasPanning = isPanning;
     isPanning = false;
-    // Suppress click if we actually panned
-    if (wasPanning && (Math.abs(e.clientX - panStartX) > 3 || Math.abs(e.clientY - panStartY) > 3)) return;
-    if (hoveredEntry) {
-      selectedEntry = hoveredEntry === selectedEntry ? null : hoveredEntry;
-    } else {
-      selectedEntry = null;
-    }
+    if (wasPanning && (Math.abs(e.clientX - panStartX) > 4 || Math.abs(e.clientY - panStartY) > 4)) return;
+    selectedEntry = hoveredEntry && hoveredEntry !== selectedEntry ? hoveredEntry : null;
   }
 
   // ── Mount / resize ────────────────────────────────────────────────────────
@@ -463,7 +470,7 @@
     <div class="atlas-overlay atlas-empty">
       <div class="empty-icon">◎</div>
       <p>No stacked frames with sky coordinates found.</p>
-      <p class="atlas-hint">Run <strong>Build Index</strong> to load WCS from FITS headers,<br>or <strong>✦ Analyze</strong> to plate-solve stacked frames.</p>
+      <p class="atlas-hint">Run <strong>Build Index</strong> to read WCS from FITS headers,<br>or <strong>✦ Analyze</strong> to plate-solve stacked frames.</p>
     </div>
   {/if}
 
@@ -480,7 +487,7 @@
     style="cursor: {isPanning ? 'grabbing' : hoveredEntry ? 'pointer' : 'grab'};"
   ></canvas>
 
-  <!-- HUD: coordinates + zoom -->
+  <!-- HUD -->
   <div class="atlas-hud">
     <span>RA {viewRA.toFixed(2)}°</span>
     <span>Dec {viewDec.toFixed(2)}°</span>
@@ -489,11 +496,11 @@
     <span>{index.length} frame{index.length !== 1 ? "s" : ""}</span>
   </div>
 
-  <!-- Hover tooltip (only when no frame is selected) -->
+  <!-- Hover tooltip (hidden when a frame is selected) -->
   {#if hoveredEntry && hoveredEntry !== selectedEntry}
     <div
       class="atlas-tooltip"
-      style="left: {Math.min(hoverX + 14, canvasW - 190)}px; top: {Math.min(hoverY - 10, canvasH - 80)}px;"
+      style="left: {Math.min(hoverX + 14, canvasW - 195)}px; top: {Math.min(hoverY - 10, canvasH - 80)}px;"
     >
       <div class="tt-name">{hoveredEntry.object || hoveredEntry.name}</div>
       <div class="tt-row">RA {hoveredEntry.ra.toFixed(3)}° · Dec {hoveredEntry.dec >= 0 ? "+" : ""}{hoveredEntry.dec.toFixed(3)}°</div>
@@ -510,6 +517,18 @@
         <div class="ap-title">{selectedEntry.object || selectedEntry.name}</div>
         <button class="ap-close" onclick={() => (selectedEntry = null)}>✕</button>
       </div>
+
+      <!-- Image preview -->
+      <div class="ap-preview">
+        {#if previewLoading}
+          <div class="ap-preview-spinner">◌</div>
+        {:else if previewUrl}
+          <img src={previewUrl} alt="Preview" class="ap-preview-img" />
+        {:else}
+          <div class="ap-preview-empty">No preview</div>
+        {/if}
+      </div>
+
       <div class="ap-body">
         <div class="ap-row"><span class="ap-lbl">Type</span><span class="ap-val">{selectedEntry.frameType}</span></div>
         <div class="ap-row"><span class="ap-lbl">RA</span><span class="ap-val">{selectedEntry.ra.toFixed(4)}°</span></div>
@@ -527,6 +546,7 @@
         {/if}
         <div class="ap-row ap-file-row"><span class="ap-lbl">File</span><span class="ap-val ap-file">{selectedEntry.name}</span></div>
       </div>
+
       {#if onframeopen}
         <button class="ap-open-btn" onclick={() => onframeopen!(selectedEntry!.nasPath)}>
           Open in Library →
@@ -590,27 +610,28 @@
     gap: 10px;
     font-size: 0.72rem;
     font-family: "Consolas", "Fira Code", monospace;
-    color: rgba(140, 170, 220, 0.75);
+    color: var(--text-secondary);
     pointer-events: none;
-    background: rgba(5, 6, 16, 0.55);
+    background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
     padding: 3px 8px;
     border-radius: 4px;
+    border: 1px solid var(--border);
   }
   .hud-sep { opacity: 0.4; }
 
   /* Hover tooltip */
   .atlas-tooltip {
     position: absolute;
-    background: rgba(12, 14, 28, 0.92);
-    border: 1px solid rgba(100, 160, 255, 0.45);
+    background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+    border: 1px solid var(--border-accent);
     border-radius: 5px;
     padding: 6px 10px;
     pointer-events: none;
     z-index: 20;
-    min-width: 170px;
+    min-width: 175px;
   }
-  .tt-name { font-size: 0.82rem; font-weight: 600; color: rgba(200, 225, 255, 1); margin-bottom: 3px; }
-  .tt-row  { font-size: 0.72rem; color: rgba(160, 185, 220, 0.85); font-family: "Consolas", monospace; }
+  .tt-name { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+  .tt-row  { font-size: 0.72rem; color: var(--text-secondary); font-family: "Consolas", monospace; }
   .tt-hint { font-size: 0.68rem; color: var(--accent); margin-top: 4px; font-style: italic; }
 
   /* Selected-frame panel */
@@ -618,27 +639,29 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    width: 240px;
-    background: rgba(10, 12, 26, 0.94);
-    border: 1px solid rgba(100, 160, 255, 0.35);
+    width: 250px;
+    background: color-mix(in srgb, var(--bg-panel) 95%, transparent);
+    border: 1px solid var(--border-accent);
     border-radius: 7px;
     z-index: 30;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    max-height: calc(100% - 16px);
   }
   .ap-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 8px 10px 6px;
-    border-bottom: 1px solid rgba(100, 160, 255, 0.15);
+    border-bottom: 1px solid var(--border);
     gap: 6px;
+    flex-shrink: 0;
   }
   .ap-title {
     font-size: 0.85rem;
     font-weight: 600;
-    color: rgba(210, 230, 255, 1);
+    color: var(--text-primary);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -648,14 +671,50 @@
     flex-shrink: 0;
     background: none;
     border: none;
-    color: rgba(150, 170, 210, 0.6);
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 0.8rem;
     padding: 0 2px;
     line-height: 1;
+    opacity: 0.6;
   }
-  .ap-close:hover { color: rgba(220, 230, 255, 0.9); }
-  .ap-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .ap-close:hover { opacity: 1; color: var(--text-primary); }
+
+  /* Preview area */
+  .ap-preview {
+    flex-shrink: 0;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #020408;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .ap-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .ap-preview-spinner {
+    animation: spin 1.2s linear infinite;
+    color: var(--accent);
+    font-size: 1.5rem;
+  }
+  .ap-preview-empty {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.5;
+  }
+
+  .ap-body {
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+  }
   .ap-row {
     display: flex;
     justify-content: space-between;
@@ -663,12 +722,12 @@
     font-size: 0.75rem;
   }
   .ap-lbl {
-    color: rgba(120, 150, 200, 0.7);
+    color: var(--text-secondary);
     flex-shrink: 0;
     font-family: "Consolas", monospace;
   }
   .ap-val {
-    color: rgba(190, 215, 255, 0.9);
+    color: var(--text-primary);
     font-family: "Consolas", monospace;
     text-align: right;
   }
@@ -677,31 +736,32 @@
     font-size: 0.68rem;
     word-break: break-all;
     text-align: right;
-    opacity: 0.7;
+    opacity: 0.65;
   }
   .ap-open-btn {
+    flex-shrink: 0;
     margin: 6px 10px 10px;
     padding: 6px 0;
-    background: rgba(80, 140, 220, 0.18);
-    border: 1px solid rgba(100, 160, 255, 0.4);
+    background: color-mix(in srgb, var(--accent-dim) 30%, transparent);
+    border: 1px solid var(--border-accent);
     border-radius: 4px;
-    color: rgba(170, 210, 255, 0.95);
+    color: var(--accent);
     font-size: 0.78rem;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
   .ap-open-btn:hover {
-    background: rgba(80, 140, 220, 0.35);
-    border-color: rgba(120, 180, 255, 0.7);
+    background: color-mix(in srgb, var(--accent-dim) 55%, transparent);
+    border-color: var(--accent);
   }
 
-  /* Help text */
   .atlas-help {
     position: absolute;
     bottom: 8px;
     right: 10px;
     font-size: 0.68rem;
-    color: rgba(100, 130, 180, 0.5);
+    color: var(--text-secondary);
+    opacity: 0.45;
     pointer-events: none;
   }
 </style>
