@@ -121,6 +121,9 @@
   // ── Library view ref ─────────────────────────────────────────────────────
   let libraryView = $state<{ reload: () => void } | null>(null);
 
+  // ── Library focus filter (set when navigating from Atlas) ─────────────────
+  let libraryInitialFilter = $state<string | undefined>(undefined);
+
   // ── Atlas mount guard — keep the atlas in DOM once opened ─────────────────
   let atlasOpened = $state(false);
   $effect(() => { if (appMode === "atlas") atlasOpened = true; });
@@ -465,6 +468,7 @@
           columns={libraryColumns}
           selectedNasPath={librarySelectedFrame?.nasPath ?? null}
           {sirilAvailable}
+          initialFilter={libraryInitialFilter}
           onfileclick={onLibraryFileClick}
           onsavecolumns={saveLibraryColumnConfig}
           onframesreloaded={onLibraryFramesReloaded}
@@ -525,8 +529,8 @@
       <SkyAtlas
         rootPath={rootFolder}
         onframeopen={(nasPath) => {
+          libraryInitialFilter = nasPath.split("/").pop();
           appMode = "library";
-          libraryPreviewPath = nasPath;
         }}
       />
     </div>
