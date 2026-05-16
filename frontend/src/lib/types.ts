@@ -56,7 +56,7 @@ export interface AnalysisProgress {
 
 export type ViewMode = "files" | "rejected";
 
-export type AppMode = "browser" | "library" | "import" | "projects" | "settings";
+export type AppMode = "browser" | "library" | "import" | "projects" | "storage" | "settings";
 
 export type Theme = "blue" | "red" | "grey";
 
@@ -137,6 +137,7 @@ export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [
   { id: "background", label: "BG", visible: false, width: 75, order: 13 },
   { id: "noise", label: "Noise", visible: false, width: 65, order: 14 },
   { id: "snr", label: "SNR", visible: false, width: 65, order: 15 },
+  { id: "moonPhase", label: "Moon", visible: false, width: 65, order: 16 },
 ];
 
 export const DEFAULT_COLUMNS: ColumnDef[] = [

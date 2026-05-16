@@ -21,6 +21,7 @@
     { value: "library", label: "Library", icon: "◈", requiresRoot: true },
     { value: "import", label: "Import", icon: "⇪", requiresRoot: true },
     { value: "projects", label: "Projects", icon: "◧", requiresRoot: false },
+    { value: "storage",  label: "Storage",  icon: "◉", requiresRoot: true  },
     { value: "settings", label: "Settings", icon: "⚙", requiresRoot: false },
   ];
 </script>

@@ -29,7 +29,11 @@ export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
 export function GeneratePreviewRaw(arg1:string):Promise<app.RawPreviewData>;
 
+export function GetAnnotations(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number,arg6:number):Promise<Array<app.Annotation>>;
+
 export function GetAppInfo():Promise<app.AppInfo>;
+
+export function GetFrameTypeSummary(arg1:string):Promise<Array<app.StorageNode>>;
 
 export function GetLibraryFrames(arg1:string):Promise<Array<app.LibraryFrame>>;
 
@@ -44,6 +48,8 @@ export function GetProjectLibraryFrames(arg1:string):Promise<Array<app.LibraryFr
 export function GetProjectOutputFiles(arg1:string):Promise<Array<app.ProjectOutputFile>>;
 
 export function GetProjectsFolder():Promise<string>;
+
+export function GetStorageStats(arg1:string):Promise<app.StorageNode>;
 
 export function HardDeleteFile(arg1:string):Promise<void>;
 
@@ -86,5 +92,7 @@ export function SetProjectsFolder(arg1:string):Promise<void>;
 export function SetSirilPath(arg1:string):Promise<void>;
 
 export function StartImport(arg1:string,arg2:Array<string>,arg3:boolean):Promise<void>;
+
+export function SuggestRejects(arg1:string,arg2:number):Promise<Array<app.SuggestResult>>;
 
 export function UnrejectFile(arg1:string):Promise<void>;

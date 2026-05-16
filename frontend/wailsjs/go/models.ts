@@ -1,5 +1,25 @@
 export namespace app {
 	
+	export class Annotation {
+	    x: number;
+	    y: number;
+	    label: string;
+	    type: string;
+	    mag: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Annotation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.mag = source["mag"];
+	    }
+	}
 	export class AppInfo {
 	    dbPath: string;
 	    serverPort: number;
@@ -230,6 +250,7 @@ export namespace app {
 	    snr: number;
 	    starCount: number;
 	    qualityAnalyzed: boolean;
+	    moonPhase: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LibraryFrame(source);
@@ -262,6 +283,7 @@ export namespace app {
 	        this.snr = source["snr"];
 	        this.starCount = source["starCount"];
 	        this.qualityAnalyzed = source["qualityAnalyzed"];
+	        this.moonPhase = source["moonPhase"];
 	    }
 	}
 	export class PagedLightFrames {
@@ -387,6 +409,78 @@ export namespace app {
 	        this.version = source["version"];
 	        this.available = source["available"];
 	    }
+	}
+	export class StorageNode {
+	    label: string;
+	    totalBytes: number;
+	    frameCount: number;
+	    children?: StorageNode[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StorageNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.totalBytes = source["totalBytes"];
+	        this.frameCount = source["frameCount"];
+	        this.children = this.convertValues(source["children"], StorageNode);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SuggestResult {
+	    frame: LibraryFrame;
+	    groupMedian: number;
+	    groupSigma: number;
+	    sigmas: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SuggestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.frame = this.convertValues(source["frame"], LibraryFrame);
+	        this.groupMedian = source["groupMedian"];
+	        this.groupSigma = source["groupSigma"];
+	        this.sigmas = source["sigmas"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

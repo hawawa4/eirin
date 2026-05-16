@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/TaruDesigns/eirin/internal/prefs"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -38,6 +39,9 @@ type LibraryFrame struct {
 	SNR             float64 `json:"snr"` // Background/Noise ratio
 	StarCount       int64   `json:"starCount"`
 	QualityAnalyzed bool    `json:"qualityAnalyzed"`
+
+	// Moon phase at capture time (0=new moon, 1=full moon; -1 when dateObs unavailable)
+	MoonPhase float64 `json:"moonPhase"`
 }
 
 // GetLibraryFrames returns all indexed frames under rootPath, converted to the
@@ -87,6 +91,18 @@ func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int)
 }
 
 func toLibraryFrame(f prefs.Frame) LibraryFrame {
+	moonPhase := -1.0
+	for _, layout := range []string{
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05",
+		"2006-01-02",
+	} {
+		if t, err := time.Parse(layout, f.DateObs); err == nil {
+			moonPhase = MoonIllumination(t)
+			break
+		}
+	}
+
 	return LibraryFrame{
 		NasPath:         f.NasPath,
 		FileName:        filepath.Base(f.NasPath),
@@ -113,6 +129,7 @@ func toLibraryFrame(f prefs.Frame) LibraryFrame {
 		SNR:             derefFloat(f.SNR),
 		StarCount:       derefInt64(f.StarCount),
 		QualityAnalyzed: f.QualityAnalyzed,
+		MoonPhase:       moonPhase,
 	}
 }
 

@@ -14,6 +14,7 @@
     CancelAnalysis,
     CreateProject,
     AddFramesToProject,
+    SuggestRejects,
   } from "../../wailsjs/go/app/App.js";
   import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import type { app } from "../../wailsjs/go/models";
@@ -22,6 +23,7 @@
   import { getLibraryCellValue } from "../lib/utils";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
+  import BlinkModal from "./BlinkModal.svelte";
 
   interface Props {
     rootFolder: string;
@@ -605,6 +607,42 @@
       frames = frames.filter((f) => f.nasPath !== paths[0]);
     }
   }
+
+  // ── Blink comparison ──────────────────────────────────────────────────────
+  let blinkFrames = $state<app.LibraryFrame[]>([]);
+  let showBlink = $state(false);
+
+  function openBlink() {
+    const sel = [...selectedPaths];
+    blinkFrames = frames.filter((f) => sel.includes(f.nasPath));
+    if (blinkFrames.length >= 2) showBlink = true;
+  }
+
+  // ── Smart reject suggestions ──────────────────────────────────────────────
+  let suggestLoading = $state(false);
+  let suggestResults = $state<import("../../wailsjs/go/models").app.SuggestResult[]>([]);
+  let suggestSelected = $state(new Set<string>());
+  let showSuggest = $state(false);
+
+  async function openSuggest() {
+    suggestLoading = true;
+    showSuggest = true;
+    suggestResults = [];
+    const res = await SuggestRejects(rootFolder, 2.0);
+    suggestResults = res ?? [];
+    suggestSelected = new Set(suggestResults.map((r) => r.frame.nasPath));
+    suggestLoading = false;
+  }
+
+  async function applySuggestRejects() {
+    const paths = [...suggestSelected];
+    if (!paths.length) return;
+    await BatchRejectFiles(paths);
+    const set = new Set(paths);
+    frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: true } : f));
+    showSuggest = false;
+    suggestResults = [];
+  }
 </script>
 
 <!-- ── Toolbar ───────────────────────────────────────────────────────────── -->
@@ -652,6 +690,16 @@
   {#if anyColFilterActive}
     <button class="tool-btn filter-clear" onclick={clearColFilters} title="Clear all column filters">
       ✕ filters
+    </button>
+  {/if}
+  {#if selectedPaths.size >= 2}
+    <button class="tool-btn blink-btn" onclick={openBlink} title="Blink selected frames">
+      ▶ Blink ({selectedPaths.size})
+    </button>
+  {/if}
+  {#if !showRejected}
+    <button class="tool-btn suggest-btn" onclick={openSuggest} title="Suggest statistical outliers for rejection">
+      ✦ Suggest rejects
     </button>
   {/if}
   <input class="search-input" type="search" placeholder="Search…" bind:value={search} />
@@ -965,10 +1013,69 @@
   <HardDeleteModal
     target={confirmDel}
     onconfirm={doHardDelete}
-    oncancel={() => {
-      confirmDel = null;
-    }}
+    oncancel={() => { confirmDel = null; }}
   />
+{/if}
+
+{#if showBlink && blinkFrames.length >= 2}
+  <BlinkModal frames={blinkFrames} onclose={() => (showBlink = false)} />
+{/if}
+
+{#if showSuggest}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="suggest-backdrop" onmousedown={(e) => { if (e.target === e.currentTarget) showSuggest = false; }}>
+    <div class="suggest-modal">
+      <div class="suggest-header">
+        <span class="suggest-title">Suggested Rejects</span>
+        <button class="suggest-close" onclick={() => (showSuggest = false)}>✕</button>
+      </div>
+      <div class="suggest-body">
+        {#if suggestLoading}
+          <p class="suggest-status">Analyzing quality metrics…</p>
+        {:else if suggestResults.length === 0}
+          <p class="suggest-status">No outliers found. Either all frames are good quality, or not enough frames have been analyzed (run ✦ Analyze first).</p>
+        {:else}
+          <p class="suggest-desc">
+            {suggestResults.length} frame{suggestResults.length !== 1 ? "s" : ""} with FWHM &gt; 2σ above their group median.
+            Deselect any you want to keep.
+          </p>
+          <div class="suggest-list">
+            {#each suggestResults as r}
+              <label class="suggest-row" class:deselected={!suggestSelected.has(r.frame.nasPath)}>
+                <input
+                  type="checkbox"
+                  checked={suggestSelected.has(r.frame.nasPath)}
+                  onchange={() => {
+                    const next = new Set(suggestSelected);
+                    if (next.has(r.frame.nasPath)) next.delete(r.frame.nasPath); else next.add(r.frame.nasPath);
+                    suggestSelected = next;
+                  }}
+                />
+                <span class="suggest-name">{r.frame.fileName}</span>
+                <span class="suggest-obj">{r.frame.object}</span>
+                <span class="suggest-fwhm" title="FWHM: {r.frame.fwhm.toFixed(2)} vs median {r.groupMedian.toFixed(2)} (σ={r.groupSigma.toFixed(2)})">
+                  {r.frame.fwhm.toFixed(2)} {r.frame.fwhmUnit} · {r.sigmas.toFixed(1)}σ
+                </span>
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      {#if !suggestLoading && suggestResults.length > 0}
+        <div class="suggest-footer">
+          <span class="suggest-sel-count">{suggestSelected.size} selected</span>
+          <button class="cp-btn-ghost" onclick={() => (showSuggest = false)}>Cancel</button>
+          <button
+            class="cp-btn-primary"
+            disabled={suggestSelected.size === 0}
+            onclick={applySuggestRejects}
+          >
+            Reject {suggestSelected.size} frame{suggestSelected.size !== 1 ? "s" : ""}
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -1682,4 +1789,47 @@
     transition: background 0.1s, color 0.1s;
   }
   .cp-btn-ghost:hover { background: var(--bg-row-hover); color: var(--text-primary); }
+
+  /* ── Blink + Suggest toolbar buttons ─────────────────────────────────────── */
+  .blink-btn  { color: var(--accent); border-color: var(--accent); }
+  .suggest-btn { color: var(--accent); }
+
+  /* ── Suggest rejects modal ─────────────────────────────────────────────── */
+  .suggest-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 500;
+  }
+  .suggest-modal {
+    background: var(--bg-panel); border: 1px solid var(--border-accent);
+    border-radius: 8px; display: flex; flex-direction: column;
+    width: min(88vw, 680px); max-height: 80vh;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.7); overflow: hidden;
+  }
+  .suggest-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .suggest-title { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+  .suggest-close { background: transparent; border: none; color: var(--text-secondary); font-size: 1rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  .suggest-close:hover { background: var(--bg-row-hover); }
+  .suggest-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .suggest-status { color: var(--text-secondary); font-size: 0.85rem; }
+  .suggest-desc { font-size: 0.8rem; color: var(--text-secondary); margin: 0; }
+  .suggest-list { display: flex; flex-direction: column; gap: 2px; }
+  .suggest-row {
+    display: flex; align-items: center; gap: 10px; padding: 5px 8px;
+    border-radius: 4px; cursor: pointer; font-size: 0.82rem;
+    transition: background 0.1s;
+  }
+  .suggest-row:hover { background: var(--bg-row-hover); }
+  .suggest-row.deselected { opacity: 0.45; }
+  .suggest-row input { accent-color: var(--accent); flex-shrink: 0; }
+  .suggest-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "Consolas", monospace; color: var(--text-primary); }
+  .suggest-obj { width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .suggest-fwhm { width: 120px; text-align: right; color: var(--danger); font-size: 0.78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .suggest-footer {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  .suggest-sel-count { font-size: 0.78rem; color: var(--text-secondary); margin-right: auto; }
 </style>
