@@ -54,12 +54,24 @@ export function GeneratePreviewRaw(arg1) {
   return window['go']['app']['App']['GeneratePreviewRaw'](arg1);
 }
 
+export function GeneratePreviewRawSized(arg1, arg2) {
+  return window['go']['app']['App']['GeneratePreviewRawSized'](arg1, arg2);
+}
+
 export function GetAnnotations(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['app']['App']['GetAnnotations'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function GetAppInfo() {
   return window['go']['app']['App']['GetAppInfo']();
+}
+
+export function GetAtlasFrames(arg1) {
+  return window['go']['app']['App']['GetAtlasFrames'](arg1);
+}
+
+export function GetCatalog() {
+  return window['go']['app']['App']['GetCatalog']();
 }
 
 export function GetFrameTypeSummary(arg1) {

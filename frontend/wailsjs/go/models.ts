@@ -38,6 +38,56 @@ export namespace app {
 	        this.portSource = source["portSource"];
 	    }
 	}
+	export class AtlasFrame {
+	    nasPath: string;
+	    name: string;
+	    object: string;
+	    frameType: string;
+	    ra: number;
+	    dec: number;
+	    pixelScale: number;
+	    rotation: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AtlasFrame(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nasPath = source["nasPath"];
+	        this.name = source["name"];
+	        this.object = source["object"];
+	        this.frameType = source["frameType"];
+	        this.ra = source["ra"];
+	        this.dec = source["dec"];
+	        this.pixelScale = source["pixelScale"];
+	        this.rotation = source["rotation"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	    }
+	}
+	export class CatalogObject {
+	    ra: number;
+	    dec: number;
+	    name: string;
+	    type: string;
+	    mag: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogObject(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ra = source["ra"];
+	        this.dec = source["dec"];
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.mag = source["mag"];
+	    }
+	}
 	export class ChannelStats {
 	    median: number;
 	    sigma: number;
