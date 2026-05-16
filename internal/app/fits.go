@@ -910,12 +910,16 @@ func extractWCS(hdr *fitsio.Header) (pixelScale, rotation float64) {
 		return ps, crota2
 	}
 
-	// CD matrix: CD1_1, CD2_1 give the column vector for the RA axis
+	// CD matrix: CD1_1, CD2_1 give the column vector for the RA axis.
+	// Standard FITS has CDELT1 < 0 (RA increases right-to-left), so:
+	//   CD1_1 = CDELT1*cos(R) < 0,  CD2_1 = CDELT1*sin(R) < 0 for R in (0,π).
+	// atan2(-CD2_1, -CD1_1) recovers CROTA2 correctly for CDELT1<0.
+	// (The previous atan2(CD2_1,-CD1_1) gave -CROTA2, flipping all non-zero rotations.)
 	cd1_1 := cardF64(hdr, 0, "CD1_1")
 	cd2_1 := cardF64(hdr, 0, "CD2_1")
 	if cd1_1 != 0 || cd2_1 != 0 {
 		ps := math.Sqrt(cd1_1*cd1_1+cd2_1*cd2_1) * 3600.0
-		rot := math.Atan2(cd2_1, -cd1_1) * 180.0 / math.Pi
+		rot := math.Atan2(-cd2_1, -cd1_1) * 180.0 / math.Pi
 		return ps, rot
 	}
 
