@@ -56,7 +56,7 @@ export interface AnalysisProgress {
 
 export type ViewMode = "files" | "rejected";
 
-export type AppMode = "browser" | "library" | "import" | "projects" | "storage" | "settings";
+export type AppMode = "browser" | "library" | "atlas" | "import" | "projects" | "storage" | "settings";
 
 export type Theme = "blue" | "red" | "grey";
 

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { untrack } from "svelte";
   import type { app } from "../../wailsjs/go/models";
-  import { GeneratePreviewRaw, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
+  import { GeneratePreviewRaw, GeneratePreviewRawSized, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
 
   interface Props {
@@ -65,6 +65,12 @@
   let fitsHeader = $state<app.FITSHeader | null>(null);
   let previewReqId = 0;
   let hasImage = $state(false);
+
+  // ── Dynamic resolution ────────────────────────────────────────────────────
+  // Tracks the maxSize used for the currently loaded texture (768 = initial).
+  let loadedMaxSize = $state(768);
+  let zoomReqId = 0;
+  let upgradeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── Zoom / pan ────────────────────────────────────────────────────────────
   let zoom = $state(1);
@@ -282,6 +288,8 @@ void main() {
     histBins       = null;
     annotations    = [];
     showAnnotations = false;
+    loadedMaxSize  = 768;
+    if (upgradeTimer) { clearTimeout(upgradeTimer); upgradeTimer = null; }
     resetView();
 
     const id = ++previewReqId;
@@ -462,6 +470,56 @@ void main() {
     panX = mx - ((mx - panX) * newZoom) / zoom;
     panY = my - ((my - panY) * newZoom) / zoom;
     zoom = newZoom;
+
+    if (upgradeTimer) clearTimeout(upgradeTimer);
+    upgradeTimer = setTimeout(checkResolution, 450);
+  }
+
+  // Upgrades the WebGL texture to a higher resolution when the user has zoomed
+  // in past the point where the current texture provides native pixel quality.
+  async function checkResolution() {
+    upgradeTimer = null;
+    if (!rawInfo || !entry || !viewportW) return;
+    const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
+    const effective = zoom * cssScale;
+
+    let neededSize: number;
+    if (effective > 2.2 && loadedMaxSize < 4096) {
+      neededSize = 0; // native
+    } else if (effective > 1.3 && loadedMaxSize <= 768) {
+      neededSize = 2048;
+    } else {
+      return;
+    }
+
+    const id = ++zoomReqId;
+    let result;
+    try {
+      result = await GeneratePreviewRawSized(entry.path, neededSize);
+    } catch {
+      return;
+    }
+    if (id !== zoomReqId) return; // superseded
+
+    const bin = atob(result.data);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const f32 = new Float32Array(u8.buffer);
+
+    rawInfo = { width: result.width, height: result.height, channels: result.channels, stats: rawInfo.stats };
+    canvas.width  = result.width;
+    canvas.height = result.height;
+    loadedMaxSize = neededSize === 0 ? 4096 : neededSize;
+
+    if (gl && glTex) {
+      gl.bindTexture(gl.TEXTURE_2D, glTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, result.width, result.height, 0, gl.RGBA, gl.FLOAT, f32);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    renderGL();
   }
 
   function onPanStart(e: MouseEvent) {

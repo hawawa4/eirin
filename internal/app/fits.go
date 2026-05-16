@@ -83,6 +83,15 @@ func (a *App) GeneratePreviewRaw(path string) (RawPreviewData, error) {
 	return generatePreviewRaw(path, 768)
 }
 
+// GeneratePreviewRawSized is like GeneratePreviewRaw but lets the caller choose the
+// maximum dimension. maxSize=0 means native resolution (no downscaling).
+func (a *App) GeneratePreviewRawSized(path string, maxSize int) (RawPreviewData, error) {
+	if maxSize <= 0 {
+		maxSize = 1<<31 - 1 // effectively native
+	}
+	return generatePreviewRaw(path, maxSize)
+}
+
 // ── Implementation ────────────────────────────────────────────────────────────
 
 func readFITSHeader(path string) (*FITSHeader, error) {
@@ -129,6 +138,7 @@ func readFITSHeader(path string) (*FITSHeader, error) {
 		"CDELT1": true, "CDELT2": true, "CROTA2": true,
 		"CD1_1": true, "CD1_2": true, "CD2_1": true, "CD2_2": true,
 		"CRPIX1": true, "CRPIX2": true, "CTYPE1": true, "CTYPE2": true,
+		"CRVAL1": true, "CRVAL2": true,
 		"PIXSCALE": true, "SCALE": true,
 	}
 	extra := make(map[string]any)
@@ -157,8 +167,8 @@ func readFITSHeader(path string) (*FITSHeader, error) {
 		Gain:       cardF64(hdr, 0, "GAIN"),
 		Offset:     cardF64(hdr, 0, "OFFSET", "PEDESTAL"),
 		CCDTemp:    cardF64(hdr, 0, "CCD-TEMP", "CCD_TEMP"),
-		RA:         cardF64(hdr, 0, "RA", "OBJCTRA"),
-		Dec:        cardF64(hdr, 0, "DEC", "OBJCTDEC"),
+		RA:         cardF64(hdr, 0, "RA", "OBJCTRA", "CRVAL1"),
+		Dec:        cardF64(hdr, 0, "DEC", "OBJCTDEC", "CRVAL2"),
 		XBinning:   cardInt(hdr, 1, "XBINNING"),
 		YBinning:   cardInt(hdr, 1, "YBINNING"),
 		FocalLen:   cardF64(hdr, 0, "FOCALLEN"),

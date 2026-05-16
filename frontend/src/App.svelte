@@ -43,6 +43,7 @@
   import HardDeleteModal from "./components/HardDeleteModal.svelte";
   import StatusFooter from "./components/StatusFooter.svelte";
   import StorageView from "./components/StorageView.svelte";
+  import SkyAtlas from "./components/SkyAtlas.svelte";
 
   const PREF_ROOT_FOLDER = "root_folder";
   const PREF_BASIC_COLLAPSED = "basic_collapsed";
@@ -491,6 +492,17 @@
           onclose={clearPreview}
         />
       {/if}
+    </div>
+  {:else if appMode === "atlas"}
+    <div class="content-area">
+      <SkyAtlas
+        rootPath={rootFolder}
+        onframeclick={(nasPath) => {
+          // Find the frame in library and open it; switch to library mode if needed.
+          appMode = "library";
+          libraryPreviewPath = nasPath;
+        }}
+      />
     </div>
   {:else if appMode === "import"}
     <ImportView {rootFolder} />
