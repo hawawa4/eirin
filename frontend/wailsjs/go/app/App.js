@@ -54,8 +54,16 @@ export function GeneratePreviewRaw(arg1) {
   return window['go']['app']['App']['GeneratePreviewRaw'](arg1);
 }
 
+export function GetAnnotations(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['app']['App']['GetAnnotations'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function GetAppInfo() {
   return window['go']['app']['App']['GetAppInfo']();
+}
+
+export function GetFrameTypeSummary(arg1) {
+  return window['go']['app']['App']['GetFrameTypeSummary'](arg1);
 }
 
 export function GetLibraryFrames(arg1) {
@@ -84,6 +92,10 @@ export function GetProjectOutputFiles(arg1) {
 
 export function GetProjectsFolder() {
   return window['go']['app']['App']['GetProjectsFolder']();
+}
+
+export function GetStorageStats(arg1) {
+  return window['go']['app']['App']['GetStorageStats'](arg1);
 }
 
 export function HardDeleteFile(arg1) {
@@ -168,6 +180,10 @@ export function SetSirilPath(arg1) {
 
 export function StartImport(arg1, arg2, arg3) {
   return window['go']['app']['App']['StartImport'](arg1, arg2, arg3);
+}
+
+export function SuggestRejects(arg1, arg2) {
+  return window['go']['app']['App']['SuggestRejects'](arg1, arg2);
 }
 
 export function UnrejectFile(arg1) {

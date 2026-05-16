@@ -104,6 +104,12 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
       return frame.qualityAnalyzed && frame.noise ? `${frame.noise.toFixed(2)} ADU` : "—";
     case "snr":
       return frame.qualityAnalyzed && frame.snr ? frame.snr.toFixed(1) : "—";
+    case "moonPhase": {
+      if (frame.moonPhase < 0) return "—";
+      const pct = Math.round(frame.moonPhase * 100);
+      const icon = pct < 10 ? "🌑" : pct < 35 ? "🌒" : pct < 65 ? "🌓" : pct < 90 ? "🌔" : "🌕";
+      return `${icon} ${pct}%`;
+    }
     default:
       return "—";
   }

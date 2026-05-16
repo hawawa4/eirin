@@ -42,6 +42,7 @@
   import ContextMenu from "./components/ContextMenu.svelte";
   import HardDeleteModal from "./components/HardDeleteModal.svelte";
   import StatusFooter from "./components/StatusFooter.svelte";
+  import StorageView from "./components/StorageView.svelte";
 
   const PREF_ROOT_FOLDER = "root_folder";
   const PREF_BASIC_COLLAPSED = "basic_collapsed";
@@ -495,6 +496,8 @@
     <ImportView {rootFolder} />
   {:else if appMode === "projects"}
     <ProjectsView {rootFolder} {projectsFolder} {initialProjectId} />
+  {:else if appMode === "storage"}
+    <StorageView rootPath={rootFolder} />
   {:else if appMode === "settings"}
     <SettingsView
       {rootFolder}
