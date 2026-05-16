@@ -93,23 +93,30 @@ func ClassifyFrameType(nasPath string) string {
 
 // UpsertFrame stores or updates the FITS header fields for a single frame.
 // Only the header-derived columns are written; user metadata (rejected, tags, etc.)
-// and analysis results (wcs, quality) are preserved if the row already exists.
+// and plate-solve results (wcs_solved=1) are preserved if the row already exists.
+// FITS-embedded WCS is stored but will not overwrite a prior plate-solve result.
 func (s *Store) UpsertFrame(path string, f Frame) error {
 	query, args, err := s.qb.
 		Insert("frames").
 		Columns("nas_path", "file_size", "last_seen", "cached_at",
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs",
-			"telescope", "instrument", "frame_type").
+			"telescope", "instrument", "frame_type",
+			"ra", "dec", "pixel_scale", "rotation").
 		Values(path, f.FileSize, f.LastSeen, time.Now().Unix(),
 			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
-			f.Telescope, f.Instrument, f.FrameType).
+			f.Telescope, f.Instrument, f.FrameType,
+			f.RA, f.Dec, f.PixelScale, f.Rotation).
 		Suffix(`ON CONFLICT(nas_path) DO UPDATE SET
 			file_size=excluded.file_size, last_seen=excluded.last_seen,
 			cached_at=excluded.cached_at,
 			object=excluded.object, filter=excluded.filter, exptime=excluded.exptime,
 			gain=excluded.gain, ccd_temp=excluded.ccd_temp, date_obs=excluded.date_obs,
 			telescope=excluded.telescope, instrument=excluded.instrument,
-			frame_type=excluded.frame_type`).
+			frame_type=excluded.frame_type,
+			ra=CASE WHEN frames.wcs_solved THEN frames.ra ELSE excluded.ra END,
+			dec=CASE WHEN frames.wcs_solved THEN frames.dec ELSE excluded.dec END,
+			pixel_scale=CASE WHEN frames.wcs_solved THEN frames.pixel_scale ELSE excluded.pixel_scale END,
+			rotation=CASE WHEN frames.wcs_solved THEN frames.rotation ELSE excluded.rotation END`).
 		ToSql()
 	if err != nil {
 		return err
@@ -120,7 +127,8 @@ func (s *Store) UpsertFrame(path string, f Frame) error {
 
 // BatchUpsertFrames inserts or updates FITS header data for many frames in a
 // single transaction. Only header-derived columns are written; user metadata
-// and analysis results are preserved on conflict.
+// and plate-solve results (wcs_solved=1) are preserved on conflict.
+// FITS-embedded WCS is stored but will not overwrite a prior plate-solve result.
 func (s *Store) BatchUpsertFrames(entries map[string]Frame) error {
 	if len(entries) == 0 {
 		return nil
@@ -135,15 +143,19 @@ func (s *Store) BatchUpsertFrames(entries map[string]Frame) error {
 		INSERT INTO frames
 			(nas_path, file_size, last_seen, cached_at,
 			 object, filter, exptime, gain, ccd_temp, date_obs, telescope, instrument,
-			 frame_type)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 frame_type, ra, dec, pixel_scale, rotation)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(nas_path) DO UPDATE SET
 			file_size=excluded.file_size, last_seen=excluded.last_seen,
 			cached_at=excluded.cached_at,
 			object=excluded.object, filter=excluded.filter, exptime=excluded.exptime,
 			gain=excluded.gain, ccd_temp=excluded.ccd_temp, date_obs=excluded.date_obs,
 			telescope=excluded.telescope, instrument=excluded.instrument,
-			frame_type=excluded.frame_type
+			frame_type=excluded.frame_type,
+			ra=CASE WHEN frames.wcs_solved THEN frames.ra ELSE excluded.ra END,
+			dec=CASE WHEN frames.wcs_solved THEN frames.dec ELSE excluded.dec END,
+			pixel_scale=CASE WHEN frames.wcs_solved THEN frames.pixel_scale ELSE excluded.pixel_scale END,
+			rotation=CASE WHEN frames.wcs_solved THEN frames.rotation ELSE excluded.rotation END
 	`)
 	if err != nil {
 		return err
@@ -154,7 +166,8 @@ func (s *Store) BatchUpsertFrames(entries map[string]Frame) error {
 	for path, f := range entries {
 		if _, err := stmt.Exec(path, f.FileSize, f.LastSeen, now,
 			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
-			f.Telescope, f.Instrument, f.FrameType); err != nil {
+			f.Telescope, f.Instrument, f.FrameType,
+			f.RA, f.Dec, f.PixelScale, f.Rotation); err != nil {
 			return err
 		}
 	}
@@ -431,6 +444,51 @@ func (s *Store) BatchDeleteFrames(paths []string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// GetAtlasIndexFrames returns all indexed stacked and processed frames under
+// rootPath. No FITS files are read; WCS comes from the DB (populated by the
+// indexer and plate-solver). Frames without WCS are included with nil RA/Dec
+// so callers can distinguish un-solved frames from absent entries.
+func (s *Store) GetAtlasIndexFrames(rootPath string) ([]Frame, error) {
+	prefix := rootPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	query, args, err := s.qb.
+		Select(
+			"nas_path", "file_size", "last_seen", "cached_at",
+			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
+			"frame_type",
+			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"approved", "rejected", "rejection_reason", "tags", "notes",
+		).
+		From("frames").
+		Where(sq.And{
+			sq.Like{"nas_path": prefix + "%"},
+			sq.Gt{"cached_at": 0},
+			sq.Or{sq.Eq{"frame_type": FrameTypeStacked}, sq.Eq{"frame_type": FrameTypeProcessed}},
+		}).
+		OrderBy("object", "date_obs").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var frames []Frame
+	for rows.Next() {
+		_, f, err := scanFrame(rows)
+		if err != nil {
+			return nil, err
+		}
+		frames = append(frames, f)
+	}
+	return frames, rows.Err()
 }
 
 // GetDistinctObjects returns the sorted list of distinct non-empty object values

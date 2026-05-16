@@ -38,7 +38,21 @@ export namespace app {
 	        this.portSource = source["portSource"];
 	    }
 	}
-	export class AtlasFrame {
+	export class AtlasFrameSize {
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AtlasFrameSize(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.width = source["width"];
+	        this.height = source["height"];
+	    }
+	}
+	export class AtlasIndexEntry {
 	    nasPath: string;
 	    name: string;
 	    object: string;
@@ -47,11 +61,9 @@ export namespace app {
 	    dec: number;
 	    pixelScale: number;
 	    rotation: number;
-	    width: number;
-	    height: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new AtlasFrame(source);
+	        return new AtlasIndexEntry(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -64,8 +76,6 @@ export namespace app {
 	        this.dec = source["dec"];
 	        this.pixelScale = source["pixelScale"];
 	        this.rotation = source["rotation"];
-	        this.width = source["width"];
-	        this.height = source["height"];
 	    }
 	}
 	export class CatalogObject {

@@ -125,7 +125,7 @@ func (a *App) BuildIndex(rootPath string) {
 			if err != nil {
 				errs++
 			} else {
-				batch[p] = prefs.Frame{
+				f := prefs.Frame{
 					Object:     hdr.Object,
 					Filter:     hdr.Filter,
 					ExpTime:    hdr.ExpTime,
@@ -136,6 +136,14 @@ func (a *App) BuildIndex(rootPath string) {
 					Instrument: hdr.Instrument,
 					FrameType:  prefs.ClassifyFrameType(p),
 				}
+				if hdr.RA != 0 && hdr.PixelScale > 0 {
+					ra, dec, ps, rot := hdr.RA, hdr.Dec, hdr.PixelScale, hdr.Rotation
+					f.RA = &ra
+					f.Dec = &dec
+					f.PixelScale = &ps
+					f.Rotation = &rot
+				}
+				batch[p] = f
 				newlyIndexed++
 			}
 			done++
