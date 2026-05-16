@@ -121,6 +121,10 @@
   // ── Library view ref ─────────────────────────────────────────────────────
   let libraryView = $state<{ reload: () => void } | null>(null);
 
+  // ── Atlas mount guard — keep the atlas in DOM once opened ─────────────────
+  let atlasOpened = $state(false);
+  $effect(() => { if (appMode === "atlas") atlasOpened = true; });
+
   onMount(async () => {
     const [p, info, siril, pf] = await Promise.all([
       LoadPrefs(),
@@ -493,17 +497,6 @@
         />
       {/if}
     </div>
-  {:else if appMode === "atlas"}
-    <div class="content-area">
-      <SkyAtlas
-        rootPath={rootFolder}
-        onframeclick={(nasPath) => {
-          // Find the frame in library and open it; switch to library mode if needed.
-          appMode = "library";
-          libraryPreviewPath = nasPath;
-        }}
-      />
-    </div>
   {:else if appMode === "import"}
     <ImportView {rootFolder} />
   {:else if appMode === "projects"}
@@ -524,6 +517,19 @@
         projectsFolder = path;
       }}
     />
+  {/if}
+
+  <!-- Sky Atlas stays mounted after first visit to avoid reloading all WCS data -->
+  {#if atlasOpened}
+    <div class="content-area" style="display: {appMode === 'atlas' ? 'flex' : 'none'};">
+      <SkyAtlas
+        rootPath={rootFolder}
+        onframeopen={(nasPath) => {
+          appMode = "library";
+          libraryPreviewPath = nasPath;
+        }}
+      />
+    </div>
   {/if}
 </div>
 

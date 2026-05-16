@@ -66,8 +66,12 @@ export function GetAppInfo() {
   return window['go']['app']['App']['GetAppInfo']();
 }
 
-export function GetAtlasFrames(arg1) {
-  return window['go']['app']['App']['GetAtlasFrames'](arg1);
+export function GetAtlasFrameSize(arg1) {
+  return window['go']['app']['App']['GetAtlasFrameSize'](arg1);
+}
+
+export function GetAtlasIndex(arg1) {
+  return window['go']['app']['App']['GetAtlasIndex'](arg1);
 }
 
 export function GetCatalog() {

@@ -3,13 +3,13 @@ package app
 import (
 	"path/filepath"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// AtlasFrame holds the WCS and dimension data needed to draw an image footprint
-// in the Sky Atlas. Width/Height are the physical FITS image dimensions in pixels.
-type AtlasFrame struct {
+// AtlasIndexEntry holds the DB-resident data for a single stacked/processed
+// frame. Width and Height are NOT included — they require a FITS read and are
+// fetched lazily via GetAtlasFrameSize when the frame is visible in the viewport.
+type AtlasIndexEntry struct {
 	NasPath    string  `json:"nasPath"`
 	Name       string  `json:"name"`
 	Object     string  `json:"object"`
@@ -18,8 +18,13 @@ type AtlasFrame struct {
 	Dec        float64 `json:"dec"`
 	PixelScale float64 `json:"pixelScale"` // arcsec/pixel
 	Rotation   float64 `json:"rotation"`   // degrees (N through E)
-	Width      int     `json:"width"`      // image width in pixels
-	Height     int     `json:"height"`     // image height in pixels
+}
+
+// AtlasFrameSize holds the pixel dimensions read from a FITS header.
+// Fetched lazily by the frontend when a frame enters the viewport at sufficient zoom.
+type AtlasFrameSize struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // CatalogObject is a catalog entry exposed to the frontend for the Sky Atlas overlay.
@@ -41,68 +46,48 @@ func (a *App) GetCatalog() []CatalogObject {
 	return out
 }
 
-// GetAtlasFrames returns stacked and processed frames that have usable WCS data.
-// Light frames are never included — the Atlas shows finished results only.
-// FITS headers are read sequentially (not in parallel) to avoid overwhelming the disk.
-func (a *App) GetAtlasFrames(rootPath string) []AtlasFrame {
-	frames, err := a.prefs.GetAllFramesUnder(rootPath)
+// GetAtlasIndex returns all stacked and processed frames under rootPath that
+// have WCS coordinates stored in the DB. No FITS files are read — this is a
+// fast DB-only query that returns immediately even for large libraries.
+// Light frames are never included in the Atlas.
+func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
+	frames, err := a.prefs.GetAtlasIndexFrames(rootPath)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "atlas: get frames: %v", err)
+		runtime.LogErrorf(a.ctx, "atlas: get index: %v", err)
 		return nil
 	}
 
-	var out []AtlasFrame
+	var out []AtlasIndexEntry
 	for _, f := range frames {
-		if f.FrameType != prefs.FrameTypeStacked && f.FrameType != prefs.FrameTypeProcessed {
-			continue
+		ra := derefFloat(f.RA)
+		dec := derefFloat(f.Dec)
+		scale := derefFloat(f.PixelScale)
+		rot := derefFloat(f.Rotation)
+		if ra == 0 || scale == 0 {
+			continue // no WCS in DB yet; user needs to re-index
 		}
-		if af := frameToAtlas(f); af != nil {
-			out = append(out, *af)
-		}
+		out = append(out, AtlasIndexEntry{
+			NasPath:    f.NasPath,
+			Name:       filepath.Base(f.NasPath),
+			Object:     f.Object,
+			FrameType:  f.FrameType,
+			RA:         ra,
+			Dec:        dec,
+			PixelScale: scale,
+			Rotation:   rot,
+		})
 	}
 	return out
 }
 
-func frameToAtlas(f prefs.Frame) *AtlasFrame {
-	ra := derefFloat(f.RA)
-	dec := derefFloat(f.Dec)
-	scale := derefFloat(f.PixelScale)
-	rot := derefFloat(f.Rotation)
-
-	// Read the FITS header to get image dimensions (not stored in DB)
-	// and to get WCS from CRVAL1/CRVAL2 when the DB has no WCS yet.
-	hdr, err := readFITSHeader(f.NasPath)
+// GetAtlasFrameSize reads only the pixel dimensions from a single FITS header.
+// Called lazily by the frontend when a frame is visible and the user is zoomed
+// in enough that the footprint rectangle is worth drawing.
+func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
+	hdr, err := readFITSHeader(nasPath)
 	if err != nil {
-		return nil
+		return AtlasFrameSize{}, err
 	}
-
-	if ra == 0 {
-		ra = hdr.RA
-	}
-	if dec == 0 {
-		dec = hdr.Dec
-	}
-	if scale == 0 {
-		scale = hdr.PixelScale
-	}
-	if rot == 0 {
-		rot = hdr.Rotation
-	}
-
-	if ra == 0 || scale == 0 || hdr.Width == 0 || hdr.Height == 0 {
-		return nil
-	}
-
-	return &AtlasFrame{
-		NasPath:    f.NasPath,
-		Name:       filepath.Base(f.NasPath),
-		Object:     f.Object,
-		FrameType:  f.FrameType,
-		RA:         ra,
-		Dec:        dec,
-		PixelScale: scale,
-		Rotation:   rot,
-		Width:      hdr.Width,
-		Height:     hdr.Height,
-	}
+	return AtlasFrameSize{Width: hdr.Width, Height: hdr.Height}, nil
 }
+

@@ -35,7 +35,9 @@ export function GetAnnotations(arg1:number,arg2:number,arg3:number,arg4:number,a
 
 export function GetAppInfo():Promise<app.AppInfo>;
 
-export function GetAtlasFrames(arg1:string):Promise<Array<app.AtlasFrame>>;
+export function GetAtlasFrameSize(arg1:string):Promise<app.AtlasFrameSize>;
+
+export function GetAtlasIndex(arg1:string):Promise<Array<app.AtlasIndexEntry>>;
 
 export function GetCatalog():Promise<Array<app.CatalogObject>>;
 
