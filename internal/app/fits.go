@@ -18,27 +18,31 @@ import (
 // Multiple keyword aliases are tried for each field (e.g. EXPTIME vs EXPOSURE)
 // to cover different camera conventions.
 type FITSHeader struct {
-	Width      int                    `json:"width"`
-	Height     int                    `json:"height"`
-	Channels   int                    `json:"channels"`
-	BitPix     int                    `json:"bitpix"`
-	Object     string                 `json:"object"`
-	Telescope  string                 `json:"telescope"`
-	Instrument string                 `json:"instrument"`
-	Filter     string                 `json:"filter"`
-	ExpTime    float64                `json:"exptime"`
-	DateObs    string                 `json:"dateObs"`
-	Gain       float64                `json:"gain"`
-	Offset     float64                `json:"offset"`
-	CCDTemp    float64                `json:"ccdTemp"`
-	RA         float64                `json:"ra"`
-	Dec        float64                `json:"dec"`
-	XBinning   int                    `json:"xbinning"`
-	YBinning   int                    `json:"ybinning"`
-	FocalLen   float64                `json:"focalLen"`
-	SiteElev   float64                `json:"siteElev"`
-	SiteLat    float64                `json:"siteLat"`
-	SiteLong   float64                `json:"siteLong"`
+	Width      int            `json:"width"`
+	Height     int            `json:"height"`
+	Channels   int            `json:"channels"`
+	BitPix     int            `json:"bitpix"`
+	Object     string         `json:"object"`
+	Telescope  string         `json:"telescope"`
+	Instrument string         `json:"instrument"`
+	Filter     string         `json:"filter"`
+	ExpTime    float64        `json:"exptime"`
+	DateObs    string         `json:"dateObs"`
+	Gain       float64        `json:"gain"`
+	Offset     float64        `json:"offset"`
+	CCDTemp    float64        `json:"ccdTemp"`
+	RA         float64        `json:"ra"`
+	Dec        float64        `json:"dec"`
+	XBinning   int            `json:"xbinning"`
+	YBinning   int            `json:"ybinning"`
+	FocalLen   float64        `json:"focalLen"`
+	SiteElev   float64        `json:"siteElev"`
+	SiteLat    float64        `json:"siteLat"`
+	SiteLong   float64        `json:"siteLong"`
+	// WCS-derived pixel scale in arcsec/pixel and field rotation in degrees.
+	// Non-zero only when the header contains usable WCS keywords.
+	PixelScale float64        `json:"pixelScale"`
+	Rotation   float64        `json:"rotation"`
 	Extra      map[string]any `json:"extra"`
 }
 
@@ -76,7 +80,7 @@ func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 // per-channel statistics for WebGL-based MTF rendering on the frontend.
 // All channels are globally normalised so colour balance is preserved.
 func (a *App) GeneratePreviewRaw(path string) (RawPreviewData, error) {
-	return generatePreviewRaw(path, 1024)
+	return generatePreviewRaw(path, 768)
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -122,6 +126,10 @@ func readFITSHeader(path string) (*FITSHeader, error) {
 		"RA": true, "DEC": true, "OBJCTRA": true, "OBJCTDEC": true,
 		"XBINNING": true, "YBINNING": true,
 		"FOCALLEN": true, "SITEELEV": true, "SITELAT": true, "SITELONG": true,
+		"CDELT1": true, "CDELT2": true, "CROTA2": true,
+		"CD1_1": true, "CD1_2": true, "CD2_1": true, "CD2_2": true,
+		"CRPIX1": true, "CRPIX2": true, "CTYPE1": true, "CTYPE2": true,
+		"PIXSCALE": true, "SCALE": true,
 	}
 	extra := make(map[string]any)
 	for _, key := range hdr.Keys() {
@@ -132,6 +140,8 @@ func readFITSHeader(path string) (*FITSHeader, error) {
 			extra[key] = c.Value
 		}
 	}
+
+	pixelScale, rotation := extractWCS(hdr)
 
 	return &FITSHeader{
 		Width:      w,
@@ -155,6 +165,8 @@ func readFITSHeader(path string) (*FITSHeader, error) {
 		SiteElev:   cardF64(hdr, 0, "SITEELEV"),
 		SiteLat:    cardF64(hdr, 0, "SITELAT"),
 		SiteLong:   cardF64(hdr, 0, "SITELONG"),
+		PixelScale: pixelScale,
+		Rotation:   rotation,
 		Extra:      extra,
 	}, nil
 }
@@ -861,6 +873,43 @@ func cardInt(hdr *fitsio.Header, defaultVal int, keys ...string) int {
 		}
 	}
 	return defaultVal
+}
+
+// extractWCS attempts to derive pixel scale (arcsec/px) and rotation (degrees)
+// from WCS keywords. Tries PIXSCALE, then CDELT1, then the CD matrix.
+// Returns (0, 0) when no usable WCS is found.
+func extractWCS(hdr *fitsio.Header) (pixelScale, rotation float64) {
+	// Direct pixel scale keyword (some cameras/stacking tools write this)
+	if ps := cardF64(hdr, 0, "PIXSCALE", "SCALE"); ps > 0 {
+		crota2 := cardF64(hdr, 0, "CROTA2")
+		return ps, crota2
+	}
+
+	// Standard WCS: CDELT1 is degrees/pixel (FITS standard).
+	// Some nonstandard software writes arcsec/pixel directly; heuristic: if |value| >= 1 it's already arcsec.
+	cdelt1 := cardF64(hdr, 0, "CDELT1")
+	if cdelt1 != 0 {
+		abs := math.Abs(cdelt1)
+		var ps float64
+		if abs >= 1.0 {
+			ps = abs // already arcsec/pixel
+		} else {
+			ps = abs * 3600.0 // degrees → arcsec
+		}
+		crota2 := cardF64(hdr, 0, "CROTA2")
+		return ps, crota2
+	}
+
+	// CD matrix: CD1_1, CD2_1 give the column vector for the RA axis
+	cd1_1 := cardF64(hdr, 0, "CD1_1")
+	cd2_1 := cardF64(hdr, 0, "CD2_1")
+	if cd1_1 != 0 || cd2_1 != 0 {
+		ps := math.Sqrt(cd1_1*cd1_1+cd2_1*cd2_1) * 3600.0
+		rot := math.Atan2(cd2_1, -cd1_1) * 180.0 / math.Pi
+		return ps, rot
+	}
+
+	return 0, 0
 }
 
 // ── Misc helpers ──────────────────────────────────────────────────────────────

@@ -135,6 +135,8 @@ export namespace app {
 	    siteElev: number;
 	    siteLat: number;
 	    siteLong: number;
+	    pixelScale: number;
+	    rotation: number;
 	    extra: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
@@ -164,6 +166,8 @@ export namespace app {
 	        this.siteElev = source["siteElev"];
 	        this.siteLat = source["siteLat"];
 	        this.siteLong = source["siteLong"];
+	        this.pixelScale = source["pixelScale"];
+	        this.rotation = source["rotation"];
 	        this.extra = source["extra"];
 	    }
 	}

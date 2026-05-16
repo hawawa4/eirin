@@ -89,7 +89,7 @@
     uChannels: WebGLUniformLocation;
     uChannelMode: WebGLUniformLocation;
   } | null = null;
-  let rawInfo: { width: number; height: number; channels: number; stats: app.ChannelStats[]; } | null = null;
+  let rawInfo = $state<{ width: number; height: number; channels: number; stats: app.ChannelStats[]; } | null>(null);
 
   // ── GLSL shaders ──────────────────────────────────────────────────────────
   const VS = `#version 300 es
@@ -409,15 +409,21 @@ void main() {
 
   // ── Annotations ───────────────────────────────────────────────────────────
 
+  // True when we have enough WCS data to attempt annotation projection.
+  let canAnnotate = $derived(
+    !!(qualityFrame?.wcsSolved ||
+      (fitsHeader?.ra && fitsHeader.pixelScale > 0))
+  );
+
   $effect(() => {
-    if (!showAnnotations || !qualityFrame?.wcsSolved || !rawInfo) return;
+    if (!showAnnotations || !canAnnotate || !rawInfo) return;
     if (annotations.length > 0) return;
     annotationsLoading = true;
-    GetAnnotations(
-      qualityFrame.ra, qualityFrame.dec,
-      qualityFrame.pixelScale, qualityFrame.rotation,
-      rawInfo.width, rawInfo.height,
-    ).then((res) => {
+    const ra    = qualityFrame?.wcsSolved ? qualityFrame.ra         : (fitsHeader?.ra  ?? 0);
+    const dec   = qualityFrame?.wcsSolved ? qualityFrame.dec        : (fitsHeader?.dec ?? 0);
+    const scale = qualityFrame?.wcsSolved ? qualityFrame.pixelScale : (fitsHeader?.pixelScale ?? 0);
+    const rot   = qualityFrame?.wcsSolved ? qualityFrame.rotation   : (fitsHeader?.rotation ?? 0);
+    GetAnnotations(ra, dec, scale, rot, rawInfo.width, rawInfo.height).then((res) => {
       annotations = res ?? [];
       annotationsLoading = false;
     }).catch(() => { annotationsLoading = false; });
@@ -488,12 +494,13 @@ void main() {
         {/if}
       </div>
 
-      {#if rawInfo && rawInfo.channels === 3}
-        <div class="channel-group">
-          <button class="tool-btn ch-btn"              class:active={channelMode === 0} onclick={() => setChannelMode(0)} title="All channels">RGB</button>
-          <button class="tool-btn ch-btn ch-r" class:active={channelMode === 1} onclick={() => setChannelMode(1)} title="Red channel">R</button>
-          <button class="tool-btn ch-btn ch-g" class:active={channelMode === 2} onclick={() => setChannelMode(2)} title="Green channel">G</button>
-          <button class="tool-btn ch-btn ch-b" class:active={channelMode === 3} onclick={() => setChannelMode(3)} title="Blue channel">B</button>
+      {#if rawInfo}
+        {@const isColor = rawInfo.channels === 3}
+        <div class="channel-group" class:ch-disabled={!isColor} title={isColor ? "" : "Channel split requires a color (OSC) image"}>
+          <button class="tool-btn ch-btn"              class:active={channelMode === 0} disabled={!isColor} onclick={() => setChannelMode(0)}>RGB</button>
+          <button class="tool-btn ch-btn ch-r" class:active={channelMode === 1} disabled={!isColor} onclick={() => setChannelMode(1)}>R</button>
+          <button class="tool-btn ch-btn ch-g" class:active={channelMode === 2} disabled={!isColor} onclick={() => setChannelMode(2)}>G</button>
+          <button class="tool-btn ch-btn ch-b" class:active={channelMode === 3} disabled={!isColor} onclick={() => setChannelMode(3)}>B</button>
         </div>
       {/if}
 
@@ -501,7 +508,7 @@ void main() {
         <button class="tool-btn" class:active={showHistogram} onclick={() => (showHistogram = !showHistogram)} title="Histogram overlay">Hist</button>
       {/if}
 
-      {#if qualityFrame?.wcsSolved && rawInfo}
+      {#if canAnnotate && rawInfo}
         <button class="tool-btn" class:active={showAnnotations} onclick={() => (showAnnotations = !showAnnotations)} title="Star / DSO annotations">✦ Labels</button>
       {/if}
 
@@ -535,6 +542,8 @@ void main() {
       <svg class="annotation-svg" width={viewportW} height={viewportH}>
         {#if annotationsLoading}
           <text x={viewportW / 2} y={viewportH / 2} dominant-baseline="middle" text-anchor="middle" font-size="13" fill="rgba(255,200,50,0.7)">Loading annotations…</text>
+        {:else if annotations.length === 0}
+          <text x="8" y={viewportH - 8} font-size="10" fill="rgba(255,200,50,0.55)">No catalog objects in this field</text>
         {:else}
           {#each annotations as ann (`${ann.label}${ann.x}${ann.y}`)}
             {@const vp = imgToViewport(ann.x, ann.y)}
@@ -708,6 +717,8 @@ void main() {
   .ch-r.active { color: #ff6060 !important; border-color: #ff6060 !important; }
   .ch-g.active { color: #50d050 !important; border-color: #50d050 !important; }
   .ch-b.active { color: #6098ff !important; border-color: #6098ff !important; }
+  .ch-disabled { opacity: 0.38; cursor: not-allowed; }
+  .ch-disabled .ch-btn { cursor: not-allowed; }
 
   /* ── Image viewport ──────────────────────────────────────────────────── */
   .image-viewport {
