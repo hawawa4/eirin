@@ -94,7 +94,7 @@
       const path = entry.nasPath;
       if (previewImgs.has(path) || loadingPaths.has(path)) continue;
       loadingPaths.add(path);
-      GeneratePreview(path, 2)
+      GeneratePreview(path, entry.frameType === 'processed' ? 0 : 2)
         .then((url) => {
           const img = new Image();
           img.onload = () => {
