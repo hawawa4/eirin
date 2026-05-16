@@ -30,13 +30,14 @@
     columns: ColumnDef[];
     selectedNasPath: string | null;
     sirilAvailable: boolean;
+    initialFilter?: string;
     onfileclick: (frame: app.LibraryFrame) => void;
     onsavecolumns: () => void;
     onframesreloaded?: (frames: app.LibraryFrame[]) => void;
     oncreateproject?: (project: Project) => void;
   }
 
-  let { rootFolder, columns, selectedNasPath, sirilAvailable, onfileclick, onsavecolumns, onframesreloaded, oncreateproject }: Props = $props();
+  let { rootFolder, columns, selectedNasPath, sirilAvailable, initialFilter, onfileclick, onsavecolumns, onframesreloaded, oncreateproject }: Props = $props();
 
   // ── Data ─────────────────────────────────────────────────────────────────
   let frames = $state<app.LibraryFrame[]>([]);
@@ -96,6 +97,13 @@
     clearColFilters();
     search = "";
   }
+
+  // When the atlas opens a specific file, pre-filter the name column to that filename.
+  $effect(() => {
+    if (initialFilter) {
+      colFilters = { name: { text: initialFilter } };
+    }
+  });
 
   const textDebounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 

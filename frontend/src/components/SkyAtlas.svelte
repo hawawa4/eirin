@@ -43,8 +43,8 @@
   let hoverY = $state(0);
   let selectedEntry = $state<app.AtlasIndexEntry | null>(null);
 
-  // Preview for selected frame
-  let previewUrl     = $state<string | null>(null);
+  // Canvas preview image for selected frame
+  let previewImg     = $state<HTMLImageElement | null>(null);
   let previewLoading = $state(false);
 
   let lazyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,17 +54,22 @@
 
   $effect(() => {
     if (!selectedEntry) {
-      previewUrl = null;
+      previewImg = null;
       previewLoading = false;
       return;
     }
     const path = selectedEntry.nasPath;
     previewLoading = true;
-    previewUrl = null;
+    previewImg = null;
     GeneratePreview(path, 2)
-      .then((url) => { if (selectedEntry?.nasPath === path) previewUrl = url; })
-      .catch(() => {})
-      .finally(() => { if (selectedEntry?.nasPath === path) previewLoading = false; });
+      .then((url) => {
+        if (selectedEntry?.nasPath !== path) return;
+        const img = new Image();
+        img.onload = () => { if (selectedEntry?.nasPath === path) { previewImg = img; previewLoading = false; } };
+        img.onerror = () => { if (selectedEntry?.nasPath === path) previewLoading = false; };
+        img.src = url;
+      })
+      .catch(() => { if (selectedEntry?.nasPath === path) previewLoading = false; });
   });
 
   // ── Projection ────────────────────────────────────────────────────────────
@@ -266,7 +271,7 @@
       const [cx, cy] = cp;
       if (cx < -100 || cx > canvasW + 100 || cy < -100 || cy > canvasH + 100) continue;
 
-      const sz   = sizes.get(entry.nasPath);
+      const sz    = sizes.get(entry.nasPath);
       const isSel = entry === selectedEntry;
       const isHov = entry === hoveredEntry;
 
@@ -276,22 +281,58 @@
         const valid = corners.filter((c): c is [number, number] => c !== null);
         if (valid.length < 3) continue;
 
-        ctx.beginPath();
-        ctx.moveTo(valid[0][0], valid[0][1]);
-        for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
-        ctx.closePath();
-
-        ctx.fillStyle   = isSel ? "rgba(255,190,70,0.18)" : isHov ? "rgba(100,190,255,0.22)" : "rgba(80,140,220,0.10)";
-        ctx.strokeStyle = isSel ? "rgba(255,210,80,0.95)" : isHov ? "rgba(120,210,255,0.95)" : "rgba(100,160,255,0.55)";
-        ctx.lineWidth   = (isSel || isHov) ? 2 : 1.2;
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = isSel ? "rgba(255,220,100,1)" : isHov ? "rgba(190,230,255,1)" : "rgba(160,205,255,0.85)";
-        ctx.font      = (isSel || isHov) ? "bold 11px monospace" : "10px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(entry.object || entry.name, cx, cy + 4);
-        ctx.textAlign = "left";
+        if (isSel && previewImg) {
+          // Draw the actual image aligned to the footprint
+          const wPx = sz.width  * entry.pixelScale / 3600 * pixPerDeg;
+          const hPx = sz.height * entry.pixelScale / 3600 * pixPerDeg;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(-entry.rotation * Math.PI / 180);
+          ctx.drawImage(previewImg, -wPx / 2, -hPx / 2, wPx, hPx);
+          ctx.restore();
+          // Golden border over the image
+          ctx.beginPath();
+          ctx.moveTo(valid[0][0], valid[0][1]);
+          for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
+          ctx.closePath();
+          ctx.strokeStyle = "rgba(255,210,80,0.9)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else if (isSel && previewLoading) {
+          // Footprint with pulsing style while image loads
+          ctx.beginPath();
+          ctx.moveTo(valid[0][0], valid[0][1]);
+          for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
+          ctx.closePath();
+          ctx.fillStyle   = "rgba(255,190,70,0.12)";
+          ctx.strokeStyle = "rgba(255,210,80,0.6)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.fill();
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(255,220,100,0.8)";
+          ctx.font = "10px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("loading…", cx, cy + 4);
+          ctx.textAlign = "left";
+        } else {
+          // Normal footprint
+          ctx.beginPath();
+          ctx.moveTo(valid[0][0], valid[0][1]);
+          for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
+          ctx.closePath();
+          ctx.fillStyle   = isHov ? "rgba(100,190,255,0.22)" : "rgba(80,140,220,0.10)";
+          ctx.strokeStyle = isHov ? "rgba(120,210,255,0.95)" : "rgba(100,160,255,0.55)";
+          ctx.lineWidth   = isHov ? 2 : 1.2;
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = isHov ? "rgba(190,230,255,1)" : "rgba(160,205,255,0.85)";
+          ctx.font      = isHov ? "bold 11px monospace" : "10px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(entry.object || entry.name, cx, cy + 4);
+          ctx.textAlign = "left";
+        }
       } else {
         const r = isSel ? 5 : isHov ? 4 : 3;
         ctx.beginPath();
@@ -322,6 +363,7 @@
   $effect(() => {
     void viewRA; void viewDec; void pixPerDeg; void index; void catalog;
     void hoveredEntry; void selectedEntry; void canvasW; void canvasH; void sizesVersion;
+    void previewImg; void previewLoading;
     requestAnimationFrame(redraw);
   });
 
@@ -518,17 +560,6 @@
         <button class="ap-close" onclick={() => (selectedEntry = null)}>✕</button>
       </div>
 
-      <!-- Image preview -->
-      <div class="ap-preview">
-        {#if previewLoading}
-          <div class="ap-preview-spinner">◌</div>
-        {:else if previewUrl}
-          <img src={previewUrl} alt="Preview" class="ap-preview-img" />
-        {:else}
-          <div class="ap-preview-empty">No preview</div>
-        {/if}
-      </div>
-
       <div class="ap-body">
         <div class="ap-row"><span class="ap-lbl">Type</span><span class="ap-val">{selectedEntry.frameType}</span></div>
         <div class="ap-row"><span class="ap-lbl">RA</span><span class="ap-val">{selectedEntry.ra.toFixed(4)}°</span></div>
@@ -679,34 +710,6 @@
     opacity: 0.6;
   }
   .ap-close:hover { opacity: 1; color: var(--text-primary); }
-
-  /* Preview area */
-  .ap-preview {
-    flex-shrink: 0;
-    width: 100%;
-    aspect-ratio: 4/3;
-    background: #020408;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .ap-preview-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: block;
-  }
-  .ap-preview-spinner {
-    animation: spin 1.2s linear infinite;
-    color: var(--accent);
-    font-size: 1.5rem;
-  }
-  .ap-preview-empty {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    opacity: 0.5;
-  }
 
   .ap-body {
     padding: 8px 10px;
