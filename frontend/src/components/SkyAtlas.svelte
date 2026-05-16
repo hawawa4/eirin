@@ -35,6 +35,7 @@
   const sizes = new Map<string, { width: number; height: number }>();
   let sizesVersion = $state(0);
   const fetchingPaths = new Set<string>();
+  let fetchingCount = $state(0); // reactive counter for in-flight GetAtlasFrameSize calls
 
   // Pan state
   let isPanning = $state(false);
@@ -60,6 +61,15 @@
   const previewImgs = new Map<string, HTMLImageElement>();
   const loadingPaths = new Set<string>();
   let previewVersion = $state(0);
+
+  // Per-frame rotation overrides: -90 | 0 | 90 degrees added on top of stored rotation
+  const rotationOverrides = new Map<string, number>();
+  let rotOverVersion = $state(0);
+
+  // True when any preview image or frame size is currently being fetched
+  let anyLoading = $derived(
+    (previewVersion >= 0 && loadingPaths.size > 0) || fetchingCount > 0,
+  );
 
   let lazyTimer: ReturnType<typeof setTimeout> | null = null;
   const LAZY_PPD = 8;
@@ -335,28 +345,15 @@
       if (valid.length < 3) return;
 
       if (isSel && img) {
-        // Draw actual image aligned to footprint
+        // Draw actual image aligned to footprint, with optional manual rotation offset
+        const rotDeg = entry.rotation + (rotationOverrides.get(entry.nasPath) ?? 0);
         const wPx = sz.width  * entry.pixelScale / 3600 * pixPerDeg;
         const hPx = sz.height * entry.pixelScale / 3600 * pixPerDeg;
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(-entry.rotation * Math.PI / 180);
+        ctx.rotate(-rotDeg * Math.PI / 180);
         ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
         ctx.restore();
-        // Golden border over the image
-        ctx.beginPath();
-        ctx.moveTo(valid[0][0], valid[0][1]);
-        for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
-        ctx.closePath();
-        ctx.strokeStyle = "rgba(255,210,80,0.9)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        // Object label
-        ctx.fillStyle = "rgba(255,220,100,0.9)";
-        ctx.font = "bold 11px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(entry.object || entry.name, cx, cy + 4);
-        ctx.textAlign = "left";
       } else if (isSel && isLoading) {
         ctx.beginPath();
         ctx.moveTo(valid[0][0], valid[0][1]);
@@ -419,7 +416,7 @@
   $effect(() => {
     void viewRA; void viewDec; void pixPerDeg; void index; void catalog;
     void hoveredEntry; void selectedEntries; void canvasW; void canvasH; void sizesVersion;
-    void previewVersion; void showStacked;
+    void previewVersion; void showStacked; void rotOverVersion;
     requestAnimationFrame(redraw);
   });
 
@@ -439,15 +436,17 @@
       const [x, y] = pt;
       if (x < -200 || x > canvasW + 200 || y < -200 || y > canvasH + 200) continue;
       fetchingPaths.add(entry.nasPath);
+      fetchingCount++;
       GetAtlasFrameSize(entry.nasPath)
         .then((sz) => {
           fetchingPaths.delete(entry.nasPath);
+          fetchingCount--;
           if (sz.width > 0 && sz.height > 0) {
             sizes.set(entry.nasPath, { width: sz.width, height: sz.height });
             sizesVersion++;
           }
         })
-        .catch(() => { fetchingPaths.delete(entry.nasPath); });
+        .catch(() => { fetchingPaths.delete(entry.nasPath); fetchingCount--; });
     }
   }
 
@@ -518,11 +517,8 @@
     isPanning = false;
     if (wasPanning && (Math.abs(e.clientX - panStartX) > 4 || Math.abs(e.clientY - panStartY) > 4)) return;
 
-    if (!hoveredEntry) {
-      // Click on empty space — deselect all
-      selectedEntries = [];
-      return;
-    }
+    // Empty space click is a no-op — images stay loaded
+    if (!hoveredEntry) return;
 
     const idx = selectedEntries.indexOf(hoveredEntry);
     if (idx === -1) {
@@ -578,20 +574,6 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="atlas-root" bind:this={container}>
-  {#if loading}
-    <div class="atlas-overlay">
-      <span class="atlas-spinner">◌</span> Loading sky atlas…
-    </div>
-  {:else if loadError}
-    <div class="atlas-overlay atlas-error">{loadError}</div>
-  {:else if index.length === 0}
-    <div class="atlas-overlay atlas-empty">
-      <div class="empty-icon">◎</div>
-      <p>No stacked frames with sky coordinates found.</p>
-      <p class="atlas-hint">Run <strong>Build Index</strong> to read WCS from FITS headers,<br>or <strong>✦ Analyze</strong> to plate-solve stacked frames.</p>
-    </div>
-  {/if}
-
   <canvas
     bind:this={canvas}
     class="atlas-canvas"
@@ -604,6 +586,30 @@
     onmouseleave={() => { isPanning = false; hoveredEntry = null; }}
     style="cursor: {isPanning ? 'grabbing' : hoveredEntry ? 'pointer' : 'grab'};"
   ></canvas>
+
+  <!-- Overlays rendered after canvas so they always paint on top -->
+  {#if loading}
+    <div class="atlas-overlay">
+      <div class="atlas-spinner"></div>
+      <span>Loading sky atlas…</span>
+    </div>
+  {:else if loadError}
+    <div class="atlas-overlay atlas-error">{loadError}</div>
+  {:else if index.length === 0}
+    <div class="atlas-overlay atlas-empty">
+      <div class="empty-icon">◎</div>
+      <p>No stacked frames with sky coordinates found.</p>
+      <p class="atlas-hint">Run <strong>Build Index</strong> to read WCS from FITS headers,<br>or <strong>✦ Analyze</strong> to plate-solve stacked frames.</p>
+    </div>
+  {/if}
+
+  <!-- Loading throbber: frame sizes or preview images in flight -->
+  {#if anyLoading}
+    <div class="atlas-img-loading">
+      <div class="atlas-spinner"></div>
+      <span>{fetchingCount > 0 ? "Loading frames…" : "Loading preview…"}</span>
+    </div>
+  {/if}
 
   <!-- HUD -->
   <div class="atlas-hud">
@@ -658,7 +664,47 @@
         <div class="ap-row"><span class="ap-lbl">RA</span><span class="ap-val">{panelEntry.ra.toFixed(4)}°</span></div>
         <div class="ap-row"><span class="ap-lbl">Dec</span><span class="ap-val">{panelEntry.dec >= 0 ? "+" : ""}{panelEntry.dec.toFixed(4)}°</span></div>
         <div class="ap-row"><span class="ap-lbl">Scale</span><span class="ap-val">{panelEntry.pixelScale.toFixed(2)} ″/px</span></div>
-        <div class="ap-row"><span class="ap-lbl">Rotation</span><span class="ap-val">{panelEntry.rotation.toFixed(1)}°</span></div>
+        <div class="ap-row">
+          <span class="ap-lbl">Rotation</span>
+          <span class="ap-val">{panelEntry.rotation.toFixed(1)}°</span>
+        </div>
+        {#if previewVersion >= 0 && previewImgs.has(panelEntry.nasPath)}
+          {@const cur = rotOverVersion >= 0 ? (rotationOverrides.get(panelEntry.nasPath) ?? 0) : 0}
+          <div class="ap-row ap-rot-row">
+            <span class="ap-lbl">Adjust</span>
+            <span class="ap-rot-btns">
+              <button
+                class="rot-btn"
+                class:rot-active={cur === -90}
+                title="Rotate 90° CCW"
+                onclick={() => {
+                  const path = panelEntry!.nasPath;
+                  rotationOverrides.set(path, cur === -90 ? 0 : -90);
+                  rotOverVersion++;
+                }}
+              >↺ 90°</button>
+              <button
+                class="rot-btn"
+                class:rot-active={cur === 0}
+                title="No adjustment"
+                onclick={() => {
+                  rotationOverrides.set(panelEntry!.nasPath, 0);
+                  rotOverVersion++;
+                }}
+              >0°</button>
+              <button
+                class="rot-btn"
+                class:rot-active={cur === 90}
+                title="Rotate 90° CW"
+                onclick={() => {
+                  const path = panelEntry!.nasPath;
+                  rotationOverrides.set(path, cur === 90 ? 0 : 90);
+                  rotOverVersion++;
+                }}
+              >↻ 90°</button>
+            </span>
+          </div>
+        {/if}
         {#if sz}
           <div class="ap-row"><span class="ap-lbl">Size</span><span class="ap-val">{sz.width} × {sz.height} px</span></div>
           <div class="ap-row">
@@ -697,6 +743,8 @@
     display: block;
     position: absolute;
     inset: 0;
+    /* canvas sits below all overlay UI */
+    z-index: 0;
   }
 
   .atlas-overlay {
@@ -708,9 +756,10 @@
     justify-content: center;
     color: var(--text-secondary);
     font-size: 0.875rem;
-    gap: 8px;
-    z-index: 10;
+    gap: 12px;
+    z-index: 20;
     pointer-events: none;
+    background: rgba(5, 6, 16, 0.75);
   }
   .atlas-error { color: var(--danger); }
   .atlas-empty { gap: 6px; text-align: center; }
@@ -718,13 +767,38 @@
   .atlas-hint  { font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7; line-height: 1.5; }
 
   .atlas-spinner {
-    display: inline-block;
-    animation: spin 1.2s linear infinite;
-    color: var(--accent);
-    font-size: 1.4rem;
-    margin-bottom: 4px;
+    width: 32px;
+    height: 32px;
+    border: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
   }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Per-image loading indicator (bottom-left corner) */
+  .atlas-img-loading {
+    position: absolute;
+    bottom: 32px;
+    left: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+    border: 1px solid var(--border-accent);
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    z-index: 25;
+    pointer-events: none;
+  }
+  .atlas-img-loading .atlas-spinner {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
+    flex-shrink: 0;
+  }
 
   /* HUD */
   .atlas-hud {
@@ -872,6 +946,30 @@
     word-break: break-all;
     text-align: right;
     opacity: 0.65;
+  }
+
+  /* Rotation override row */
+  .ap-rot-row { align-items: center; margin-top: 2px; }
+  .ap-rot-btns {
+    display: flex;
+    gap: 3px;
+  }
+  .rot-btn {
+    padding: 2px 7px;
+    font-size: 0.68rem;
+    font-family: "Consolas", monospace;
+    background: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .rot-btn:hover { border-color: var(--border-accent); color: var(--text-primary); }
+  .rot-btn.rot-active {
+    background: color-mix(in srgb, var(--accent-dim) 40%, transparent);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .ap-open-btn {
     flex-shrink: 0;
