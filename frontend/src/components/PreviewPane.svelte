@@ -25,6 +25,8 @@
     onclose,
   }: Props = $props();
 
+  let isProcessed = $derived(qualityFrame?.frameType === 'processed');
+
   let statsCollapsed = $state(false);
   let coordsCollapsed = $state(false);
 
@@ -187,8 +189,8 @@ void main() {
   // ── WebGL render ──────────────────────────────────────────────────────────
 
   function renderGL() {
-    if (!gl || !program || !glTex || !glU || !rawInfo) return;
-    const uniforms = computeUniforms(rawInfo.stats, stretchEnabled, stretchLevel);
+    if (!gl || !program || !glTex || !glU || !rawInfo || gl.isContextLost()) return;
+    const uniforms = computeUniforms(rawInfo.stats, stretchEnabled && !isProcessed, stretchLevel);
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
     const u2 = uniforms[2] ?? u0;
@@ -206,7 +208,7 @@ void main() {
   }
 
   function renderGLWith(stats: app.ChannelStats[], enabled: boolean, level: number, chMode: 0|1|2|3 = 0) {
-    if (!gl || !program || !glTex || !glU || !rawInfo) return;
+    if (!gl || !program || !glTex || !glU || !rawInfo || gl.isContextLost()) return;
     const uniforms = computeUniforms(stats, enabled, level);
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
@@ -325,7 +327,8 @@ void main() {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
           }
 
-          renderGLWith(rawInfo.stats, se, sl, 0);
+          const qf = untrack(() => qualityFrame);
+          renderGLWith(rawInfo.stats, se && qf?.frameType !== 'processed', sl, 0);
           hasImage = true;
 
           // Compute histogram off the main render path
@@ -463,7 +466,7 @@ void main() {
   function onWheel(e: WheelEvent) {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 0.87;
-    const newZoom = Math.max(0.1, Math.min(20, zoom * factor));
+    const newZoom = Math.max(0.1, Math.min(1.85, zoom * factor));
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const mx = e.clientX - rect.left - rect.width  / 2;
     const my = e.clientY - rect.top  - rect.height / 2;
@@ -483,14 +486,8 @@ void main() {
     const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
     const effective = zoom * cssScale;
 
-    let neededSize: number;
-    if (effective > 2.2 && loadedMaxSize < 4096) {
-      neededSize = 0; // native
-    } else if (effective > 1.3 && loadedMaxSize <= 768) {
-      neededSize = 2048;
-    } else {
-      return;
-    }
+    if (!(effective > 1.3 && loadedMaxSize <= 768)) return;
+    const neededSize = 2048;
 
     const id = ++zoomReqId;
     let result;
@@ -509,9 +506,9 @@ void main() {
     rawInfo = { width: result.width, height: result.height, channels: result.channels, stats: rawInfo.stats };
     canvas.width  = result.width;
     canvas.height = result.height;
-    loadedMaxSize = neededSize === 0 ? 4096 : neededSize;
+    loadedMaxSize = neededSize;
 
-    if (gl && glTex) {
+    if (gl && glTex && !gl.isContextLost()) {
       gl.bindTexture(gl.TEXTURE_2D, glTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, result.width, result.height, 0, gl.RGBA, gl.FLOAT, f32);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -539,18 +536,20 @@ void main() {
       <span class="zoom-label">{Math.round(zoom * 100)}%</span>
       <button class="tool-btn" onclick={resetView} title="Fit to window (double-click image)">Fit</button>
 
-      <div class="stretch-group">
-        <button
-          class="tool-btn"
-          class:active={stretchEnabled}
-          onclick={() => { stretchEnabled = !stretchEnabled; applyStretch(); }}
-          title="Toggle autostretch">Stretch</button>
-        {#if stretchEnabled}
-          <button class="tool-btn preset" class:active={stretchLevel === 1} onclick={() => setStretch(1)}>Gentle</button>
-          <button class="tool-btn preset" class:active={stretchLevel === 2} onclick={() => setStretch(2)}>Normal</button>
-          <button class="tool-btn preset" class:active={stretchLevel === 3} onclick={() => setStretch(3)}>Strong</button>
-        {/if}
-      </div>
+      {#if !isProcessed}
+        <div class="stretch-group">
+          <button
+            class="tool-btn"
+            class:active={stretchEnabled}
+            onclick={() => { stretchEnabled = !stretchEnabled; applyStretch(); }}
+            title="Toggle autostretch">Stretch</button>
+          {#if stretchEnabled}
+            <button class="tool-btn preset" class:active={stretchLevel === 1} onclick={() => setStretch(1)}>Gentle</button>
+            <button class="tool-btn preset" class:active={stretchLevel === 2} onclick={() => setStretch(2)}>Normal</button>
+            <button class="tool-btn preset" class:active={stretchLevel === 3} onclick={() => setStretch(3)}>Strong</button>
+          {/if}
+        </div>
+      {/if}
 
       {#if rawInfo}
         {@const isColor = rawInfo.channels === 3}
