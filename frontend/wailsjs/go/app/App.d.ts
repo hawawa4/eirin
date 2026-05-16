@@ -39,6 +39,8 @@ export function GetLightObjects(arg1:string):Promise<Array<string>>;
 
 export function GetProjectFrames(arg1:string):Promise<Array<string>>;
 
+export function GetProjectLibraryFrames(arg1:string):Promise<Array<app.LibraryFrame>>;
+
 export function GetProjectOutputFiles(arg1:string):Promise<Array<app.ProjectOutputFile>>;
 
 export function GetProjectsFolder():Promise<string>;
@@ -62,6 +64,8 @@ export function OpenWithSiril(arg1:string):Promise<void>;
 export function ReadFITSHeader(arg1:string):Promise<app.FITSHeader>;
 
 export function RejectFile(arg1:string):Promise<void>;
+
+export function RemoveFramesFromProject(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function ScanImportCandidates(arg1:string,arg2:Array<string>):Promise<Array<app.ImportCandidate>>;
 

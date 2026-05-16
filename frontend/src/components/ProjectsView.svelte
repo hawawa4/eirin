@@ -4,23 +4,26 @@
     ListProjects,
     CreateProject,
     DeleteProject,
-    GetProjectFrames,
     AddFramesToProject,
     OpenProjectInSiril,
     GetLightObjects,
     GetLightFramesPaged,
+    GetProjectLibraryFrames,
+    RemoveFramesFromProject,
     GetProjectOutputFiles,
     ImportOutputFiles,
   } from "../../wailsjs/go/app/App.js";
   import type { app } from "../../wailsjs/go/models";
   import type { Project, ProjectOutputFile } from "../lib/types";
+  import FrameTable from "./FrameTable.svelte";
 
   interface Props {
     rootFolder: string;
     projectsFolder: string;
+    initialProjectId?: number | null;
   }
 
-  let { rootFolder, projectsFolder }: Props = $props();
+  let { rootFolder, projectsFolder, initialProjectId = null }: Props = $props();
 
   // ── Project list ──────────────────────────────────────────────────────────
   let projects = $state<Project[]>([]);
@@ -29,8 +32,9 @@
 
   // ── Lights (collapsible) ──────────────────────────────────────────────────
   let lightsCollapsed = $state(false);
-  let projectFrames = $state<string[]>([]);
+  let projectLibraryFrames = $state<app.LibraryFrame[]>([]);
   let loadingFrames = $state(false);
+  let removeFramesError = $state("");
 
   // ── Output files (polled) ─────────────────────────────────────────────────
   let outputFiles = $state<ProjectOutputFile[]>([]);
@@ -78,7 +82,6 @@
   let pickerOffset = $state(0);
   let pickerLoading = $state(false);
   let pickerLoadingMore = $state(false);
-  let pickerFilter = $state("");
   let pickerSelected = $state<Set<string>>(new Set());
   let addMode = $state<"symlink" | "copy">("symlink");
   let adding = $state(false);
@@ -102,10 +105,21 @@
     loadingProjects = true;
     try {
       projects = await ListProjects();
+      if (initialProjectId) {
+        const p = projects.find((x) => x.id === initialProjectId);
+        if (p) selectProject(p);
+      }
     } finally {
       loadingProjects = false;
     }
   }
+
+  $effect(() => {
+    const id = initialProjectId;
+    if (!id || !projects.length) return;
+    const p = projects.find((x) => x.id === id);
+    if (p) selectProject(p);
+  });
 
   async function selectProject(p: Project) {
     selected = p;
@@ -116,10 +130,22 @@
   async function reloadFrames() {
     if (!selected) return;
     loadingFrames = true;
+    removeFramesError = "";
     try {
-      projectFrames = await GetProjectFrames(selected.folder);
+      projectLibraryFrames = await GetProjectLibraryFrames(selected.folder);
     } finally {
       loadingFrames = false;
+    }
+  }
+
+  async function doRemoveFrames(paths: string[]) {
+    if (!selected) return;
+    removeFramesError = "";
+    try {
+      await RemoveFramesFromProject(selected.folder, paths);
+      await reloadFrames();
+    } catch (e) {
+      removeFramesError = String(e);
     }
   }
 
@@ -147,14 +173,13 @@
     projects = projects.filter((x) => x.id !== p.id);
     if (selected?.id === p.id) {
       selected = null;
-      projectFrames = [];
+      projectLibraryFrames = [];
     }
   }
 
   // ── Lights picker ─────────────────────────────────────────────────────────
   async function openPicker() {
     pickerStep = "objects";
-    pickerFilter = "";
     pickerSelected = new Set();
     pickerObjects = new Set();
     pickerFrames = [];
@@ -191,30 +216,7 @@
   async function goToFrameStep() {
     pickerStep = "frames";
     pickerSelected = new Set();
-    pickerFilter = "";
     await loadPickerFrames(true);
-  }
-
-  let filteredLights = $derived(
-    pickerFrames.filter(
-      (f) =>
-        !pickerFilter ||
-        f.fileName.toLowerCase().includes(pickerFilter.toLowerCase()),
-    ),
-  );
-
-  function togglePick(nasPath: string) {
-    const next = new Set(pickerSelected);
-    if (next.has(nasPath)) next.delete(nasPath);
-    else next.add(nasPath);
-    pickerSelected = next;
-  }
-
-  function toggleAllLights() {
-    pickerSelected =
-      pickerSelected.size === filteredLights.length
-        ? new Set()
-        : new Set(filteredLights.map((f) => f.nasPath));
   }
 
   function toggleObject(obj: string) {
@@ -403,7 +405,7 @@
             >
               <span class="section-chevron">{lightsCollapsed ? "▶" : "▼"}</span>
               <span class="section-title">Lights</span>
-              <span class="section-count">{projectFrames.length}</span>
+              <span class="section-count">{projectLibraryFrames.length}</span>
             </button>
             <button
               class="btn-secondary small"
@@ -412,22 +414,16 @@
           </div>
 
           {#if !lightsCollapsed}
-            <div class="section-body">
+            <div class="section-body lights-body">
               {#if loadingFrames}
                 <p class="hint">Loading…</p>
-              {:else if projectFrames.length === 0}
-                <p class="hint">No frames yet. Click "Add frames" to link light frames from your library.</p>
               {:else}
-                <div class="file-scroll">
-                  <table class="file-table">
-                    <thead><tr><th>Filename</th></tr></thead>
-                    <tbody>
-                      {#each projectFrames as name (name)}
-                        <tr><td class="mono-cell">{name}</td></tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
+                {#if removeFramesError}<p class="form-error">{removeFramesError}</p>{/if}
+                <FrameTable
+                  frames={projectLibraryFrames}
+                  onremove={doRemoveFrames}
+                  hiddenColumns={["frameType"]}
+                />
               {/if}
             </div>
           {/if}
@@ -542,72 +538,23 @@
 
       {:else}
         <!-- Step 2: Pick frames (paginated) -->
-        <div class="picker-toolbar">
+        <div class="picker-toolbar picker-toolbar-step2">
           <button class="btn-ghost small" onclick={() => { pickerStep = "objects"; }}>← Back</button>
-          <input
-            class="picker-search"
-            type="search"
-            placeholder="Filter by name…"
-            bind:value={pickerFilter}
-          />
-          <button class="btn-ghost small" onclick={toggleAllLights}>
-            {pickerSelected.size === filteredLights.length && filteredLights.length > 0
-              ? "Deselect all"
-              : "Select all"}
-          </button>
           <span class="picker-count">{pickerSelected.size} selected</span>
         </div>
 
         <div class="picker-list-scroll">
           {#if pickerLoadingMore && pickerFrames.length === 0}
             <p class="hint padded">Loading frames…</p>
-          {:else if filteredLights.length === 0}
-            <p class="hint padded">No frames match the filter.</p>
           {:else}
-            <table class="picker-table">
-              <thead>
-                <tr>
-                  <th class="col-check"></th>
-                  <th>Name</th>
-                  <th>Object</th>
-                  <th>Filter</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each filteredLights as f (f.nasPath)}
-                  <tr
-                    class="picker-row"
-                    class:picked={pickerSelected.has(f.nasPath)}
-                    onclick={() => togglePick(f.nasPath)}
-                  >
-                    <td class="col-check">
-                      <input
-                        type="checkbox"
-                        checked={pickerSelected.has(f.nasPath)}
-                        onclick={(e) => e.stopPropagation()}
-                        onchange={() => togglePick(f.nasPath)}
-                      />
-                    </td>
-                    <td class="col-name">{f.fileName}</td>
-                    <td class="dim-cell">{f.object || "—"}</td>
-                    <td class="dim-cell">{f.filter || "—"}</td>
-                    <td class="dim-cell">{f.dateObs ? f.dateObs.slice(0, 10) : "—"}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-            {#if pickerHasMore}
-              <div class="load-more-row">
-                <button
-                  class="btn-ghost small"
-                  disabled={pickerLoadingMore}
-                  onclick={() => loadPickerFrames(false)}
-                >
-                  {pickerLoadingMore ? "Loading…" : "Load more"}
-                </button>
-              </div>
-            {/if}
+            <FrameTable
+              frames={pickerFrames}
+              hasMore={pickerHasMore}
+              loadingMore={pickerLoadingMore}
+              onloadmore={() => loadPickerFrames(false)}
+              onselectionchange={(s) => (pickerSelected = s)}
+              hiddenColumns={["frameType"]}
+            />
           {/if}
         </div>
 
@@ -1021,6 +968,19 @@
 
   .section-body {
     padding: 10px 24px 14px;
+  }
+
+  .section-body.lights-body {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 420px;
+    overflow: hidden;
+  }
+
+  .picker-toolbar-step2 {
+    justify-content: flex-start;
   }
 
   /* ── File tables ─────────────────────────────────────────────────────────── */
