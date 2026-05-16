@@ -201,6 +201,76 @@ func (a *App) GetProjectFrames(projectFolder string) ([]string, error) {
 	return names, nil
 }
 
+// GetProjectLibraryFrames returns full LibraryFrame metadata for every frame in
+// <projectFolder>/lights/, resolving symlinks back to the NAS source path for
+// the DB lookup. Frames not yet in the DB are returned with just their filename.
+func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
+	lightsDir := filepath.Join(projectFolder, "lights")
+	entries, err := os.ReadDir(lightsDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			runtime.LogWarningf(a.ctx, "project frames: readdir %s: %v", lightsDir, err)
+		}
+		return []LibraryFrame{}
+	}
+
+	type resolved struct {
+		name    string
+		nasPath string
+	}
+	items := make([]resolved, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		linkPath := filepath.Join(lightsDir, e.Name())
+		realPath, err := filepath.EvalSymlinks(linkPath)
+		if err != nil {
+			realPath = linkPath
+		}
+		items = append(items, resolved{name: e.Name(), nasPath: realPath})
+	}
+
+	nasPaths := make([]string, len(items))
+	for i, it := range items {
+		nasPaths[i] = it.nasPath
+	}
+
+	frameMap, err := a.prefs.GetFrames(nasPaths)
+	if err != nil {
+		runtime.LogWarningf(a.ctx, "project frames: db lookup: %v", err)
+		frameMap = map[string]prefs.Frame{}
+	}
+
+	result := make([]LibraryFrame, 0, len(items))
+	for _, it := range items {
+		if f, ok := frameMap[it.nasPath]; ok {
+			result = append(result, toLibraryFrame(f))
+		} else {
+			result = append(result, LibraryFrame{NasPath: it.nasPath, FileName: it.name})
+		}
+	}
+	return result
+}
+
+// RemoveFramesFromProject removes the file or symlink in <projectFolder>/lights/
+// whose basename matches each given NAS path.
+func (a *App) RemoveFramesFromProject(projectFolder string, nasPaths []string) error {
+	lightsDir := filepath.Join(projectFolder, "lights")
+	failed := 0
+	for _, p := range nasPaths {
+		target := filepath.Join(lightsDir, filepath.Base(p))
+		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+			runtime.LogWarningf(a.ctx, "remove from project: %s: %v", filepath.Base(p), err)
+			failed++
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("failed to remove %d file(s) from project", failed)
+	}
+	return nil
+}
+
 var reSafeFolder = regexp.MustCompile(`[^\w\-]+`)
 
 func sanitizeFolderName(name string) string {

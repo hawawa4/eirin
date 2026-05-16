@@ -10,9 +10,10 @@
     onharddelete: (entry: CtxEntry) => void;
     onopensiril: (entry: CtxEntry) => void;
     onchangetype: (entry: CtxEntry, newType: string) => void;
+    oncreateproject?: () => void;
   }
 
-  let { menu, onclose, onreject, onrestore, onharddelete, onopensiril, onchangetype }: Props = $props();
+  let { menu, onclose, onreject, onrestore, onharddelete, onopensiril, onchangetype, oncreateproject }: Props = $props();
 
   $effect(() => {
     function onDoc(e: MouseEvent) {
@@ -57,6 +58,15 @@
   {:else}
     <button class="ctx-item" onclick={() => onreject(menu.entry)}>
       {menu.selectionCount > 1 ? `Reject ${menu.selectionCount} frames` : "Reject"}
+    </button>
+  {/if}
+  {#if oncreateproject}
+    <div class="ctx-sep"></div>
+    <button
+      class="ctx-item ctx-create-project"
+      onclick={() => { oncreateproject!(); onclose(); }}
+    >
+      {menu.selectionCount > 1 ? `Create project (${menu.selectionCount} frames)…` : "Create project…"}
     </button>
   {/if}
   <div class="ctx-sep"></div>
@@ -115,6 +125,13 @@
   }
   :global(.ctx-item.ctx-disabled:hover) {
     background: transparent;
+  }
+  :global(.ctx-item.ctx-create-project) {
+    color: var(--accent);
+  }
+  :global(.ctx-item.ctx-create-project:hover) {
+    background: var(--accent-dim);
+    color: var(--accent);
   }
 
   :global(.ctx-sep) {

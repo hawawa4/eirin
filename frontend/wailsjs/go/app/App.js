@@ -74,6 +74,10 @@ export function GetProjectFrames(arg1) {
   return window['go']['app']['App']['GetProjectFrames'](arg1);
 }
 
+export function GetProjectLibraryFrames(arg1) {
+  return window['go']['app']['App']['GetProjectLibraryFrames'](arg1);
+}
+
 export function GetProjectOutputFiles(arg1) {
   return window['go']['app']['App']['GetProjectOutputFiles'](arg1);
 }
@@ -120,6 +124,10 @@ export function ReadFITSHeader(arg1) {
 
 export function RejectFile(arg1) {
   return window['go']['app']['App']['RejectFile'](arg1);
+}
+
+export function RemoveFramesFromProject(arg1, arg2) {
+  return window['go']['app']['App']['RemoveFramesFromProject'](arg1, arg2);
 }
 
 export function ScanImportCandidates(arg1, arg2) {

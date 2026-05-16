@@ -85,6 +85,7 @@
 
   // ── Projects ───────────────────────────────────────────────────────────────
   let projectsFolder = $state("");
+  let initialProjectId = $state<number | null>(null);
 
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
@@ -461,6 +462,10 @@
           onfileclick={onLibraryFileClick}
           onsavecolumns={saveLibraryColumnConfig}
           onframesreloaded={onLibraryFramesReloaded}
+          oncreateproject={(project) => {
+            initialProjectId = project.id;
+            appMode = "projects";
+          }}
         />
       </div>
 
@@ -489,7 +494,7 @@
   {:else if appMode === "import"}
     <ImportView {rootFolder} />
   {:else if appMode === "projects"}
-    <ProjectsView {rootFolder} {projectsFolder} />
+    <ProjectsView {rootFolder} {projectsFolder} {initialProjectId} />
   {:else if appMode === "settings"}
     <SettingsView
       {rootFolder}

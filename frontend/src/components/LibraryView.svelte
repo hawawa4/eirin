@@ -12,10 +12,12 @@
     OpenWithSiril,
     AnalyzeFrames,
     CancelAnalysis,
+    CreateProject,
+    AddFramesToProject,
   } from "../../wailsjs/go/app/App.js";
   import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import type { app } from "../../wailsjs/go/models";
-  import type { AnalysisProgress, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy } from "../lib/types";
+  import type { AnalysisProgress, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy, Project } from "../lib/types";
   import { FRAME_TYPE_META } from "../lib/types";
   import { getLibraryCellValue } from "../lib/utils";
   import ContextMenu from "./ContextMenu.svelte";
@@ -29,9 +31,10 @@
     onfileclick: (frame: app.LibraryFrame) => void;
     onsavecolumns: () => void;
     onframesreloaded?: (frames: app.LibraryFrame[]) => void;
+    oncreateproject?: (project: Project) => void;
   }
 
-  let { rootFolder, columns, selectedNasPath, sirilAvailable, onfileclick, onsavecolumns, onframesreloaded }: Props = $props();
+  let { rootFolder, columns, selectedNasPath, sirilAvailable, onfileclick, onsavecolumns, onframesreloaded, oncreateproject }: Props = $props();
 
   // ── Data ─────────────────────────────────────────────────────────────────
   let frames = $state<app.LibraryFrame[]>([]);
@@ -174,6 +177,30 @@
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ paths: string[]; name: string } | null>(null);
+
+  // ── Create project modal ──────────────────────────────────────────────────
+  let cpModal = $state<{ paths: string[] } | null>(null);
+  let cpName = $state("");
+  let cpMode = $state<"symlink" | "copy">("symlink");
+  let cpError = $state("");
+  let cpCreating = $state(false);
+
+  async function doCreateProject() {
+    if (!cpName.trim() || !cpModal) return;
+    cpCreating = true;
+    cpError = "";
+    try {
+      const project = await CreateProject(cpName.trim(), "");
+      await AddFramesToProject(project.folder, cpModal.paths, cpMode);
+      cpModal = null;
+      cpName = "";
+      oncreateproject?.(project);
+    } catch (e) {
+      cpError = String(e);
+    } finally {
+      cpCreating = false;
+    }
+  }
 
   // ── Siril analysis ────────────────────────────────────────────────────────
   let analyzingGroup = $state<string | null>(null);
@@ -754,7 +781,7 @@
       <tbody>
         {#if groups.length === 0}
           <tr class="empty-row">
-            <td colspan={visibleColumns.length}>
+            <td colspan={visibleColumns.length + 1}>
               <div class="empty-msg">
                 {#if showRejected}
                   No rejected frames.
@@ -775,7 +802,7 @@
         {#each groups as group (group.key)}
           <!-- Group header row -->
           <tr class="group-header-row" onclick={() => toggleGroup(group.key)}>
-            <td colspan={visibleColumns.length}>
+            <td colspan={visibleColumns.length + 1}>
               <div class="group-hdr-inner">
               <span class="group-chevron">{expandedGroups.has(group.key) ? "▼" : "▶"}</span>
               <span class="group-label">{group.label}</span>
@@ -890,15 +917,48 @@
 {#if ctxMenu}
   <ContextMenu
     menu={ctxMenu}
-    onclose={() => {
-      ctxMenu = null;
-    }}
+    onclose={() => { ctxMenu = null; }}
     onreject={onCtxReject}
     onrestore={onCtxRestore}
     onharddelete={onCtxHardDelete}
     onopensiril={onCtxOpenWithSiril}
     onchangetype={onCtxChangeType}
+    oncreateproject={oncreateproject ? () => {
+      ctxMenu = null;
+      cpModal = { paths: [...ctxPaths] };
+      cpName = "";
+      cpMode = "symlink";
+      cpError = "";
+    } : undefined}
   />
+{/if}
+
+{#if cpModal}
+  <div class="cp-backdrop" onclick={() => { cpModal = null; }}>
+    <div class="cp-modal" onclick={(e) => e.stopPropagation()}>
+      <p class="cp-title">Create project</p>
+      <p class="cp-sub">{cpModal.paths.length} frame{cpModal.paths.length !== 1 ? "s" : ""} will be added</p>
+      <input
+        class="cp-input"
+        type="text"
+        placeholder="Project name"
+        bind:value={cpName}
+        spellcheck="false"
+        onkeydown={(e) => { if (e.key === "Enter") doCreateProject(); }}
+      />
+      <div class="cp-mode">
+        <label class="cp-mode-opt"><input type="radio" name="cpMode" value="symlink" bind:group={cpMode} /> Symlink</label>
+        <label class="cp-mode-opt"><input type="radio" name="cpMode" value="copy" bind:group={cpMode} /> Copy</label>
+      </div>
+      {#if cpError}<p class="cp-error">{cpError}</p>{/if}
+      <div class="cp-btns">
+        <button class="cp-btn-primary" onclick={doCreateProject} disabled={cpCreating || !cpName.trim()}>
+          {cpCreating ? "Creating…" : "Create project"}
+        </button>
+        <button class="cp-btn-ghost" onclick={() => { cpModal = null; }}>Cancel</button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 {#if confirmDel}
@@ -1162,9 +1222,6 @@
 
   .lib-table thead tr {
     background: var(--bg-panel);
-    position: sticky;
-    top: 0;
-    z-index: 1;
   }
 
   .lib-table th {
@@ -1176,7 +1233,10 @@
     letter-spacing: 0.06em;
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border);
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-panel);
     overflow: hidden;
     white-space: nowrap;
     user-select: none;
@@ -1460,6 +1520,7 @@
     padding: 2px 4px;
     background: color-mix(in srgb, var(--bg-panel) 55%, var(--bg-base) 45%);
     border-bottom: 2px solid var(--border-accent);
+    top: 31px;
   }
 
   .filter-text {
@@ -1585,4 +1646,40 @@
     accent-color: var(--accent);
     cursor: pointer;
   }
+
+  /* ── Create project modal ────────────────────────────────────────────────── */
+  .cp-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 2000;
+  }
+  .cp-modal {
+    background: var(--bg-panel); border: 1px solid var(--border-accent); border-radius: 8px;
+    padding: 22px 26px; width: 340px; display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+  }
+  .cp-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+  .cp-sub { font-size: 0.8rem; color: var(--text-secondary); margin: 0; }
+  .cp-input {
+    background: var(--bg-base); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-primary); font-size: 0.9rem; padding: 6px 10px; outline: none; width: 100%;
+    box-sizing: border-box;
+  }
+  .cp-input:focus { border-color: var(--accent); }
+  .cp-mode { display: flex; gap: 16px; font-size: 0.82rem; color: var(--text-secondary); }
+  .cp-mode-opt { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .cp-mode-opt input { accent-color: var(--accent); cursor: pointer; }
+  .cp-error { font-size: 0.75rem; color: var(--danger); margin: 0; }
+  .cp-btns { display: flex; gap: 8px; margin-top: 4px; }
+  .cp-btn-primary {
+    background: var(--accent); color: var(--bg-base); border: none; border-radius: 4px;
+    padding: 6px 16px; font-size: 0.85rem; cursor: pointer; font-weight: 500;
+    transition: opacity 0.12s;
+  }
+  .cp-btn-primary:disabled { opacity: 0.45; cursor: default; }
+  .cp-btn-ghost {
+    background: transparent; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-secondary); padding: 6px 14px; font-size: 0.85rem; cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .cp-btn-ghost:hover { background: var(--bg-row-hover); color: var(--text-primary); }
 </style>
