@@ -37,6 +37,7 @@ export interface CtxMenuState {
   y: number;
   entry: CtxEntry;
   sirilAvailable: boolean;
+  selectionCount: number; // 1 = single, >1 = multi-select batch
 }
 
 export interface SirilInfo {

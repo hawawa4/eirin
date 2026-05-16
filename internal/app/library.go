@@ -50,35 +50,70 @@ func (a *App) GetLibraryFrames(rootPath string) []LibraryFrame {
 	}
 	result := make([]LibraryFrame, 0, len(frames))
 	for _, f := range frames {
-		result = append(result, LibraryFrame{
-			NasPath:         f.NasPath,
-			FileName:        filepath.Base(f.NasPath),
-			FrameType:       f.FrameType,
-			Object:          f.Object,
-			Filter:          f.Filter,
-			ExpTime:         f.ExpTime,
-			DateObs:         f.DateObs,
-			Gain:            f.Gain,
-			CCDTemp:         f.CCDTemp,
-			Telescope:       f.Telescope,
-			Instrument:      f.Instrument,
-			FileSize:        f.FileSize,
-			IsRejected:      f.Rejected,
-			RA:              derefFloat(f.RA),
-			Dec:             derefFloat(f.Dec),
-			PixelScale:      derefFloat(f.PixelScale),
-			Rotation:        derefFloat(f.Rotation),
-			WCSSolved:       f.WCSSolved,
-			FWHM:            derefFloat(f.FWHM),
-			FWHMUnit:        f.FWHMUnit,
-			Background:      derefFloat(f.Background),
-			Noise:           derefFloat(f.Noise),
-			SNR:             derefFloat(f.SNR),
-			StarCount:       derefInt64(f.StarCount),
-			QualityAnalyzed: f.QualityAnalyzed,
-		})
+		result = append(result, toLibraryFrame(f))
 	}
 	return result
+}
+
+// PagedLightFrames is returned by GetLightFramesPaged.
+type PagedLightFrames struct {
+	Frames  []LibraryFrame `json:"frames"`
+	HasMore bool           `json:"hasMore"`
+}
+
+// GetLightObjects returns the sorted list of distinct object names for light frames under rootPath.
+func (a *App) GetLightObjects(rootPath string) []string {
+	objects, err := a.prefs.GetDistinctObjects(rootPath, prefs.FrameTypeLight)
+	if err != nil {
+		runtime.LogErrorf(a.ctx, "library: get objects: %v", err)
+		return nil
+	}
+	return objects
+}
+
+// GetLightFramesPaged returns a page of light frames under rootPath filtered to
+// the given objects. offset=0 for the first page.
+func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int) PagedLightFrames {
+	frames, hasMore, err := a.prefs.GetLightFramesPaged(rootPath, objects, offset)
+	if err != nil {
+		runtime.LogErrorf(a.ctx, "library: paged lights: %v", err)
+		return PagedLightFrames{}
+	}
+	result := make([]LibraryFrame, 0, len(frames))
+	for _, f := range frames {
+		result = append(result, toLibraryFrame(f))
+	}
+	return PagedLightFrames{Frames: result, HasMore: hasMore}
+}
+
+func toLibraryFrame(f prefs.Frame) LibraryFrame {
+	return LibraryFrame{
+		NasPath:         f.NasPath,
+		FileName:        filepath.Base(f.NasPath),
+		FrameType:       f.FrameType,
+		Object:          f.Object,
+		Filter:          f.Filter,
+		ExpTime:         f.ExpTime,
+		DateObs:         f.DateObs,
+		Gain:            f.Gain,
+		CCDTemp:         f.CCDTemp,
+		Telescope:       f.Telescope,
+		Instrument:      f.Instrument,
+		FileSize:        f.FileSize,
+		IsRejected:      f.Rejected,
+		RA:              derefFloat(f.RA),
+		Dec:             derefFloat(f.Dec),
+		PixelScale:      derefFloat(f.PixelScale),
+		Rotation:        derefFloat(f.Rotation),
+		WCSSolved:       f.WCSSolved,
+		FWHM:            derefFloat(f.FWHM),
+		FWHMUnit:        f.FWHMUnit,
+		Background:      derefFloat(f.Background),
+		Noise:           derefFloat(f.Noise),
+		SNR:             derefFloat(f.SNR),
+		StarCount:       derefInt64(f.StarCount),
+		QualityAnalyzed: f.QualityAnalyzed,
+	}
 }
 
 func derefFloat(p *float64) float64 {

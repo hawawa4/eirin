@@ -409,6 +409,7 @@
               y,
               entry: { path: entry.path, name: entry.name, isRejected: false, frameType: "" },
               sirilAvailable,
+              selectionCount: 1,
             };
           }}
           onsavecolumns={saveColumnConfig}

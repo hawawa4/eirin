@@ -30,31 +30,39 @@
     class:ctx-disabled={!menu.sirilAvailable}
     disabled={!menu.sirilAvailable}
     onclick={() => onopensiril(menu.entry)}
-    title={menu.sirilAvailable ? "Open in Siril" : "Siril not found — configure it in Settings"}
+    title={menu.sirilAvailable ? "Open in Siril" : menu.selectionCount > 1 ? "Only available for a single file" : "Siril not found — configure it in Settings"}
   >
     Open with Siril
   </button>
-  <div class="ctx-sep"></div>
-  <span class="ctx-label">Set type</span>
-  {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
-    <button
-      class="ctx-item ctx-type-item"
-      class:ctx-type-current={menu.entry.frameType === type}
-      onclick={() => { onchangetype(menu.entry, type); onclose(); }}
-    >
-      <span class="ctx-type-dot" style="color:{meta.color}">●</span>
-      {meta.label}
-      {#if menu.entry.frameType === type}<span class="ctx-type-check">✓</span>{/if}
-    </button>
-  {/each}
-  <div class="ctx-sep"></div>
-  {#if menu.entry.isRejected}
-    <button class="ctx-item" onclick={() => onrestore(menu.entry)}>Restore</button>
-  {:else}
-    <button class="ctx-item" onclick={() => onreject(menu.entry)}>Reject</button>
+  {#if menu.selectionCount <= 1}
+    <div class="ctx-sep"></div>
+    <span class="ctx-label">Set type</span>
+    {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
+      <button
+        class="ctx-item ctx-type-item"
+        class:ctx-type-current={menu.entry.frameType === type}
+        onclick={() => { onchangetype(menu.entry, type); onclose(); }}
+      >
+        <span class="ctx-type-dot" style="color:{meta.color}">●</span>
+        {meta.label}
+        {#if menu.entry.frameType === type}<span class="ctx-type-check">✓</span>{/if}
+      </button>
+    {/each}
   {/if}
   <div class="ctx-sep"></div>
-  <button class="ctx-item ctx-danger" onclick={() => onharddelete(menu.entry)}>Hard Delete…</button>
+  {#if menu.entry.isRejected}
+    <button class="ctx-item" onclick={() => onrestore(menu.entry)}>
+      {menu.selectionCount > 1 ? `Restore ${menu.selectionCount} frames` : "Restore"}
+    </button>
+  {:else}
+    <button class="ctx-item" onclick={() => onreject(menu.entry)}>
+      {menu.selectionCount > 1 ? `Reject ${menu.selectionCount} frames` : "Reject"}
+    </button>
+  {/if}
+  <div class="ctx-sep"></div>
+  <button class="ctx-item ctx-danger" onclick={() => onharddelete(menu.entry)}>
+    {menu.selectionCount > 1 ? `Hard Delete ${menu.selectionCount} frames…` : "Hard Delete…"}
+  </button>
 </div>
 
 <style>
