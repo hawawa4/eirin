@@ -6,9 +6,11 @@
   interface Props {
     frames: app.LibraryFrame[];
     onclose: () => void;
+    onreject?: (nasPath: string) => void;
+    onharddelete?: (nasPath: string, name: string) => void;
   }
 
-  let { frames, onclose }: Props = $props();
+  let { frames, onclose, onreject, onharddelete }: Props = $props();
 
   // ── State ─────────────────────────────────────────────────────────────────
   let currentIndex = $state(0);
@@ -17,6 +19,7 @@
   let previews = $state<(string | null)[]>(frames.map(() => null));
   let loadingCount = $state(0);
   let stretchLevel = $state(2);
+  let confirmDelete = $state(false);
 
   let timerId: ReturnType<typeof setInterval> | null = null;
 
@@ -61,8 +64,31 @@
     if (playing) { stopBlink(); startBlink(); }
   }
 
+  function doReject() {
+    const frame = frames[currentIndex];
+    if (!frame || !onreject) return;
+    stopBlink();
+    onreject(frame.nasPath);
+    // advance to next frame if possible
+    if (frames.length > 1) {
+      currentIndex = Math.min(currentIndex, frames.length - 2);
+    } else {
+      onclose();
+    }
+  }
+
+  function doHardDelete() {
+    const frame = frames[currentIndex];
+    if (!frame || !onharddelete) return;
+    stopBlink();
+    confirmDelete = false;
+    onharddelete(frame.nasPath, frame.fileName);
+    if (frames.length <= 1) onclose();
+    else currentIndex = Math.min(currentIndex, frames.length - 2);
+  }
+
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") onclose();
+    if (e.key === "Escape") { confirmDelete ? (confirmDelete = false) : onclose(); }
     if (e.key === " ") { e.preventDefault(); togglePlay(); }
     if (e.key === "ArrowRight") step(1);
     if (e.key === "ArrowLeft")  step(-1);
@@ -92,6 +118,9 @@
         <div class="blink-loading">Preview unavailable</div>
       {/if}
       <div class="blink-badge">{currentIndex + 1} / {frames.length}</div>
+      {#if current?.isRejected}
+        <div class="blink-rejected-badge">REJECTED</div>
+      {/if}
     </div>
 
     <div class="blink-info">
@@ -101,6 +130,9 @@
       {/if}
       {#if current?.fwhm && current.qualityAnalyzed}
         <span class="blink-stat">FWHM {current.fwhm.toFixed(2)}{current.fwhmUnit || "px"}</span>
+      {/if}
+      {#if current?.object}
+        <span class="blink-obj">{current.object}</span>
       {/if}
     </div>
 
@@ -130,11 +162,38 @@
           <button
             class="blink-dot"
             class:active={i === currentIndex}
+            class:rejected={frames[i]?.isRejected}
             onclick={() => { stopBlink(); currentIndex = i; }}
             title={frames[i]?.fileName ?? ""}
           ></button>
         {/each}
       </div>
+
+      {#if onreject || onharddelete}
+        <div class="blink-actions">
+          {#if onreject}
+            <button
+              class="blink-action-btn reject-btn"
+              disabled={current?.isRejected}
+              onclick={doReject}
+              title={current?.isRejected ? "Already rejected" : "Reject this frame"}
+            >
+              ✕ Reject
+            </button>
+          {/if}
+          {#if onharddelete}
+            {#if confirmDelete}
+              <span class="blink-confirm-text">Delete permanently?</span>
+              <button class="blink-action-btn delete-confirm-btn" onclick={doHardDelete}>Yes, delete</button>
+              <button class="blink-action-btn cancel-btn" onclick={() => (confirmDelete = false)}>Cancel</button>
+            {:else}
+              <button class="blink-action-btn delete-btn" onclick={() => (confirmDelete = true)} title="Hard delete this frame from disk">
+                🗑 Delete
+              </button>
+            {/if}
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -212,6 +271,19 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .blink-rejected-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(180,40,40,0.8);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.06em;
+  }
+
   .blink-info {
     display: flex;
     align-items: center;
@@ -225,6 +297,7 @@
   .blink-name { font-size: 0.8rem; font-family: "Consolas", monospace; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
   .blink-date { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .blink-stat { font-size: 0.75rem; color: var(--accent); white-space: nowrap; }
+  .blink-obj  { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
 
   .blink-controls {
     display: flex;
@@ -274,5 +347,61 @@
     border: none; cursor: pointer; padding: 0; transition: background 0.1s, transform 0.1s;
   }
   .blink-dot.active { background: var(--accent); transform: scale(1.4); }
+  .blink-dot.rejected { background: var(--danger); }
   .blink-dot:hover { background: var(--text-secondary); }
+
+  /* ── Frame actions ────────────────────────────────────────────────────────── */
+  .blink-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .blink-action-btn {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: background 0.1s, color 0.1s;
+    white-space: nowrap;
+  }
+
+  .reject-btn {
+    background: transparent;
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .reject-btn:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .reject-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .delete-btn {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+  .delete-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  .delete-confirm-btn {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+    font-weight: 600;
+  }
+  .delete-confirm-btn:hover { opacity: 0.85; }
+
+  .cancel-btn {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+  .cancel-btn:hover { background: var(--bg-row-hover); }
+
+  .blink-confirm-text {
+    font-size: 0.75rem;
+    color: var(--danger);
+    white-space: nowrap;
+  }
 </style>

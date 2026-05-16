@@ -1,0 +1,275 @@
+# Eirin sky catalog — RA (decimal degrees), Dec (decimal degrees), Name, Mag, Type (star|dso)
+# Bright Stars
+88.793	7.407	Betelgeuse	0.50	star
+78.634	-8.202	Rigel	0.12	star
+101.287	-16.716	Sirius	-1.46	star
+95.988	-52.696	Canopus	-0.72	star
+219.899	-60.834	Alpha Centauri	-0.27	star
+213.915	19.182	Arcturus	-0.05	star
+279.235	38.784	Vega	0.03	star
+114.826	5.225	Procyon	0.34	star
+297.695	8.868	Altair	0.76	star
+79.172	45.998	Capella	0.08	star
+310.358	45.280	Deneb	1.25	star
+247.352	-26.432	Antares	1.09	star
+191.930	-59.689	Acrux	0.77	star
+210.956	-60.374	Hadar	0.61	star
+186.650	-63.099	Mimosa	1.25	star
+68.980	16.509	Aldebaran	0.86	star
+152.093	11.967	Regulus	1.35	star
+116.329	28.026	Pollux	1.14	star
+24.428	-57.237	Achernar	0.46	star
+344.413	-29.622	Fomalhaut	1.16	star
+113.650	31.888	Castor	1.58	star
+84.411	-1.202	Bellatrix	1.64	star
+81.570	28.608	Elnath	1.65	star
+85.190	-1.943	Alnilam	1.70	star
+83.858	-5.909	Alnitak	1.74	star
+83.002	-0.299	Mintaka	2.23	star
+120.896	-40.003	Naos	2.25	star
+206.885	49.313	Mizar	2.27	star
+200.981	54.925	Alioth	1.77	star
+165.932	61.751	Dubhe	1.79	star
+178.458	53.695	Merak	2.37	star
+263.054	-37.103	Shaula	1.63	star
+272.145	-34.384	Kaus Australis	1.85	star
+258.044	-43.239	Sargas	1.87	star
+337.821	-46.961	Alnair	1.74	star
+252.166	-69.028	Atria	1.91	star
+164.012	-49.421	Avior	1.86	star
+138.300	-69.717	Miaplacidus	1.68	star
+155.582	19.842	Alphard	1.99	star
+177.265	14.572	Denebola	2.14	star
+183.856	-17.541	Gienah	2.59	star
+232.173	-40.648	Menkent	2.06	star
+258.662	14.390	Rasalhague	2.08	star
+286.352	-21.106	Nunki	2.05	star
+269.152	51.489	Eltanin	2.24	star
+351.303	-46.018	Peacock	1.94	star
+17.433	35.621	Mirfak	1.79	star
+10.897	56.537	Schedar	2.24	star
+14.177	60.717	Gamma Cas	2.47	star
+9.243	59.150	Caph	2.27	star
+2.095	29.090	Alpheratz	2.06	star
+350.162	29.091	Mirach	2.05	star
+56.871	24.105	Alcyone	2.87	star
+85.819	-2.600	Saiph	2.07	star
+238.786	-42.998	Dschubba	2.29	star
+243.586	-3.694	Han	2.74	star
+62.166	-19.671	Cursa	2.79	star
+222.676	-16.042	Zubenelgenubi	2.61	star
+311.553	-40.616	Al Na'ir	2.17	star
+322.164	-16.662	Sadalsuud	2.91	star
+346.190	-15.821	Sadalmelik	2.95	star
+252.166	-69.028	Atria	1.91	star
+193.507	55.960	Phecda	2.44	star
+193.507	57.032	Megrez	3.31	star
+319.644	62.585	Ruchbah	2.68	star
+183.857	57.033	Megrez	3.31	star
+# Deep Sky Objects — Messier Catalog
+83.633	22.014	M1 Crab Nebula	8.4	dso
+323.363	-0.823	M2	6.5	dso
+205.549	28.383	M3	6.2	dso
+245.897	-26.526	M4	5.9	dso
+229.638	2.082	M5	5.8	dso
+265.083	-32.215	M6 Butterfly Cluster	4.2	dso
+268.464	-34.793	M7 Ptolemy Cluster	3.3	dso
+270.904	-24.387	M8 Lagoon Nebula	5.8	dso
+259.800	-18.517	M9	7.9	dso
+254.284	-4.100	M10	6.6	dso
+282.773	-6.272	M11 Wild Duck Cluster	5.8	dso
+251.812	-1.948	M12	6.6	dso
+250.423	36.460	M13 Hercules Cluster	5.8	dso
+276.680	-3.246	M14	7.6	dso
+322.493	12.167	M15	6.2	dso
+274.700	-13.792	M16 Eagle Nebula	6.4	dso
+275.196	-16.177	M17 Omega/Swan Nebula	6.0	dso
+275.725	-17.117	M18	7.5	dso
+255.657	-26.268	M19	7.2	dso
+270.563	-23.030	M20 Trifid Nebula	6.3	dso
+270.891	-22.494	M21	5.9	dso
+279.100	-23.905	M22	5.1	dso
+269.259	-19.015	M23	5.5	dso
+274.575	-18.400	M24 Star Cloud	4.6	dso
+277.002	-19.230	M25	4.6	dso
+281.362	-9.387	M26	8.0	dso
+299.902	22.721	M27 Dumbbell Nebula	7.4	dso
+276.137	-24.870	M28	6.9	dso
+305.557	38.535	M29	6.6	dso
+325.093	-23.180	M30	7.5	dso
+10.685	41.269	M31 Andromeda Galaxy	3.4	dso
+10.674	40.865	M32	8.7	dso
+23.462	30.660	M33 Triangulum Galaxy	5.7	dso
+40.519	42.747	M34	5.2	dso
+92.264	24.338	M35	5.3	dso
+79.122	34.135	M36	6.3	dso
+88.075	35.847	M37	6.2	dso
+82.154	35.851	M38	7.4	dso
+323.957	48.444	M39	4.6	dso
+101.500	-20.757	M41	4.5	dso
+83.822	-5.391	M42 Orion Nebula	4.0	dso
+83.848	-5.267	M43	9.0	dso
+130.102	19.967	M44 Beehive Cluster	3.7	dso
+56.750	24.117	M45 Pleiades	1.6	dso
+115.389	-14.817	M46	6.1	dso
+114.167	-14.500	M47	4.4	dso
+123.420	-5.800	M48	5.5	dso
+187.445	8.000	M49	8.4	dso
+105.676	-8.363	M50	5.9	dso
+202.470	47.195	M51 Whirlpool Galaxy	8.4	dso
+351.202	61.589	M52	6.9	dso
+198.228	18.167	M53	7.7	dso
+283.764	-30.480	M54	7.7	dso
+294.997	-30.967	M55	7.0	dso
+289.149	30.185	M56	8.3	dso
+283.396	33.029	M57 Ring Nebula	8.8	dso
+189.430	11.818	M58	9.7	dso
+190.510	11.647	M59	9.8	dso
+190.917	11.553	M60	8.8	dso
+185.479	4.474	M61	9.7	dso
+255.300	-30.113	M62	6.6	dso
+198.956	42.029	M63 Sunflower Galaxy	8.6	dso
+194.182	21.683	M64 Black Eye Galaxy	8.5	dso
+169.733	13.092	M65	9.3	dso
+170.062	12.991	M66	8.9	dso
+132.825	11.800	M67	6.1	dso
+189.867	-26.744	M68	7.8	dso
+277.846	-32.348	M69	7.7	dso
+280.803	-32.297	M70	8.1	dso
+298.444	18.779	M71	6.1	dso
+313.365	-12.537	M72	9.4	dso
+314.748	-12.632	M73	9.0	dso
+24.174	15.783	M74	9.4	dso
+301.520	-21.921	M75	8.6	dso
+25.578	51.575	M76 Little Dumbbell	10.1	dso
+40.670	-0.013	M77	8.9	dso
+86.693	0.083	M78	8.3	dso
+81.047	-24.524	M79	8.0	dso
+244.260	-22.976	M80	7.3	dso
+148.888	69.065	M81 Bode's Galaxy	6.9	dso
+148.967	69.680	M82 Cigar Galaxy	8.4	dso
+204.254	-29.865	M83 Southern Pinwheel	7.5	dso
+186.266	12.887	M84	9.3	dso
+186.544	12.946	M86	9.2	dso
+187.706	12.391	M87 Virgo A	8.6	dso
+187.996	14.420	M88	9.6	dso
+188.916	12.556	M89	9.8	dso
+188.915	13.163	M90	9.5	dso
+189.091	14.497	M91	10.2	dso
+259.280	43.136	M92	6.4	dso
+116.149	-23.861	M93	6.0	dso
+192.721	41.120	M94	8.2	dso
+160.990	11.703	M95	9.7	dso
+161.990	11.820	M96	9.2	dso
+168.700	55.019	M97 Owl Nebula	9.9	dso
+183.449	14.900	M98	10.1	dso
+184.707	14.417	M99	9.9	dso
+185.729	15.822	M100	9.4	dso
+210.802	54.349	M101 Pinwheel Galaxy	7.9	dso
+226.623	55.763	M102	9.9	dso
+23.340	60.659	M103	7.4	dso
+190.000	-11.623	M104 Sombrero Galaxy	8.0	dso
+161.960	12.582	M105	9.3	dso
+184.739	47.304	M106	8.4	dso
+250.734	-13.053	M107	7.9	dso
+167.879	55.674	M108	10.0	dso
+179.400	53.374	M109	9.8	dso
+10.091	41.685	M110	8.0	dso
+# Popular NGC/IC astrophotography targets
+# Orion region
+85.241	-2.458	IC 434 Horsehead Region	7.0	dso
+85.244	-1.852	NGC 2024 Flame Nebula	7.0	dso
+83.822	-4.877	NGC 1977 Running Man	7.0	dso
+86.693	0.083	NGC 2068 M78	8.3	dso
+81.716	-2.866	NGC 1999	10.5	dso
+# Orion Belt stars
+83.858	-5.909	Alnitak	1.74	star
+85.190	-1.943	Alnilam	1.70	star
+83.002	-0.299	Mintaka	2.23	star
+# Taurus/Perseus
+52.675	34.316	NGC 1499 California Nebula	5.0	dso
+40.670	41.269	NGC 891	9.9	dso
+34.752	57.134	NGC 869 h Persei	4.3	dso
+35.579	57.139	NGC 884 chi Persei	4.4	dso
+56.167	23.967	NGC 1432/1435 Pleiades Neb.	4.0	dso
+40.670	-0.013	NGC 246 area	9.0	dso
+# Auriga
+79.122	34.135	NGC 1931 area	10.1	dso
+82.519	34.400	IC 410 Tadpoles Nebula	7.0	dso
+80.170	34.256	IC 405 Flaming Star Nebula	6.0	dso
+# Gemini/Monoceros
+100.260	9.895	NGC 2264 Cone/Christmas Tree	3.9	dso
+97.977	4.952	NGC 2244 Rosette Cluster	4.8	dso
+97.827	4.999	NGC 2237 Rosette Nebula	9.0	dso
+109.087	-13.218	NGC 2359 Thor's Helmet	11.5	dso
+93.114	20.445	NGC 2174 Monkey Head Nebula	6.8	dso
+94.033	22.014	IC 443 Jellyfish Nebula	12.0	dso
+# Coma/Virgo
+190.000	-11.623	NGC 4594 Sombrero	8.0	dso
+189.086	25.988	NGC 4565 Needle Galaxy	9.6	dso
+190.532	32.541	NGC 4631 Whale Galaxy	9.2	dso
+170.071	13.589	NGC 3628	9.5	dso
+# Leo Triplet
+169.733	13.092	NGC 3623 Leo Triplet	9.3	dso
+170.062	12.991	NGC 3627 Leo Triplet	8.9	dso
+170.071	13.589	NGC 3628 Leo Triplet	9.5	dso
+# Ursa Major
+148.888	69.065	NGC 3031 M81 Bode	6.9	dso
+148.967	69.680	NGC 3034 M82 Cigar	8.4	dso
+167.879	55.674	NGC 3556 M108	10.0	dso
+168.700	55.019	NGC 3587 M97 Owl	9.9	dso
+210.802	54.349	NGC 5457 M101 Pinwheel	7.9	dso
+# Canes Venatici
+186.635	47.185	NGC 4490 Cocoon Galaxy	9.8	dso
+202.470	47.195	NGC 5194 M51 Whirlpool	8.4	dso
+198.956	42.029	NGC 5055 M63 Sunflower	8.6	dso
+192.721	41.120	NGC 4736 M94	8.2	dso
+# Sagittarius/Scorpius nebulae
+260.151	-35.947	NGC 6334 Cat's Paw Nebula	6.0	dso
+261.410	-34.200	NGC 6357 War and Peace Nebula	8.0	dso
+270.904	-24.387	NGC 6523 M8 Lagoon	5.8	dso
+271.026	-23.030	NGC 6514 M20 Trifid	6.3	dso
+# Cygnus/Lyra
+283.396	33.029	NGC 6720 M57 Ring	8.8	dso
+303.116	38.354	NGC 6888 Crescent Nebula	7.4	dso
+299.902	22.721	NGC 6853 M27 Dumbbell	7.4	dso
+312.770	44.372	IC 5070 Pelican Nebula	8.0	dso
+314.781	44.263	NGC 7000 North America Neb.	4.0	dso
+313.486	31.706	NGC 6992 Eastern Veil	7.0	dso
+312.119	30.721	NGC 6960 Western Veil	7.0	dso
+328.368	47.267	IC 5146 Cocoon Nebula	7.2	dso
+315.476	68.168	NGC 7023 Iris Nebula	7.1	dso
+# Perseus/Cassiopeia
+23.340	60.659	NGC 457 Owl/ET Cluster	6.4	dso
+10.069	56.527	NGC 224 area	3.4	dso
+# Andromeda
+10.685	41.269	NGC 224 Andromeda Galaxy	3.4	dso
+# Sculptor/Fornax
+11.888	-25.288	NGC 253 Sculptor Galaxy	7.1	dso
+50.671	-35.450	NGC 1316 Fornax A	8.5	dso
+# Centaurus/Vela
+201.365	-43.019	NGC 5128 Centaurus A	6.8	dso
+160.984	-59.867	NGC 3372 Eta Carinae Nebula	1.0	dso
+168.783	-61.247	NGC 3603	9.0	dso
+131.849	-45.942	NGC 2736 Pencil Nebula	12.0	dso
+# Aquarius/Pisces
+337.411	-20.837	NGC 7293 Helix Nebula	7.3	dso
+339.267	34.416	NGC 7331	9.5	dso
+316.757	30.227	NGC 7331 area	9.5	dso
+# Small Magellanic Cloud region
+14.309	-72.917	SMC Small Magellanic Cloud	2.7	dso
+# Large Magellanic Cloud region
+80.894	-69.756	LMC Large Magellanic Cloud	0.9	dso
+83.822	-69.100	30 Dor Tarantula Nebula	8.0	dso
+# Cepheus/Draco
+306.059	37.375	Sh2-106	9.0	dso
+# Heart/Soul nebulae (Cassiopeia/Perseus)
+38.174	61.452	IC 1805 Heart Nebula	6.5	dso
+43.152	60.417	IC 1848 Soul Nebula	6.5	dso
+56.702	68.100	IC 342	8.4	dso
+# More Virgo cluster
+187.706	12.391	NGC 4486 M87 Virgo A	8.6	dso
+189.998	11.553	NGC 4552 M89 area	9.8	dso
+# Serpens
+274.700	-13.792	NGC 6611 M16 Eagle Neb.	6.4	dso
+275.196	-16.177	NGC 6618 M17 Omega Neb.	6.0	dso

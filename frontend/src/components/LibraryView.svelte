@@ -618,6 +618,17 @@
     if (blinkFrames.length >= 2) showBlink = true;
   }
 
+  async function blinkReject(nasPath: string) {
+    await RejectFile(nasPath);
+    frames = frames.map((f) => (f.nasPath === nasPath ? { ...f, isRejected: true } : f));
+    blinkFrames = blinkFrames.map((f) => (f.nasPath === nasPath ? { ...f, isRejected: true } : f));
+  }
+
+  function blinkHardDelete(nasPath: string, name: string) {
+    confirmDel = { paths: [nasPath], name };
+    // frame will be removed from blinkFrames via the reload after delete
+  }
+
   // ── Smart reject suggestions ──────────────────────────────────────────────
   let suggestLoading = $state(false);
   let suggestResults = $state<import("../../wailsjs/go/models").app.SuggestResult[]>([]);
@@ -692,11 +703,14 @@
       ✕ filters
     </button>
   {/if}
-  {#if selectedPaths.size >= 2}
-    <button class="tool-btn blink-btn" onclick={openBlink} title="Blink selected frames">
-      ▶ Blink ({selectedPaths.size})
-    </button>
-  {/if}
+  <button
+    class="tool-btn blink-btn"
+    disabled={selectedPaths.size < 2}
+    onclick={openBlink}
+    title={selectedPaths.size < 2 ? "Select 2+ frames (checkboxes or Ctrl+click) to blink" : `Blink ${selectedPaths.size} selected frames`}
+  >
+    ▶ Blink{selectedPaths.size >= 2 ? ` (${selectedPaths.size})` : ""}
+  </button>
   {#if !showRejected}
     <button class="tool-btn suggest-btn" onclick={openSuggest} title="Suggest statistical outliers for rejection">
       ✦ Suggest rejects
@@ -1018,7 +1032,12 @@
 {/if}
 
 {#if showBlink && blinkFrames.length >= 2}
-  <BlinkModal frames={blinkFrames} onclose={() => (showBlink = false)} />
+  <BlinkModal
+    frames={blinkFrames}
+    onclose={() => (showBlink = false)}
+    onreject={blinkReject}
+    onharddelete={blinkHardDelete}
+  />
 {/if}
 
 {#if showSuggest}
@@ -1792,6 +1811,7 @@
 
   /* ── Blink + Suggest toolbar buttons ─────────────────────────────────────── */
   .blink-btn  { color: var(--accent); border-color: var(--accent); }
+  .blink-btn:disabled { color: var(--text-secondary); border-color: var(--border); opacity: 0.5; cursor: not-allowed; }
   .suggest-btn { color: var(--accent); }
 
   /* ── Suggest rejects modal ─────────────────────────────────────────────── */
