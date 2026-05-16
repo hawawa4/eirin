@@ -25,6 +25,12 @@
   let loading = $state(true);
   let loadError = $state("");
 
+  // Frame type filter
+  let showStacked = $state(false);
+  let visibleIndex = $derived(
+    showStacked ? index : index.filter((e) => e.frameType === "processed"),
+  );
+
   // Size cache: nasPath → pixel dimensions (plain Map; sizesVersion drives redraws)
   const sizes = new Map<string, { width: number; height: number }>();
   let sizesVersion = $state(0);
@@ -41,35 +47,56 @@
   let hoveredEntry  = $state<app.AtlasIndexEntry | null>(null);
   let hoverX = $state(0);
   let hoverY = $state(0);
-  let selectedEntry = $state<app.AtlasIndexEntry | null>(null);
 
-  // Canvas preview image for selected frame
-  let previewImg     = $state<HTMLImageElement | null>(null);
-  let previewLoading = $state(false);
+  // Multiple selected frames, ordered by click (last = topmost z-order)
+  let selectedEntries = $state<app.AtlasIndexEntry[]>([]);
+
+  // Most-recently selected for the side panel
+  let panelEntry = $derived(
+    selectedEntries.length > 0 ? selectedEntries[selectedEntries.length - 1] : null,
+  );
+
+  // Preview images per frame (Map; previewVersion drives redraws)
+  const previewImgs = new Map<string, HTMLImageElement>();
+  const loadingPaths = new Set<string>();
+  let previewVersion = $state(0);
 
   let lazyTimer: ReturnType<typeof setTimeout> | null = null;
   const LAZY_PPD = 8;
 
-  // ── Preview loading ───────────────────────────────────────────────────────
+  // ── Preview loading effect ────────────────────────────────────────────────
 
   $effect(() => {
-    if (!selectedEntry) {
-      previewImg = null;
-      previewLoading = false;
-      return;
+    // Trigger whenever selectedEntries changes; load images for newly selected frames
+    const paths = selectedEntries.map((e) => e.nasPath);
+
+    // Prune images for deselected frames
+    for (const key of [...previewImgs.keys()]) {
+      if (!paths.includes(key)) {
+        previewImgs.delete(key);
+        loadingPaths.delete(key);
+        previewVersion++;
+      }
     }
-    const path = selectedEntry.nasPath;
-    previewLoading = true;
-    previewImg = null;
-    GeneratePreview(path, 2)
-      .then((url) => {
-        if (selectedEntry?.nasPath !== path) return;
-        const img = new Image();
-        img.onload = () => { if (selectedEntry?.nasPath === path) { previewImg = img; previewLoading = false; } };
-        img.onerror = () => { if (selectedEntry?.nasPath === path) previewLoading = false; };
-        img.src = url;
-      })
-      .catch(() => { if (selectedEntry?.nasPath === path) previewLoading = false; });
+
+    // Start loading for frames not yet cached
+    for (const entry of selectedEntries) {
+      const path = entry.nasPath;
+      if (previewImgs.has(path) || loadingPaths.has(path)) continue;
+      loadingPaths.add(path);
+      GeneratePreview(path, 2)
+        .then((url) => {
+          const img = new Image();
+          img.onload = () => {
+            previewImgs.set(path, img);
+            loadingPaths.delete(path);
+            previewVersion++;
+          };
+          img.onerror = () => { loadingPaths.delete(path); previewVersion++; };
+          img.src = url;
+        })
+        .catch(() => { loadingPaths.delete(path); previewVersion++; });
+    }
   });
 
   // ── Projection ────────────────────────────────────────────────────────────
@@ -126,10 +153,9 @@
     });
   }
 
-  function isOnScreen(corners: ([number, number] | null)[]): boolean {
-    const m = 80;
+  function isOnScreen(corners: ([number, number] | null)[], margin = 80): boolean {
     return corners.some(
-      (c) => c !== null && c[0] >= -m && c[0] <= canvasW + m && c[1] >= -m && c[1] <= canvasH + m,
+      (c) => c !== null && c[0] >= -margin && c[0] <= canvasW + margin && c[1] >= -margin && c[1] <= canvasH + margin,
     );
   }
 
@@ -161,18 +187,18 @@
   function labelBg(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
     const tw = ctx.measureText(text).width;
     const saved = ctx.fillStyle;
-    ctx.fillStyle = "rgba(5,6,16,0.7)";
-    ctx.fillRect(x - 2, y - 10, tw + 4, 13);
+    ctx.fillStyle = "rgba(5,6,16,0.78)";
+    ctx.fillRect(x - 2, y - 11, tw + 4, 14);
     ctx.fillStyle = saved;
     ctx.fillText(text, x, y);
   }
 
   function drawGrid(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.strokeStyle = "rgba(80,100,140,0.28)";
-    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = "rgba(80,100,140,0.50)";
+    ctx.lineWidth = 1.0;
     ctx.setLineDash([4, 6]);
-    ctx.font = "9px monospace";
+    ctx.font = "11px monospace";
 
     const decStep = pixPerDeg >= 30 ? 5 : 10;
     const raStep  = pixPerDeg >= 50 ? 5 : 15;
@@ -206,7 +232,7 @@
     ctx.setLineDash([]);
 
     // RA labels (blue-ish) at current Dec centre
-    ctx.fillStyle = "rgba(155,180,230,0.92)";
+    ctx.fillStyle = "rgba(155,180,230,0.95)";
     for (let ra = 0; ra < 360; ra += raStep) {
       const lp = project(ra, viewDec);
       if (lp && lp[0] >= 20 && lp[0] <= canvasW - 20 && lp[1] >= 14 && lp[1] <= canvasH - 4) {
@@ -215,7 +241,7 @@
     }
 
     // Dec labels (teal-ish) at current RA centre
-    ctx.fillStyle = "rgba(110,215,190,0.92)";
+    ctx.fillStyle = "rgba(110,215,190,0.95)";
     for (let dec = -80; dec <= 80; dec += decStep) {
       const lp = project(viewRA, dec);
       if (lp && lp[1] >= 14 && lp[1] <= canvasH - 4 && lp[0] >= 4 && lp[0] <= canvasW - 4) {
@@ -265,88 +291,118 @@
 
   function drawFrames(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    for (const entry of index) {
-      const cp = project(entry.ra, entry.dec);
-      if (!cp) continue;
-      const [cx, cy] = cp;
-      if (cx < -100 || cx > canvasW + 100 || cy < -100 || cy > canvasH + 100) continue;
 
-      const sz    = sizes.get(entry.nasPath);
-      const isSel = entry === selectedEntry;
-      const isHov = entry === hoveredEntry;
+    // Draw non-selected frames first (bottom layer)
+    for (const entry of visibleIndex) {
+      if (selectedEntries.includes(entry)) continue;
+      drawSingleFrame(ctx, entry, false, false);
+    }
 
-      if (sz && pixPerDeg >= LAZY_PPD) {
-        const corners = footprintCorners(entry, sz);
-        if (!isOnScreen(corners)) continue;
-        const valid = corners.filter((c): c is [number, number] => c !== null);
-        if (valid.length < 3) continue;
+    // Draw selected frames in order (first = bottom, last = top)
+    for (const entry of selectedEntries) {
+      if (!visibleIndex.includes(entry)) continue;
+      drawSingleFrame(ctx, entry, true, false);
+    }
 
-        if (isSel && previewImg) {
-          // Draw the actual image aligned to the footprint
-          const wPx = sz.width  * entry.pixelScale / 3600 * pixPerDeg;
-          const hPx = sz.height * entry.pixelScale / 3600 * pixPerDeg;
-          ctx.save();
-          ctx.translate(cx, cy);
-          ctx.rotate(-entry.rotation * Math.PI / 180);
-          ctx.drawImage(previewImg, -wPx / 2, -hPx / 2, wPx, hPx);
-          ctx.restore();
-          // Golden border over the image
-          ctx.beginPath();
-          ctx.moveTo(valid[0][0], valid[0][1]);
-          for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
-          ctx.closePath();
-          ctx.strokeStyle = "rgba(255,210,80,0.9)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        } else if (isSel && previewLoading) {
-          // Footprint with pulsing style while image loads
-          ctx.beginPath();
-          ctx.moveTo(valid[0][0], valid[0][1]);
-          for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
-          ctx.closePath();
-          ctx.fillStyle   = "rgba(255,190,70,0.12)";
-          ctx.strokeStyle = "rgba(255,210,80,0.6)";
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([6, 4]);
-          ctx.fill();
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle = "rgba(255,220,100,0.8)";
-          ctx.font = "10px monospace";
-          ctx.textAlign = "center";
-          ctx.fillText("loading…", cx, cy + 4);
-          ctx.textAlign = "left";
-        } else {
-          // Normal footprint
-          ctx.beginPath();
-          ctx.moveTo(valid[0][0], valid[0][1]);
-          for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
-          ctx.closePath();
-          ctx.fillStyle   = isHov ? "rgba(100,190,255,0.22)" : "rgba(80,140,220,0.10)";
-          ctx.strokeStyle = isHov ? "rgba(120,210,255,0.95)" : "rgba(100,160,255,0.55)";
-          ctx.lineWidth   = isHov ? 2 : 1.2;
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = isHov ? "rgba(190,230,255,1)" : "rgba(160,205,255,0.85)";
-          ctx.font      = isHov ? "bold 11px monospace" : "10px monospace";
-          ctx.textAlign = "center";
-          ctx.fillText(entry.object || entry.name, cx, cy + 4);
-          ctx.textAlign = "left";
-        }
-      } else {
-        const r = isSel ? 5 : isHov ? 4 : 3;
+    // Draw hovered non-selected on top of everything except selected
+    if (hoveredEntry && !selectedEntries.includes(hoveredEntry)) {
+      drawSingleFrame(ctx, hoveredEntry, false, true);
+    }
+
+    ctx.restore();
+  }
+
+  function drawSingleFrame(
+    ctx: CanvasRenderingContext2D,
+    entry: app.AtlasIndexEntry,
+    isSel: boolean,
+    isHov: boolean,
+  ) {
+    const cp = project(entry.ra, entry.dec);
+    if (!cp) return;
+    const [cx, cy] = cp;
+
+    const sz    = sizes.get(entry.nasPath);
+    const img   = previewImgs.get(entry.nasPath);
+    const isLoading = loadingPaths.has(entry.nasPath);
+
+    if (sz && pixPerDeg >= LAZY_PPD) {
+      const corners = footprintCorners(entry, sz);
+      // For frames with loaded images, use a very large margin to avoid unloading when zoomed
+      const margin = isSel && img ? 4000 : 80;
+      if (!isOnScreen(corners, margin)) return;
+      const valid = corners.filter((c): c is [number, number] => c !== null);
+      if (valid.length < 3) return;
+
+      if (isSel && img) {
+        // Draw actual image aligned to footprint
+        const wPx = sz.width  * entry.pixelScale / 3600 * pixPerDeg;
+        const hPx = sz.height * entry.pixelScale / 3600 * pixPerDeg;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-entry.rotation * Math.PI / 180);
+        ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
+        ctx.restore();
+        // Golden border over the image
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = isSel ? "rgba(255,210,80,0.95)" : isHov ? "rgba(120,210,255,0.9)" : "rgba(100,165,255,0.65)";
+        ctx.moveTo(valid[0][0], valid[0][1]);
+        for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
+        ctx.closePath();
+        ctx.strokeStyle = "rgba(255,210,80,0.9)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Object label
+        ctx.fillStyle = "rgba(255,220,100,0.9)";
+        ctx.font = "bold 11px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(entry.object || entry.name, cx, cy + 4);
+        ctx.textAlign = "left";
+      } else if (isSel && isLoading) {
+        ctx.beginPath();
+        ctx.moveTo(valid[0][0], valid[0][1]);
+        for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
+        ctx.closePath();
+        ctx.fillStyle   = "rgba(255,190,70,0.12)";
+        ctx.strokeStyle = "rgba(255,210,80,0.6)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
         ctx.fill();
-        if (pixPerDeg >= 4) {
-          ctx.fillStyle = isSel ? "rgba(255,220,100,1)" : "rgba(165,205,255,0.75)";
-          ctx.font = "9px monospace";
-          ctx.fillText(entry.object || entry.name, cx + r + 2, cy + 3);
-        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(255,220,100,0.8)";
+        ctx.font = "10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("loading…", cx, cy + 4);
+        ctx.textAlign = "left";
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(valid[0][0], valid[0][1]);
+        for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
+        ctx.closePath();
+        ctx.fillStyle   = isHov ? "rgba(100,190,255,0.22)" : isSel ? "rgba(255,190,70,0.10)" : "rgba(80,140,220,0.10)";
+        ctx.strokeStyle = isHov ? "rgba(120,210,255,0.95)" : isSel ? "rgba(255,210,80,0.7)" : "rgba(100,160,255,0.55)";
+        ctx.lineWidth   = isHov ? 2 : isSel ? 1.8 : 1.2;
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = isHov ? "rgba(190,230,255,1)" : isSel ? "rgba(255,220,100,0.9)" : "rgba(160,205,255,0.85)";
+        ctx.font      = isHov ? "bold 11px monospace" : "10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(entry.object || entry.name, cx, cy + 4);
+        ctx.textAlign = "left";
+      }
+    } else {
+      // Not zoomed enough — draw dot
+      const r = isSel ? 5 : isHov ? 4 : 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = isSel ? "rgba(255,210,80,0.95)" : isHov ? "rgba(120,210,255,0.9)" : "rgba(100,165,255,0.65)";
+      ctx.fill();
+      if (pixPerDeg >= 4) {
+        ctx.fillStyle = isSel ? "rgba(255,220,100,1)" : "rgba(165,205,255,0.75)";
+        ctx.font = "9px monospace";
+        ctx.fillText(entry.object || entry.name, cx + r + 2, cy + 3);
       }
     }
-    ctx.restore();
   }
 
   function drawCompass(ctx: CanvasRenderingContext2D) {
@@ -362,8 +418,8 @@
 
   $effect(() => {
     void viewRA; void viewDec; void pixPerDeg; void index; void catalog;
-    void hoveredEntry; void selectedEntry; void canvasW; void canvasH; void sizesVersion;
-    void previewImg; void previewLoading;
+    void hoveredEntry; void selectedEntries; void canvasW; void canvasH; void sizesVersion;
+    void previewVersion; void showStacked;
     requestAnimationFrame(redraw);
   });
 
@@ -376,7 +432,7 @@
 
   function checkLazyLoad() {
     if (pixPerDeg < LAZY_PPD) return;
-    for (const entry of index) {
+    for (const entry of visibleIndex) {
       if (sizes.has(entry.nasPath) || fetchingPaths.has(entry.nasPath)) continue;
       const pt = project(entry.ra, entry.dec);
       if (!pt) continue;
@@ -407,7 +463,6 @@
 
     pixPerDeg = Math.max(0.3, Math.min(8000, pixPerDeg * factor));
 
-    // Keep the sky point under the cursor fixed after zoom
     const [nx, ny] = project(skyRA, skyDec) ?? [canvasW / 2, canvasH / 2];
     viewRA  += (mx - nx) / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
     viewDec += (my - ny) / pixPerDeg;
@@ -431,8 +486,6 @@
     if (isPanning) {
       const dx = e.clientX - panStartX;
       const dy = e.clientY - panStartY;
-      // Positive dx (drag right) → viewRA increases → sky shifts eastward (left)
-      // which feels like "the sky follows your hand" toward the right
       viewRA  = panStartRA  + dx / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
       viewDec = Math.max(-89, Math.min(89, panStartDec + dy / pixPerDeg));
       hoveredEntry = null;
@@ -440,9 +493,8 @@
       return;
     }
 
-    // Hit-test footprint polygon (if size loaded) or dot circle
     let found: app.AtlasIndexEntry | null = null;
-    for (const entry of index) {
+    for (const entry of visibleIndex) {
       const sz = sizes.get(entry.nasPath);
       if (sz && pixPerDeg >= LAZY_PPD) {
         const corners = footprintCorners(entry, sz);
@@ -465,7 +517,24 @@
     const wasPanning = isPanning;
     isPanning = false;
     if (wasPanning && (Math.abs(e.clientX - panStartX) > 4 || Math.abs(e.clientY - panStartY) > 4)) return;
-    selectedEntry = hoveredEntry && hoveredEntry !== selectedEntry ? hoveredEntry : null;
+
+    if (!hoveredEntry) {
+      // Click on empty space — deselect all
+      selectedEntries = [];
+      return;
+    }
+
+    const idx = selectedEntries.indexOf(hoveredEntry);
+    if (idx === -1) {
+      // New frame — add to top of z-order
+      selectedEntries = [...selectedEntries, hoveredEntry];
+    } else if (idx === selectedEntries.length - 1) {
+      // Already on top — deselect it
+      selectedEntries = selectedEntries.filter((_, i) => i !== idx);
+    } else {
+      // Bring to top of z-order
+      selectedEntries = [...selectedEntries.filter((_, i) => i !== idx), hoveredEntry];
+    }
   }
 
   // ── Mount / resize ────────────────────────────────────────────────────────
@@ -479,19 +548,26 @@
     canvasW = container.clientWidth;
     canvasH = container.clientHeight;
 
-    Promise.all([GetAtlasIndex(rootPath), GetCatalog()])
-      .then(([indexResult, catalogResult]) => {
-        index   = indexResult  ?? [];
-        catalog = catalogResult ?? [];
+    // Load frames first so the atlas is usable; catalog loads in background
+    GetAtlasIndex(rootPath)
+      .then((indexResult) => {
+        index = indexResult ?? [];
         if (index.length > 0) {
           viewRA    = index.reduce((s, f) => s + f.ra,  0) / index.length;
           viewDec   = index.reduce((s, f) => s + f.dec, 0) / index.length;
           pixPerDeg = canvasW / 30;
         }
+        loading = false;
         scheduleLazyLoad();
+        return GetCatalog();
       })
-      .catch((e) => { loadError = String(e); })
-      .finally(() => { loading = false; });
+      .then((catalogResult) => {
+        catalog = catalogResult ?? [];
+      })
+      .catch((e) => {
+        loadError = String(e);
+        loading = false;
+      });
 
     return () => {
       ro.disconnect();
@@ -535,11 +611,25 @@
     <span>Dec {viewDec.toFixed(2)}°</span>
     <span>{(canvasW / pixPerDeg).toFixed(1)}° FOV</span>
     <span class="hud-sep">|</span>
-    <span>{index.length} frame{index.length !== 1 ? "s" : ""}</span>
+    <span>{visibleIndex.length} frame{visibleIndex.length !== 1 ? "s" : ""}</span>
   </div>
 
-  <!-- Hover tooltip (hidden when a frame is selected) -->
-  {#if hoveredEntry && hoveredEntry !== selectedEntry}
+  <!-- Frame type toggle -->
+  <div class="atlas-toggle">
+    <button
+      class="toggle-btn"
+      class:active={!showStacked}
+      onclick={() => (showStacked = false)}
+    >Processed</button>
+    <button
+      class="toggle-btn"
+      class:active={showStacked}
+      onclick={() => (showStacked = true)}
+    >All</button>
+  </div>
+
+  <!-- Hover tooltip -->
+  {#if hoveredEntry && !selectedEntries.includes(hoveredEntry)}
     <div
       class="atlas-tooltip"
       style="left: {Math.min(hoverX + 14, canvasW - 195)}px; top: {Math.min(hoverY - 10, canvasH - 80)}px;"
@@ -547,46 +637,50 @@
       <div class="tt-name">{hoveredEntry.object || hoveredEntry.name}</div>
       <div class="tt-row">RA {hoveredEntry.ra.toFixed(3)}° · Dec {hoveredEntry.dec >= 0 ? "+" : ""}{hoveredEntry.dec.toFixed(3)}°</div>
       <div class="tt-row">{hoveredEntry.pixelScale.toFixed(2)} ″/px · {hoveredEntry.frameType}</div>
-      <div class="tt-hint">Click to inspect</div>
+      <div class="tt-hint">Click to add / bring to front</div>
     </div>
   {/if}
 
-  <!-- Selected-frame side panel -->
-  {#if selectedEntry}
-    {@const sz = sizesVersion >= 0 ? sizes.get(selectedEntry.nasPath) : undefined}
+  <!-- Side panel for most-recently selected frame -->
+  {#if panelEntry}
+    {@const sz = sizesVersion >= 0 ? sizes.get(panelEntry.nasPath) : undefined}
     <div class="atlas-panel">
       <div class="ap-header">
-        <div class="ap-title">{selectedEntry.object || selectedEntry.name}</div>
-        <button class="ap-close" onclick={() => (selectedEntry = null)}>✕</button>
+        <div class="ap-title">{panelEntry.object || panelEntry.name}</div>
+        <button class="ap-close" onclick={() => (selectedEntries = [])}>✕</button>
       </div>
 
       <div class="ap-body">
-        <div class="ap-row"><span class="ap-lbl">Type</span><span class="ap-val">{selectedEntry.frameType}</span></div>
-        <div class="ap-row"><span class="ap-lbl">RA</span><span class="ap-val">{selectedEntry.ra.toFixed(4)}°</span></div>
-        <div class="ap-row"><span class="ap-lbl">Dec</span><span class="ap-val">{selectedEntry.dec >= 0 ? "+" : ""}{selectedEntry.dec.toFixed(4)}°</span></div>
-        <div class="ap-row"><span class="ap-lbl">Scale</span><span class="ap-val">{selectedEntry.pixelScale.toFixed(2)} ″/px</span></div>
+        {#if selectedEntries.length > 1}
+          <div class="ap-stack-hint">{selectedEntries.length} frames shown · showing latest</div>
+        {/if}
+        <div class="ap-row"><span class="ap-lbl">Type</span><span class="ap-val">{panelEntry.frameType}</span></div>
+        <div class="ap-row"><span class="ap-lbl">RA</span><span class="ap-val">{panelEntry.ra.toFixed(4)}°</span></div>
+        <div class="ap-row"><span class="ap-lbl">Dec</span><span class="ap-val">{panelEntry.dec >= 0 ? "+" : ""}{panelEntry.dec.toFixed(4)}°</span></div>
+        <div class="ap-row"><span class="ap-lbl">Scale</span><span class="ap-val">{panelEntry.pixelScale.toFixed(2)} ″/px</span></div>
+        <div class="ap-row"><span class="ap-lbl">Rotation</span><span class="ap-val">{panelEntry.rotation.toFixed(1)}°</span></div>
         {#if sz}
           <div class="ap-row"><span class="ap-lbl">Size</span><span class="ap-val">{sz.width} × {sz.height} px</span></div>
           <div class="ap-row">
             <span class="ap-lbl">FOV</span>
             <span class="ap-val">
-              {((sz.width  * selectedEntry.pixelScale) / 3600).toFixed(2)}° ×
-              {((sz.height * selectedEntry.pixelScale) / 3600).toFixed(2)}°
+              {((sz.width  * panelEntry.pixelScale) / 3600).toFixed(2)}° ×
+              {((sz.height * panelEntry.pixelScale) / 3600).toFixed(2)}°
             </span>
           </div>
         {/if}
-        <div class="ap-row ap-file-row"><span class="ap-lbl">File</span><span class="ap-val ap-file">{selectedEntry.name}</span></div>
+        <div class="ap-row ap-file-row"><span class="ap-lbl">File</span><span class="ap-val ap-file">{panelEntry.name}</span></div>
       </div>
 
       {#if onframeopen}
-        <button class="ap-open-btn" onclick={() => onframeopen!(selectedEntry!.nasPath)}>
+        <button class="ap-open-btn" onclick={() => onframeopen!(panelEntry!.nasPath)}>
           Open in Library →
         </button>
       {/if}
     </div>
   {/if}
 
-  <div class="atlas-help">Scroll to zoom · Drag to pan · Click frame to inspect</div>
+  <div class="atlas-help">Scroll to zoom · Drag to pan · Click frames to overlay · Click again to bring to front</div>
 </div>
 
 <style>
@@ -649,6 +743,37 @@
     border: 1px solid var(--border);
   }
   .hud-sep { opacity: 0.4; }
+
+  /* Frame type toggle */
+  .atlas-toggle {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+    z-index: 20;
+  }
+  .toggle-btn {
+    padding: 3px 12px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .toggle-btn.active {
+    background: color-mix(in srgb, var(--accent-dim) 40%, transparent);
+    color: var(--accent);
+  }
+  .toggle-btn:hover:not(.active) {
+    background: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+    color: var(--text-primary);
+  }
 
   /* Hover tooltip */
   .atlas-tooltip {
@@ -717,6 +842,13 @@
     flex-direction: column;
     gap: 4px;
     overflow-y: auto;
+  }
+  .ap-stack-hint {
+    font-size: 0.68rem;
+    color: var(--accent);
+    font-style: italic;
+    margin-bottom: 4px;
+    opacity: 0.8;
   }
   .ap-row {
     display: flex;
