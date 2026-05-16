@@ -359,6 +359,176 @@ func (s *Store) DeleteFrame(path string) error {
 	return err
 }
 
+// BatchRejectFrames marks multiple frames as rejected in a single transaction.
+func (s *Store) BatchRejectFrames(paths []string, reason string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.Prepare(`
+		INSERT INTO frames (nas_path, rejected, rejection_reason, cached_at)
+		VALUES (?, 1, ?, 0)
+		ON CONFLICT(nas_path) DO UPDATE SET
+			rejected=1, rejection_reason=excluded.rejection_reason
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, p := range paths {
+		if _, err := stmt.Exec(p, reason); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// BatchUnrejectFrames clears the rejection status on multiple frames in a single transaction.
+func (s *Store) BatchUnrejectFrames(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.Prepare(`UPDATE frames SET rejected=0, rejection_reason=NULL WHERE nas_path=?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, p := range paths {
+		if _, err := stmt.Exec(p); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// BatchDeleteFrames removes multiple frame records in a single transaction.
+func (s *Store) BatchDeleteFrames(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.Prepare(`DELETE FROM frames WHERE nas_path=?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, p := range paths {
+		if _, err := stmt.Exec(p); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// GetDistinctObjects returns the sorted list of distinct non-empty object values
+// for frames of the given frameType under rootPath.
+func (s *Store) GetDistinctObjects(rootPath, frameType string) ([]string, error) {
+	prefix := rootPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	query, args, err := s.qb.
+		Select("DISTINCT object").
+		From("frames").
+		Where(sq.And{
+			sq.Like{"nas_path": prefix + "%"},
+			sq.Gt{"cached_at": 0},
+			sq.NotEq{"object": ""},
+			sq.Eq{"frame_type": frameType},
+		}).
+		OrderBy("object").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var objects []string
+	for rows.Next() {
+		var obj string
+		if err := rows.Scan(&obj); err != nil {
+			return nil, err
+		}
+		objects = append(objects, obj)
+	}
+	return objects, rows.Err()
+}
+
+const lightFramesPageSize = 150
+
+// GetLightFramesPaged returns a page of light frames under rootPath filtered to
+// the given objects list. Pass offset=0 for the first page. HasMore is true when
+// additional rows exist beyond the returned page.
+func (s *Store) GetLightFramesPaged(rootPath string, objects []string, offset int) ([]Frame, bool, error) {
+	prefix := rootPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	cond := sq.And{
+		sq.Like{"nas_path": prefix + "%"},
+		sq.Gt{"cached_at": 0},
+		sq.Eq{"frame_type": FrameTypeLight},
+	}
+	if len(objects) > 0 {
+		cond = append(cond, sq.Eq{"object": objects})
+	}
+	query, args, err := s.qb.
+		Select(
+			"nas_path", "file_size", "last_seen", "cached_at",
+			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
+			"frame_type",
+			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"approved", "rejected", "rejection_reason", "tags", "notes",
+		).
+		From("frames").
+		Where(cond).
+		OrderBy("object", "date_obs").
+		Limit(uint64(lightFramesPageSize + 1)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		return nil, false, err
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var frames []Frame
+	for rows.Next() {
+		_, f, err := scanFrame(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		frames = append(frames, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(frames) > lightFramesPageSize
+	if hasMore {
+		frames = frames[:lightFramesPageSize]
+	}
+	return frames, hasMore, nil
+}
+
 func (s *Store) getFramesChunk(paths []string, out map[string]Frame) error {
 	query, args, err := s.qb.
 		Select(

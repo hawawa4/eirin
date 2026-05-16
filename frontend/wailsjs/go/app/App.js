@@ -10,6 +10,18 @@ export function AnalyzeFrames(arg1) {
   return window['go']['app']['App']['AnalyzeFrames'](arg1);
 }
 
+export function BatchHardDeleteFiles(arg1) {
+  return window['go']['app']['App']['BatchHardDeleteFiles'](arg1);
+}
+
+export function BatchRejectFiles(arg1) {
+  return window['go']['app']['App']['BatchRejectFiles'](arg1);
+}
+
+export function BatchUnrejectFiles(arg1) {
+  return window['go']['app']['App']['BatchUnrejectFiles'](arg1);
+}
+
 export function BuildIndex(arg1) {
   return window['go']['app']['App']['BuildIndex'](arg1);
 }
@@ -48,6 +60,14 @@ export function GetAppInfo() {
 
 export function GetLibraryFrames(arg1) {
   return window['go']['app']['App']['GetLibraryFrames'](arg1);
+}
+
+export function GetLightFramesPaged(arg1, arg2, arg3) {
+  return window['go']['app']['App']['GetLightFramesPaged'](arg1, arg2, arg3);
+}
+
+export function GetLightObjects(arg1) {
+  return window['go']['app']['App']['GetLightObjects'](arg1);
 }
 
 export function GetProjectFrames(arg1) {

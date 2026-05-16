@@ -7,6 +7,12 @@ export function AddFramesToProject(arg1:string,arg2:Array<string>,arg3:string):P
 
 export function AnalyzeFrames(arg1:Array<string>):Promise<void>;
 
+export function BatchHardDeleteFiles(arg1:Array<string>):Promise<void>;
+
+export function BatchRejectFiles(arg1:Array<string>):Promise<void>;
+
+export function BatchUnrejectFiles(arg1:Array<string>):Promise<void>;
+
 export function BuildIndex(arg1:string):Promise<void>;
 
 export function CancelAnalysis():Promise<void>;
@@ -26,6 +32,10 @@ export function GeneratePreviewRaw(arg1:string):Promise<app.RawPreviewData>;
 export function GetAppInfo():Promise<app.AppInfo>;
 
 export function GetLibraryFrames(arg1:string):Promise<Array<app.LibraryFrame>>;
+
+export function GetLightFramesPaged(arg1:string,arg2:Array<string>,arg3:number):Promise<app.PagedLightFrames>;
+
+export function GetLightObjects(arg1:string):Promise<Array<string>>;
 
 export function GetProjectFrames(arg1:string):Promise<Array<string>>;
 

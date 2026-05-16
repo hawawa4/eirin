@@ -6,6 +6,9 @@
     RejectFile,
     UnrejectFile,
     HardDeleteFile,
+    BatchRejectFiles,
+    BatchUnrejectFiles,
+    BatchHardDeleteFiles,
     OpenWithSiril,
     AnalyzeFrames,
     CancelAnalysis,
@@ -163,9 +166,14 @@
   let dragSourceId = "";
   let dragOverIndex = $state(-1);
 
+  // ── Multi-select ──────────────────────────────────────────────────────────
+  let selectedPaths = $state(new Set<string>());
+  let lastSelectedPath = "";
+  let ctxPaths = $state<string[]>([]);
+
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
-  let confirmDel = $state<{ path: string; name: string } | null>(null);
+  let confirmDel = $state<{ paths: string[]; name: string } | null>(null);
 
   // ── Siril analysis ────────────────────────────────────────────────────────
   let analyzingGroup = $state<string | null>(null);
@@ -234,6 +242,7 @@
     if (!rootFolder || loading) return;
     loading = true;
     error = "";
+    selectedPaths = new Set();
     try {
       frames = (await GetLibraryFrames(rootFolder)) ?? [];
       onframesreloaded?.(frames);
@@ -459,14 +468,53 @@
     frames = frames.map((f) => (f.nasPath === nasPath ? { ...f, frameType: newType } : f));
   }
 
+  // ── Row click (single/ctrl/shift select) ─────────────────────────────────
+  function handleRowClick(e: MouseEvent, frame: app.LibraryFrame) {
+    if (e.shiftKey && lastSelectedPath) {
+      const flat = sorted;
+      const aIdx = flat.findIndex((f) => f.nasPath === lastSelectedPath);
+      const bIdx = flat.findIndex((f) => f.nasPath === frame.nasPath);
+      if (aIdx !== -1 && bIdx !== -1) {
+        const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
+        const next = new Set(selectedPaths);
+        for (let i = lo; i <= hi; i++) next.add(flat[i].nasPath);
+        selectedPaths = next;
+      }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      const next = new Set(selectedPaths);
+      if (next.has(frame.nasPath)) next.delete(frame.nasPath);
+      else next.add(frame.nasPath);
+      selectedPaths = next;
+      lastSelectedPath = frame.nasPath;
+      return;
+    }
+    selectedPaths = new Set([frame.nasPath]);
+    lastSelectedPath = frame.nasPath;
+    onfileclick(frame);
+  }
+
+  function handleCheckbox(frame: app.LibraryFrame) {
+    const next = new Set(selectedPaths);
+    if (next.has(frame.nasPath)) next.delete(frame.nasPath);
+    else next.add(frame.nasPath);
+    selectedPaths = next;
+    lastSelectedPath = frame.nasPath;
+  }
+
   // ── Reject / restore / hard delete ───────────────────────────────────────
   function openCtxMenu(e: MouseEvent, frame: app.LibraryFrame) {
     e.preventDefault();
+    const inSelection = selectedPaths.has(frame.nasPath) && selectedPaths.size > 1;
+    const paths = inSelection ? [...selectedPaths] : [frame.nasPath];
+    ctxPaths = paths;
     ctxMenu = {
       x: e.clientX,
       y: e.clientY,
       entry: { path: frame.nasPath, name: frame.fileName, isRejected: frame.isRejected, frameType: frame.frameType },
-      sirilAvailable,
+      sirilAvailable: sirilAvailable && paths.length === 1,
+      selectionCount: paths.length,
     };
   }
 
@@ -483,27 +531,52 @@
 
   async function onCtxReject(entry: CtxEntry) {
     ctxMenu = null;
-    await RejectFile(entry.path);
-    frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: true } : f));
+    if (ctxPaths.length > 1) {
+      await BatchRejectFiles(ctxPaths);
+      const set = new Set(ctxPaths);
+      frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: true } : f));
+      selectedPaths = new Set();
+    } else {
+      await RejectFile(entry.path);
+      frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: true } : f));
+    }
   }
 
   async function onCtxRestore(entry: CtxEntry) {
     ctxMenu = null;
-    await UnrejectFile(entry.path);
-    frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: false } : f));
+    if (ctxPaths.length > 1) {
+      await BatchUnrejectFiles(ctxPaths);
+      const set = new Set(ctxPaths);
+      frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: false } : f));
+      selectedPaths = new Set();
+    } else {
+      await UnrejectFile(entry.path);
+      frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: false } : f));
+    }
   }
 
   function onCtxHardDelete(entry: CtxEntry) {
     ctxMenu = null;
-    confirmDel = { path: entry.path, name: entry.name };
+    if (ctxPaths.length > 1) {
+      confirmDel = { paths: [...ctxPaths], name: `${ctxPaths.length} frames` };
+    } else {
+      confirmDel = { paths: [entry.path], name: entry.name };
+    }
   }
 
   async function doHardDelete() {
     if (!confirmDel) return;
-    const { path } = confirmDel;
+    const { paths } = confirmDel;
     confirmDel = null;
-    await HardDeleteFile(path);
-    frames = frames.filter((f) => f.nasPath !== path);
+    if (paths.length > 1) {
+      await BatchHardDeleteFiles(paths);
+      const set = new Set(paths);
+      frames = frames.filter((f) => !set.has(f.nasPath));
+      selectedPaths = new Set();
+    } else {
+      await HardDeleteFile(paths[0]);
+      frames = frames.filter((f) => f.nasPath !== paths[0]);
+    }
   }
 </script>
 
@@ -583,14 +656,16 @@
   <div class="status-row error">{error}</div>
 {:else}
   <div class="table-scroll-wrapper">
-    <table class="lib-table" style="width: {Math.max(totalColWidth, 100)}px; min-width: 100%">
+    <table class="lib-table" style="width: {Math.max(totalColWidth + 28, 100)}px; min-width: 100%">
       <colgroup>
+        <col style="width: 28px" />
         {#each visibleColumns as col (col.id)}
           <col style="width: {col.width}px" />
         {/each}
       </colgroup>
       <thead>
         <tr>
+          <th class="cb-th" onclick={(e) => e.stopPropagation()}></th>
           {#each visibleColumns as col, i (col.id)}
             <th
               class:drag-over={dragOverIndex === i}
@@ -623,6 +698,7 @@
         </tr>
         <!-- Filter row -->
         <tr class="filter-row">
+          <th class="cb-th filter-th"></th>
           {#each visibleColumns as col (col.id)}
             <th class="filter-th">
               {#if col.id === "frameType"}
@@ -747,9 +823,18 @@
             <tr
               class="frame-row"
               class:selected={selectedNasPath === frame.nasPath}
-              onclick={() => onfileclick(frame)}
+              class:multi-selected={selectedPaths.has(frame.nasPath)}
+              onclick={(e) => handleRowClick(e, frame)}
               oncontextmenu={(e) => openCtxMenu(e, frame)}
             >
+              <td class="cb-td" onclick={(e) => { e.stopPropagation(); handleCheckbox(frame); }}>
+                <input
+                  type="checkbox"
+                  checked={selectedPaths.has(frame.nasPath)}
+                  onclick={(e) => e.stopPropagation()}
+                  onchange={() => handleCheckbox(frame)}
+                />
+              </td>
               {#each visibleColumns as col (col.id)}
                 <td class="col-{col.id}">
                   {#if col.id === "frameType"}
@@ -1249,6 +1334,29 @@
     color: #ef4444;
   }
 
+  /* ── Checkbox column ─────────────────────────────────────────────────────── */
+
+  .cb-th {
+    padding: 0 !important;
+    width: 28px;
+    text-align: center;
+  }
+
+  .cb-td {
+    padding: 0 !important;
+    text-align: center;
+    cursor: default;
+    width: 28px;
+  }
+
+  .cb-td input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+    width: 13px;
+    height: 13px;
+    vertical-align: middle;
+  }
+
   /* ── Frame rows ──────────────────────────────────────────────────────────── */
 
   .frame-row {
@@ -1270,6 +1378,14 @@
 
   .frame-row.selected td {
     background: var(--accent-dim) !important;
+  }
+
+  .frame-row.multi-selected td {
+    background: color-mix(in srgb, var(--accent-dim) 70%, var(--bg-base) 30%);
+  }
+
+  .frame-row.multi-selected:hover td {
+    background: var(--accent-dim);
   }
 
   /* ── Column-specific styles ──────────────────────────────────────────────── */

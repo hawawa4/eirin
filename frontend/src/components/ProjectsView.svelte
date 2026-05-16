@@ -7,7 +7,8 @@
     GetProjectFrames,
     AddFramesToProject,
     OpenProjectInSiril,
-    GetLibraryFrames,
+    GetLightObjects,
+    GetLightFramesPaged,
     GetProjectOutputFiles,
     ImportOutputFiles,
   } from "../../wailsjs/go/app/App.js";
@@ -69,7 +70,14 @@
 
   // ── Frame picker (Add lights) ─────────────────────────────────────────────
   let showPicker = $state(false);
-  let allLights = $state<app.LibraryFrame[]>([]);
+  let pickerStep = $state<"objects" | "frames">("objects");
+  let availableObjects = $state<string[]>([]);
+  let pickerObjects = $state<Set<string>>(new Set());
+  let pickerFrames = $state<app.LibraryFrame[]>([]);
+  let pickerHasMore = $state(false);
+  let pickerOffset = $state(0);
+  let pickerLoading = $state(false);
+  let pickerLoadingMore = $state(false);
   let pickerFilter = $state("");
   let pickerSelected = $state<Set<string>>(new Set());
   let addMode = $state<"symlink" | "copy">("symlink");
@@ -145,21 +153,53 @@
 
   // ── Lights picker ─────────────────────────────────────────────────────────
   async function openPicker() {
+    pickerStep = "objects";
     pickerFilter = "";
     pickerSelected = new Set();
+    pickerObjects = new Set();
+    pickerFrames = [];
+    pickerHasMore = false;
+    pickerOffset = 0;
     addError = "";
-    allLights = rootFolder
-      ? (await GetLibraryFrames(rootFolder)).filter((f) => f.frameType === "light")
-      : [];
     showPicker = true;
+    if (!rootFolder) return;
+    pickerLoading = true;
+    try {
+      availableObjects = (await GetLightObjects(rootFolder)) ?? [];
+    } finally {
+      pickerLoading = false;
+    }
+  }
+
+  async function loadPickerFrames(reset: boolean) {
+    if (reset) {
+      pickerFrames = [];
+      pickerOffset = 0;
+      pickerHasMore = false;
+    }
+    pickerLoadingMore = true;
+    try {
+      const result = await GetLightFramesPaged(rootFolder, [...pickerObjects], pickerOffset);
+      pickerFrames = reset ? (result.frames ?? []) : [...pickerFrames, ...(result.frames ?? [])];
+      pickerHasMore = result.hasMore;
+      pickerOffset = pickerFrames.length;
+    } finally {
+      pickerLoadingMore = false;
+    }
+  }
+
+  async function goToFrameStep() {
+    pickerStep = "frames";
+    pickerSelected = new Set();
+    pickerFilter = "";
+    await loadPickerFrames(true);
   }
 
   let filteredLights = $derived(
-    allLights.filter(
+    pickerFrames.filter(
       (f) =>
         !pickerFilter ||
-        f.fileName.toLowerCase().includes(pickerFilter.toLowerCase()) ||
-        f.object.toLowerCase().includes(pickerFilter.toLowerCase()),
+        f.fileName.toLowerCase().includes(pickerFilter.toLowerCase()),
     ),
   );
 
@@ -175,6 +215,13 @@
       pickerSelected.size === filteredLights.length
         ? new Set()
         : new Set(filteredLights.map((f) => f.nasPath));
+  }
+
+  function toggleObject(obj: string) {
+    const next = new Set(pickerObjects);
+    if (next.has(obj)) next.delete(obj);
+    else next.add(obj);
+    pickerObjects = next;
   }
 
   async function doAddFrames() {
@@ -452,80 +499,132 @@
   <div class="modal-backdrop" onclick={() => (showPicker = false)}>
     <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
       <div class="picker-header">
-        <span class="picker-title">Add light frames — {selected?.name}</span>
+        <span class="picker-title">
+          {pickerStep === "objects" ? "Select objects" : "Add light frames"} — {selected?.name}
+        </span>
         <button class="btn-ghost" onclick={() => (showPicker = false)}>✕</button>
       </div>
 
-      <div class="picker-toolbar">
-        <input
-          class="picker-search"
-          type="search"
-          placeholder="Filter by name or object…"
-          bind:value={pickerFilter}
-        />
-        <button class="btn-ghost small" onclick={toggleAllLights}>
-          {pickerSelected.size === filteredLights.length && filteredLights.length > 0
-            ? "Deselect all"
-            : "Select all"}
-        </button>
-        <span class="picker-count">{pickerSelected.size} selected</span>
-      </div>
-
-      <div class="picker-list-scroll">
-        {#if allLights.length === 0}
-          <p class="hint padded">No indexed light frames found. Run Build Index first.</p>
-        {:else if filteredLights.length === 0}
-          <p class="hint padded">No frames match the filter.</p>
-        {:else}
-          <table class="picker-table">
-            <thead>
-              <tr>
-                <th class="col-check"></th>
-                <th>Name</th>
-                <th>Object</th>
-                <th>Filter</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each filteredLights as f (f.nasPath)}
-                <tr
-                  class="picker-row"
-                  class:picked={pickerSelected.has(f.nasPath)}
-                  onclick={() => togglePick(f.nasPath)}
-                >
-                  <td class="col-check">
-                    <input
-                      type="checkbox"
-                      checked={pickerSelected.has(f.nasPath)}
-                      onclick={(e) => e.stopPropagation()}
-                      onchange={() => togglePick(f.nasPath)}
-                    />
-                  </td>
-                  <td class="col-name">{f.fileName}</td>
-                  <td class="dim-cell">{f.object || "—"}</td>
-                  <td class="dim-cell">{f.filter || "—"}</td>
-                  <td class="dim-cell">{f.dateObs ? f.dateObs.slice(0, 10) : "—"}</td>
-                </tr>
+      {#if pickerStep === "objects"}
+        <!-- Step 1: Pick objects -->
+        <div class="picker-list-scroll">
+          {#if pickerLoading}
+            <p class="hint padded">Loading objects…</p>
+          {:else if availableObjects.length === 0}
+            <p class="hint padded">No indexed light frames found. Run Build Index first.</p>
+          {:else}
+            <div class="object-list">
+              {#each availableObjects as obj}
+                <label class="object-item">
+                  <input
+                    type="checkbox"
+                    checked={pickerObjects.has(obj)}
+                    onchange={() => toggleObject(obj)}
+                  />
+                  <span class="object-name">{obj || "(no object)"}</span>
+                </label>
               {/each}
-            </tbody>
-          </table>
-        {/if}
-      </div>
+            </div>
+          {/if}
+        </div>
+        <div class="picker-footer">
+          <div class="picker-actions">
+            <button
+              class="btn-primary"
+              disabled={pickerObjects.size === 0 || pickerLoading}
+              onclick={goToFrameStep}
+            >
+              Continue ({pickerObjects.size} object{pickerObjects.size !== 1 ? "s" : ""})
+            </button>
+            <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
+          </div>
+        </div>
 
-      <div class="picker-footer">
-        <div class="mode-toggle">
-          <label class="mode-opt"><input type="radio" name="addMode" value="symlink" bind:group={addMode} /> Symlink</label>
-          <label class="mode-opt"><input type="radio" name="addMode" value="copy" bind:group={addMode} /> Copy</label>
-        </div>
-        {#if addError}<p class="form-error">{addError}</p>{/if}
-        <div class="picker-actions">
-          <button class="btn-primary" onclick={doAddFrames} disabled={adding || pickerSelected.size === 0}>
-            {adding ? "Adding…" : `Add ${pickerSelected.size} frame${pickerSelected.size !== 1 ? "s" : ""}`}
+      {:else}
+        <!-- Step 2: Pick frames (paginated) -->
+        <div class="picker-toolbar">
+          <button class="btn-ghost small" onclick={() => { pickerStep = "objects"; }}>← Back</button>
+          <input
+            class="picker-search"
+            type="search"
+            placeholder="Filter by name…"
+            bind:value={pickerFilter}
+          />
+          <button class="btn-ghost small" onclick={toggleAllLights}>
+            {pickerSelected.size === filteredLights.length && filteredLights.length > 0
+              ? "Deselect all"
+              : "Select all"}
           </button>
-          <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
+          <span class="picker-count">{pickerSelected.size} selected</span>
         </div>
-      </div>
+
+        <div class="picker-list-scroll">
+          {#if pickerLoadingMore && pickerFrames.length === 0}
+            <p class="hint padded">Loading frames…</p>
+          {:else if filteredLights.length === 0}
+            <p class="hint padded">No frames match the filter.</p>
+          {:else}
+            <table class="picker-table">
+              <thead>
+                <tr>
+                  <th class="col-check"></th>
+                  <th>Name</th>
+                  <th>Object</th>
+                  <th>Filter</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each filteredLights as f (f.nasPath)}
+                  <tr
+                    class="picker-row"
+                    class:picked={pickerSelected.has(f.nasPath)}
+                    onclick={() => togglePick(f.nasPath)}
+                  >
+                    <td class="col-check">
+                      <input
+                        type="checkbox"
+                        checked={pickerSelected.has(f.nasPath)}
+                        onclick={(e) => e.stopPropagation()}
+                        onchange={() => togglePick(f.nasPath)}
+                      />
+                    </td>
+                    <td class="col-name">{f.fileName}</td>
+                    <td class="dim-cell">{f.object || "—"}</td>
+                    <td class="dim-cell">{f.filter || "—"}</td>
+                    <td class="dim-cell">{f.dateObs ? f.dateObs.slice(0, 10) : "—"}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+            {#if pickerHasMore}
+              <div class="load-more-row">
+                <button
+                  class="btn-ghost small"
+                  disabled={pickerLoadingMore}
+                  onclick={() => loadPickerFrames(false)}
+                >
+                  {pickerLoadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            {/if}
+          {/if}
+        </div>
+
+        <div class="picker-footer">
+          <div class="mode-toggle">
+            <label class="mode-opt"><input type="radio" name="addMode" value="symlink" bind:group={addMode} /> Symlink</label>
+            <label class="mode-opt"><input type="radio" name="addMode" value="copy" bind:group={addMode} /> Copy</label>
+          </div>
+          {#if addError}<p class="form-error">{addError}</p>{/if}
+          <div class="picker-actions">
+            <button class="btn-primary" onclick={doAddFrames} disabled={adding || pickerSelected.size === 0}>
+              {adding ? "Adding…" : `Add ${pickerSelected.size} frame${pickerSelected.size !== 1 ? "s" : ""}`}
+            </button>
+            <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -1264,5 +1363,50 @@
 
   .hint.padded {
     padding: 16px;
+  }
+
+  /* ── Object picker step ──────────────────────────────────────────────────── */
+
+  .object-list {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+  }
+
+  .object-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: background 0.1s;
+  }
+
+  .object-item:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
+
+  .object-item input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .object-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Load more row ───────────────────────────────────────────────────────── */
+
+  .load-more-row {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
   }
 </style>
