@@ -3,6 +3,8 @@ package app
 import (
 	"path/filepath"
 
+	"github.com/TaruDesigns/eirin/internal/catalog"
+	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -38,7 +40,7 @@ type CatalogObject struct {
 
 // GetCatalog returns all catalog objects (stars and DSOs) for the Sky Atlas star layer.
 func (a *App) GetCatalog() []CatalogObject {
-	entries := loadCatalog()
+	entries := catalog.AllEntries()
 	out := make([]CatalogObject, len(entries))
 	for i, e := range entries {
 		out[i] = CatalogObject{RA: e.RA, Dec: e.Dec, Name: e.Name, Type: e.Type, Mag: e.Mag}
@@ -51,7 +53,7 @@ func (a *App) GetCatalog() []CatalogObject {
 // fast DB-only query that returns immediately even for large libraries.
 // Light frames are never included in the Atlas.
 func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
-	frames, err := a.prefs.GetAtlasIndexFrames(rootPath)
+	frames, err := a.store.GetAtlasIndexFrames(rootPath)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "atlas: get index: %v", err)
 		return nil
@@ -84,7 +86,7 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 // Called lazily by the frontend when a frame is visible and the user is zoomed
 // in enough that the footprint rectangle is worth drawing.
 func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
-	hdr, err := readFITSHeader(nasPath)
+	hdr, err := fits.ReadFITSHeader(nasPath)
 	if err != nil {
 		return AtlasFrameSize{}, err
 	}

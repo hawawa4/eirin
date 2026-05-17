@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 )
 
 func TestSirilExecutableDefault(t *testing.T) {
@@ -16,7 +16,7 @@ func TestSirilExecutableDefault(t *testing.T) {
 
 func TestSirilExecutableConfigured(t *testing.T) {
 	a := newTestApp(t)
-	a.prefs.Set(prefs.KeySirilPath, "/opt/siril/bin/siril")
+	a.store.Set(store.KeySirilPath, "/opt/siril/bin/siril")
 
 	if got := a.sirilExecutable(); got != "/opt/siril/bin/siril" {
 		t.Errorf("sirilExecutable() = %q, want /opt/siril/bin/siril", got)
@@ -25,7 +25,7 @@ func TestSirilExecutableConfigured(t *testing.T) {
 
 func TestSirilExecutableConfiguredOverridesDefault(t *testing.T) {
 	a := newTestApp(t)
-	a.prefs.Set(prefs.KeySirilPath, "/custom/siril")
+	a.store.Set(store.KeySirilPath, "/custom/siril")
 
 	got := a.sirilExecutable()
 	if got == "siril" {

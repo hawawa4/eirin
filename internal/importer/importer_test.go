@@ -1,10 +1,6 @@
-package app
+package importer
 
-import (
-	"testing"
-
-	"github.com/TaruDesigns/eirin/internal/importer"
-)
+import "testing"
 
 func TestMatchesExtensions(t *testing.T) {
 	tests := []struct {
@@ -35,7 +31,7 @@ func TestMatchesExtensions(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := importer.MatchesExtensions(tt.name, tt.exts)
+		got := MatchesExtensions(tt.name, tt.exts)
 		if got != tt.want {
 			t.Errorf("MatchesExtensions(%q, %v) = %v, want %v", tt.name, tt.exts, got, tt.want)
 		}

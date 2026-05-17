@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -21,7 +21,7 @@ type storageLeaf struct {
 // GetStorageStats returns a two-level tree of disk usage:
 // root → objects → dates (YYYY-MM-DD), each leaf summing file_size and frame count.
 func (a *App) GetStorageStats(rootPath string) StorageNode {
-	frames, err := a.prefs.GetAllFramesUnder(rootPath)
+	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "storage: get frames: %v", err)
 		return StorageNode{Label: rootPath}
@@ -81,15 +81,15 @@ func (a *App) GetStorageStats(rootPath string) StorageNode {
 
 // GetFrameTypeSummary returns a breakdown of frame counts and total size by frame type under rootPath.
 func (a *App) GetFrameTypeSummary(rootPath string) []StorageNode {
-	frames, err := a.prefs.GetAllFramesUnder(rootPath)
+	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "storage: frame type summary: %v", err)
 		return nil
 	}
 
 	typeOrder := []string{
-		prefs.FrameTypeLight, prefs.FrameTypeDark, prefs.FrameTypeFlat,
-		prefs.FrameTypeBias, prefs.FrameTypeStacked, prefs.FrameTypeProcessed,
+		store.FrameTypeLight, store.FrameTypeDark, store.FrameTypeFlat,
+		store.FrameTypeBias, store.FrameTypeStacked, store.FrameTypeProcessed,
 	}
 	byType := map[string]*storageLeaf{}
 	for _, t := range typeOrder {

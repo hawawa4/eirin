@@ -2,34 +2,24 @@ package app
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/fits"
+	"github.com/TaruDesigns/eirin/internal/importer"
+	"github.com/TaruDesigns/eirin/internal/indexer"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ImportCandidate is a file in the source folder not yet in the library.
-type ImportCandidate struct {
-	SourcePath   string `json:"sourcePath"`
-	RelativePath string `json:"relativePath"` // full path relative to source root (for tree display)
-	DestPath     string `json:"destPath"`     // flattened: nasRoot/immediateParentDir/filename
-	FileSize     int64  `json:"fileSize"`
-}
+// Re-exported from the importer package for Wails binding compatibility.
+type ImportCandidate = importer.Candidate
 
 // ImportProgress is emitted as an "import:progress" event during StartImport.
-type ImportProgress struct {
-	Phase       string `json:"phase"` // "copying" | "done" | "error"
-	Current     int    `json:"current"`
-	Total       int    `json:"total"`
-	CurrentFile string `json:"currentFile"`
-	Copied      int    `json:"copied"`
-	Skipped     int    `json:"skipped"`
-	Error       string `json:"error,omitempty"`
-}
+// Re-exported from the importer package for Wails binding compatibility.
+type ImportProgress = importer.Progress
 
 // SelectSourceFolder opens an OS directory dialog for the user to pick the
 // folder they want to import files from.
@@ -43,35 +33,17 @@ func (a *App) SelectSourceFolder() (string, error) {
 	return path, nil
 }
 
-// matchesExtensions reports whether name has one of the given extensions
-// (case-insensitive, without leading dot). An empty slice matches everything.
-func matchesExtensions(name string, exts []string) bool {
-	if len(exts) == 0 {
-		return true
-	}
-	lower := strings.ToLower(filepath.Ext(name))
-	if lower != "" {
-		lower = lower[1:] // strip leading dot
-	}
-	for _, e := range exts {
-		if lower == strings.ToLower(e) {
-			return true
-		}
-	}
-	return false
-}
-
 // ScanImportCandidates walks sourceFolder and returns files whose basename does
 // not already appear in the frames database. extensions limits which file types
 // are included (e.g. ["fit","fits","png"]); an empty slice includes everything.
 // The destination path is flattened: nasRoot/immediateParentDir/filename.
 func (a *App) ScanImportCandidates(sourceFolder string, extensions []string) ([]ImportCandidate, error) {
-	nasRoot := a.prefs.Load().RootFolder
+	nasRoot := a.store.Load().RootFolder
 	if nasRoot == "" {
 		return nil, fmt.Errorf("no NAS root folder configured")
 	}
 
-	known, err := a.prefs.GetAllFrameBasenames()
+	known, err := a.store.GetAllFrameBasenames()
 	if err != nil {
 		return nil, fmt.Errorf("querying database: %w", err)
 	}
@@ -81,7 +53,7 @@ func (a *App) ScanImportCandidates(sourceFolder string, extensions []string) ([]
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		if !matchesExtensions(info.Name(), extensions) {
+		if !importer.MatchesExtensions(info.Name(), extensions) {
 			return nil
 		}
 		if known[info.Name()] {
@@ -142,7 +114,7 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 			Skipped:     skipped,
 		})
 
-		wasSkipped, err := copyFileIfNotExists(c.SourcePath, c.DestPath)
+		wasSkipped, err := importer.CopyFileIfNotExists(c.SourcePath, c.DestPath)
 		if err != nil {
 			runtime.EventsEmit(a.ctx, "import:progress", ImportProgress{
 				Phase:   "error",
@@ -178,15 +150,15 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 // indexImportedFile reads the FITS header of a freshly-copied file and inserts
 // it into the database, so it shows up in the library without a separate Build Index run.
 func (a *App) indexImportedFile(c ImportCandidate) {
-	if !isFitsFile(c.DestPath) {
+	if !indexer.IsFitsFile(c.DestPath) {
 		return
 	}
-	hdr, err := readFITSHeader(c.DestPath)
+	hdr, err := fits.ReadFITSHeader(c.DestPath)
 	if err != nil {
 		runtime.LogWarningf(a.ctx, "import: index %s: %v", c.RelativePath, err)
 		return
 	}
-	frame := prefs.Frame{
+	frame := store.Frame{
 		FileSize:   c.FileSize,
 		LastSeen:   time.Now().Unix(),
 		Object:     hdr.Object,
@@ -197,32 +169,9 @@ func (a *App) indexImportedFile(c ImportCandidate) {
 		CCDTemp:    hdr.CCDTemp,
 		Telescope:  hdr.Telescope,
 		Instrument: hdr.Instrument,
-		FrameType:  prefs.ClassifyFrameType(c.DestPath),
+		FrameType:  store.ClassifyFrameType(c.DestPath),
 	}
-	if err := a.prefs.UpsertFrame(c.DestPath, frame); err != nil {
+	if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
 		runtime.LogWarningf(a.ctx, "import: upsert %s: %v", c.DestPath, err)
 	}
-}
-
-// copyFileIfNotExists copies src to dst, creating parent directories as needed.
-// Returns (true, nil) if dst already existed and was skipped, or (false, nil/err).
-func copyFileIfNotExists(src, dst string) (skipped bool, err error) {
-	if _, statErr := os.Stat(dst); statErr == nil {
-		return true, nil
-	}
-	if mkErr := os.MkdirAll(filepath.Dir(dst), 0o755); mkErr != nil {
-		return false, mkErr
-	}
-	in, err := os.Open(src)
-	if err != nil {
-		return false, err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return false, err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return false, err
 }

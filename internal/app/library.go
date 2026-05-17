@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -47,7 +47,7 @@ type LibraryFrame struct {
 // GetLibraryFrames returns all indexed frames under rootPath, converted to the
 // LibraryFrame shape for the frontend library view.
 func (a *App) GetLibraryFrames(rootPath string) []LibraryFrame {
-	frames, err := a.prefs.GetAllFramesUnder(rootPath)
+	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "library: get frames: %v", err)
 		return nil
@@ -67,7 +67,7 @@ type PagedLightFrames struct {
 
 // GetLightObjects returns the sorted list of distinct object names for light frames under rootPath.
 func (a *App) GetLightObjects(rootPath string) []string {
-	objects, err := a.prefs.GetDistinctObjects(rootPath, prefs.FrameTypeLight)
+	objects, err := a.store.GetDistinctObjects(rootPath, store.FrameTypeLight)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "library: get objects: %v", err)
 		return nil
@@ -78,7 +78,7 @@ func (a *App) GetLightObjects(rootPath string) []string {
 // GetLightFramesPaged returns a page of light frames under rootPath filtered to
 // the given objects. offset=0 for the first page.
 func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int) PagedLightFrames {
-	frames, hasMore, err := a.prefs.GetLightFramesPaged(rootPath, objects, offset)
+	frames, hasMore, err := a.store.GetLightFramesPaged(rootPath, objects, offset)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "library: paged lights: %v", err)
 		return PagedLightFrames{}
@@ -90,7 +90,7 @@ func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int)
 	return PagedLightFrames{Frames: result, HasMore: hasMore}
 }
 
-func toLibraryFrame(f prefs.Frame) LibraryFrame {
+func toLibraryFrame(f store.Frame) LibraryFrame {
 	moonPhase := -1.0
 	for _, layout := range []string{
 		"2006-01-02T15:04:05.999999999",
@@ -151,15 +151,15 @@ func derefInt64(p *int64) int64 {
 // (e.g. to promote a stacked image to "processed").
 func (a *App) SetFrameType(nasPath string, frameType string) error {
 	validTypes := map[string]bool{
-		prefs.FrameTypeLight:     true,
-		prefs.FrameTypeDark:      true,
-		prefs.FrameTypeFlat:      true,
-		prefs.FrameTypeBias:      true,
-		prefs.FrameTypeStacked:   true,
-		prefs.FrameTypeProcessed: true,
+		store.FrameTypeLight:     true,
+		store.FrameTypeDark:      true,
+		store.FrameTypeFlat:      true,
+		store.FrameTypeBias:      true,
+		store.FrameTypeStacked:   true,
+		store.FrameTypeProcessed: true,
 	}
 	if !validTypes[frameType] {
 		return nil
 	}
-	return a.prefs.SetFrameType(nasPath, frameType)
+	return a.store.SetFrameType(nasPath, frameType)
 }

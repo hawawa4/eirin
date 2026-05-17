@@ -4,24 +4,18 @@ import (
 	"context"
 	"io/fs"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/fits"
+	"github.com/TaruDesigns/eirin/internal/indexer"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-type indexProgressEvent struct {
-	Phase   string `json:"phase"`   // "scanning" | "indexing" | "done" | "cancelled"
-	Total   int    `json:"total"`
-	Done    int    `json:"done"`
-	Indexed int    `json:"indexed"` // files newly read and added to cache
-	Errors  int    `json:"errors"`
-	Current string `json:"current"` // short display name of file being processed
-}
+type indexProgressEvent = indexer.ProgressEvent
 
-type indexer struct {
+type appIndexer struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 }
@@ -54,7 +48,7 @@ func (a *App) BuildIndex(rootPath string) {
 			if err != nil || ctx.Err() != nil {
 				return nil
 			}
-			if !d.IsDir() && isFitsFile(d.Name()) {
+			if !d.IsDir() && indexer.IsFitsFile(d.Name()) {
 				fitsPaths = append(fitsPaths, path)
 			}
 			return nil
@@ -76,10 +70,10 @@ func (a *App) BuildIndex(rootPath string) {
 		// ── Phase 2: find which paths are NOT yet indexed ────────────────────
 		// A frame with CachedAt==0 exists only due to a prior reject action;
 		// its FITS header still needs to be read.
-		indexed0, err := a.prefs.GetFrames(fitsPaths)
+		indexed0, err := a.store.GetFrames(fitsPaths)
 		if err != nil {
 			runtime.LogErrorf(a.ctx, "index: get frames: %v", err)
-			indexed0 = map[string]prefs.Frame{}
+			indexed0 = map[string]store.Frame{}
 		}
 
 		toIndex := make([]string, 0, len(fitsPaths))
@@ -100,7 +94,7 @@ func (a *App) BuildIndex(rootPath string) {
 
 		// ── Phase 3: read headers and batch-write to frames ─────────────────
 		const batchSize = 100
-		batch := make(map[string]prefs.Frame, batchSize)
+		batch := make(map[string]store.Frame, batchSize)
 		done := alreadyCached
 		newlyIndexed := 0
 		errs := 0
@@ -110,10 +104,10 @@ func (a *App) BuildIndex(rootPath string) {
 			if len(batch) == 0 {
 				return
 			}
-			if err := a.prefs.BatchUpsertFrames(batch); err != nil {
+			if err := a.store.BatchUpsertFrames(batch); err != nil {
 				runtime.LogErrorf(a.ctx, "index: batch upsert: %v", err)
 			}
-			batch = make(map[string]prefs.Frame, batchSize)
+			batch = make(map[string]store.Frame, batchSize)
 		}
 
 		for _, p := range toIndex {
@@ -121,11 +115,11 @@ func (a *App) BuildIndex(rootPath string) {
 				break
 			}
 
-			hdr, err := readFITSHeader(p)
+			hdr, err := fits.ReadFITSHeader(p)
 			if err != nil {
 				errs++
 			} else {
-				f := prefs.Frame{
+				f := store.Frame{
 					Object:     hdr.Object,
 					Filter:     hdr.Filter,
 					ExpTime:    hdr.ExpTime,
@@ -134,7 +128,7 @@ func (a *App) BuildIndex(rootPath string) {
 					CCDTemp:    hdr.CCDTemp,
 					Telescope:  hdr.Telescope,
 					Instrument: hdr.Instrument,
-					FrameType:  prefs.ClassifyFrameType(p),
+					FrameType:  store.ClassifyFrameType(p),
 				}
 				if hdr.RA != 0 && hdr.PixelScale > 0 {
 					ra, dec, ps, rot := hdr.RA, hdr.Dec, hdr.PixelScale, hdr.Rotation
@@ -193,9 +187,4 @@ func (a *App) CancelIndex() {
 
 func (a *App) emitIndexProgress(evt indexProgressEvent) {
 	runtime.EventsEmit(a.ctx, "index:progress", evt)
-}
-
-func isFitsFile(name string) bool {
-	l := strings.ToLower(name)
-	return strings.HasSuffix(l, ".fits") || strings.HasSuffix(l, ".fit")
 }

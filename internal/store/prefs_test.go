@@ -1,4 +1,4 @@
-package prefs
+package store
 
 import "testing"
 

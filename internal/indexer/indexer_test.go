@@ -1,10 +1,6 @@
-package app
+package indexer
 
-import (
-	"testing"
-
-	"github.com/TaruDesigns/eirin/internal/indexer"
-)
+import "testing"
 
 func TestIsFitsFile(t *testing.T) {
 	tests := []struct {
@@ -26,7 +22,7 @@ func TestIsFitsFile(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := indexer.IsFitsFile(tt.name); got != tt.want {
+		if got := IsFitsFile(tt.name); got != tt.want {
 			t.Errorf("IsFitsFile(%q) = %v, want %v", tt.name, got, tt.want)
 		}
 	}

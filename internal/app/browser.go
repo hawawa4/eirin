@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -57,7 +57,7 @@ func (a *App) ListDirectoryEnriched(path string) ([]EnrichedFileEntry, error) {
 		return nil, err
 	}
 
-	if a.prefs == nil {
+	if a.store == nil {
 		result := make([]EnrichedFileEntry, len(entries))
 		for i, e := range entries {
 			result[i] = EnrichedFileEntry{FileEntry: e}
@@ -72,10 +72,10 @@ func (a *App) ListDirectoryEnriched(path string) ([]EnrichedFileEntry, error) {
 		}
 	}
 
-	frames, err := a.prefs.GetFrames(allPaths)
+	frames, err := a.store.GetFrames(allPaths)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "frames: get: %v", err)
-		frames = map[string]prefs.Frame{}
+		frames = map[string]store.Frame{}
 	}
 
 	result := make([]EnrichedFileEntry, len(entries))

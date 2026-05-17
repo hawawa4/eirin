@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -24,7 +24,7 @@ func (a *App) SuggestRejects(rootPath string, threshold float64) []SuggestResult
 		threshold = 2.0
 	}
 
-	frames, err := a.prefs.GetAllFramesUnder(rootPath)
+	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "suggest: get frames: %v", err)
 		return nil
@@ -32,9 +32,9 @@ func (a *App) SuggestRejects(rootPath string, threshold float64) []SuggestResult
 
 	// Group quality-analyzed, non-rejected light frames by (object, filter).
 	type groupKey struct{ object, filter string }
-	groups := map[groupKey][]prefs.Frame{}
+	groups := map[groupKey][]store.Frame{}
 	for _, f := range frames {
-		if f.FrameType != prefs.FrameTypeLight || !f.QualityAnalyzed || f.Rejected || f.FWHM == nil {
+		if f.FrameType != store.FrameTypeLight || !f.QualityAnalyzed || f.Rejected || f.FWHM == nil {
 			continue
 		}
 		k := groupKey{f.Object, f.Filter}

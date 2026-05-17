@@ -1,45 +1,22 @@
 package app
 
 import (
-	"bytes"
-	"context"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"time"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/siril"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // SirilInfo describes the detected (or user-configured) Siril installation.
-type SirilInfo struct {
-	Executable string `json:"executable"`
-	Version    string `json:"version"`
-	Available  bool   `json:"available"`
-}
+// Re-exported from the siril package for Wails binding compatibility.
+type SirilInfo = siril.SirilInfo
 
 // CheckSiril runs the configured siril executable with -v and returns version info.
 func (a *App) CheckSiril() SirilInfo {
 	exe := a.sirilExecutable()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	var buf bytes.Buffer
-	cmd := exec.CommandContext(ctx, exe, "-v")
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-
-	if err := cmd.Run(); err != nil {
-		return SirilInfo{Executable: exe, Version: "not found", Available: false}
-	}
-
-	version := strings.TrimSpace(buf.String())
-	if version == "" {
-		version = "(no output)"
-	}
-	return SirilInfo{Executable: exe, Version: version, Available: true}
+	return siril.CheckSiril(exe)
 }
 
 // SelectSirilExecutable opens a file-picker so the user can locate the siril binary.
@@ -56,7 +33,7 @@ func (a *App) SelectSirilExecutable() (string, error) {
 // SetSirilPath persists a custom siril executable path. Pass an empty string to
 // revert to the default PATH lookup.
 func (a *App) SetSirilPath(path string) error {
-	return a.prefs.Set(prefs.KeySirilPath, path)
+	return a.store.Set(store.KeySirilPath, path)
 }
 
 // OpenWithSiril launches the Siril GUI with the given file, setting the working
@@ -75,8 +52,9 @@ func (a *App) OpenWithSiril(filePath string) error {
 }
 
 func (a *App) sirilExecutable() string {
-	if p := a.prefs.Load().SirilPath; p != "" {
-		return p
-	}
-	return "siril"
+	return siril.Executable(a.store.Load().SirilPath)
+}
+
+func (a *App) sirilCliExecutable() string {
+	return siril.CLIExecutable(a.store.Load().SirilPath)
 }

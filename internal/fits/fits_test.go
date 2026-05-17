@@ -1,4 +1,4 @@
-package app
+package fits
 
 import (
 	"encoding/binary"
