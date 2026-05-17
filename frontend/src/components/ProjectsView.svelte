@@ -310,7 +310,9 @@
   <aside class="project-sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">Projects</span>
-      <button class="btn-icon" onclick={() => (showCreate = !showCreate)} title="New project">+</button>
+      <button class="btn-icon" onclick={() => (showCreate = !showCreate)} title="New project"
+        >+</button
+      >
     </div>
 
     {#if showCreate}
@@ -356,13 +358,11 @@
     {:else}
       <ul class="project-list">
         {#each projects as p (p.id)}
-          <li
-            class="project-item"
-            class:active={selected?.id === p.id}
-            onclick={() => selectProject(p)}
-          >
-            <span class="project-name">{p.name}</span>
-            <span class="project-date">{formatDate(p.createdAt)}</span>
+          <li class="project-item" class:active={selected?.id === p.id}>
+            <button class="project-item-btn" onclick={() => selectProject(p)}>
+              <span class="project-name">{p.name}</span>
+              <span class="project-date">{formatDate(p.createdAt)}</span>
+            </button>
           </li>
         {/each}
       </ul>
@@ -390,8 +390,8 @@
           <button
             class="btn-ghost danger"
             onclick={() => (confirmDelete = selected)}
-            title="Remove from list — does not delete files"
-          >Remove</button>
+            title="Remove from list — does not delete files">Remove</button
+          >
         </div>
       </div>
 
@@ -399,18 +399,12 @@
         <!-- ── Lights section (collapsible) ─────────────────────────────── -->
         <section class="detail-section">
           <div class="section-hdr-row">
-            <button
-              class="section-hdr"
-              onclick={() => (lightsCollapsed = !lightsCollapsed)}
-            >
+            <button class="section-hdr" onclick={() => (lightsCollapsed = !lightsCollapsed)}>
               <span class="section-chevron">{lightsCollapsed ? "▶" : "▼"}</span>
               <span class="section-title">Lights</span>
               <span class="section-count">{projectLibraryFrames.length}</span>
             </button>
-            <button
-              class="btn-secondary small"
-              onclick={() => openPicker()}
-            >Add frames…</button>
+            <button class="btn-secondary small" onclick={() => openPicker()}>Add frames…</button>
           </div>
 
           {#if !lightsCollapsed}
@@ -478,8 +472,20 @@
 
 <!-- ── Delete confirm ─────────────────────────────────────────────────────── -->
 {#if confirmDelete}
-  <div class="modal-backdrop" onclick={() => (confirmDelete = null)}>
-    <div class="modal" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="modal-backdrop"
+    onclick={() => (confirmDelete = null)}
+    onkeydown={(e) => e.key === "Escape" && (confirmDelete = null)}
+    role="presentation"
+  >
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <p class="modal-title">Remove <strong>{confirmDelete.name}</strong>?</p>
       <p class="modal-sub">The project folder and files will not be deleted from disk.</p>
       <div class="modal-actions">
@@ -492,8 +498,20 @@
 
 <!-- ── Add lights modal ───────────────────────────────────────────────────── -->
 {#if showPicker}
-  <div class="modal-backdrop" onclick={() => (showPicker = false)}>
-    <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="modal-backdrop"
+    onclick={() => (showPicker = false)}
+    onkeydown={(e) => e.key === "Escape" && (showPicker = false)}
+    role="presentation"
+  >
+    <div
+      class="picker-modal"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <div class="picker-header">
         <span class="picker-title">
           {pickerStep === "objects" ? "Select objects" : "Add light frames"} — {selected?.name}
@@ -535,11 +553,15 @@
             <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
           </div>
         </div>
-
       {:else}
         <!-- Step 2: Pick frames (paginated) -->
         <div class="picker-toolbar picker-toolbar-step2">
-          <button class="btn-ghost small" onclick={() => { pickerStep = "objects"; }}>← Back</button>
+          <button
+            class="btn-ghost small"
+            onclick={() => {
+              pickerStep = "objects";
+            }}>← Back</button
+          >
           <span class="picker-count">{pickerSelected.size} selected</span>
         </div>
 
@@ -560,13 +582,23 @@
 
         <div class="picker-footer">
           <div class="mode-toggle">
-            <label class="mode-opt"><input type="radio" name="addMode" value="symlink" bind:group={addMode} /> Symlink</label>
-            <label class="mode-opt"><input type="radio" name="addMode" value="copy" bind:group={addMode} /> Copy</label>
+            <label class="mode-opt"
+              ><input type="radio" name="addMode" value="symlink" bind:group={addMode} /> Symlink</label
+            >
+            <label class="mode-opt"
+              ><input type="radio" name="addMode" value="copy" bind:group={addMode} /> Copy</label
+            >
           </div>
           {#if addError}<p class="form-error">{addError}</p>{/if}
           <div class="picker-actions">
-            <button class="btn-primary" onclick={doAddFrames} disabled={adding || pickerSelected.size === 0}>
-              {adding ? "Adding…" : `Add ${pickerSelected.size} frame${pickerSelected.size !== 1 ? "s" : ""}`}
+            <button
+              class="btn-primary"
+              onclick={doAddFrames}
+              disabled={adding || pickerSelected.size === 0}
+            >
+              {adding
+                ? "Adding…"
+                : `Add ${pickerSelected.size} frame${pickerSelected.size !== 1 ? "s" : ""}`}
             </button>
             <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
           </div>
@@ -578,8 +610,20 @@
 
 <!-- ── Import outputs modal ───────────────────────────────────────────────── -->
 {#if showImport}
-  <div class="modal-backdrop" onclick={() => (showImport = false)}>
-    <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="modal-backdrop"
+    onclick={() => (showImport = false)}
+    onkeydown={(e) => e.key === "Escape" && (showImport = false)}
+    role="presentation"
+  >
+    <div
+      class="picker-modal"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <div class="picker-header">
         <span class="picker-title">Import outputs to NAS</span>
         <button class="btn-ghost" onclick={() => (showImport = false)}>✕</button>
@@ -647,7 +691,9 @@
             onclick={doImportOutputs}
             disabled={importing || importSelected.size === 0 || !rootFolder}
           >
-            {importing ? "Copying…" : `Copy ${importSelected.size} file${importSelected.size !== 1 ? "s" : ""} to NAS`}
+            {importing
+              ? "Copying…"
+              : `Copy ${importSelected.size} file${importSelected.size !== 1 ? "s" : ""} to NAS`}
           </button>
           <button class="btn-ghost" onclick={() => (showImport = false)}>Cancel</button>
         </div>
@@ -748,10 +794,6 @@
   }
 
   .project-item {
-    display: flex;
-    flex-direction: column;
-    padding: 7px 12px;
-    cursor: pointer;
     border-left: 3px solid transparent;
     transition: background 0.12s;
   }
@@ -763,6 +805,19 @@
   .project-item.active {
     background: var(--bg-row-hover);
     border-left-color: var(--accent);
+  }
+
+  .project-item-btn {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 7px 12px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    text-align: left;
+    color: inherit;
+    font: inherit;
   }
 
   .project-name {
@@ -916,7 +971,6 @@
     background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
   }
 
-
   .section-hdr.no-toggle {
     cursor: default;
   }
@@ -962,8 +1016,13 @@
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 0.9; }
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.9;
+    }
   }
 
   .section-body {
@@ -1142,21 +1201,6 @@
     padding: 8px 16px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-  }
-
-  .picker-search {
-    flex: 1;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    padding: 4px 8px;
-    outline: none;
-  }
-
-  .picker-search:focus {
-    border-color: var(--accent);
   }
 
   .picker-count {
@@ -1359,14 +1403,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* ── Load more row ───────────────────────────────────────────────────────── */
-
-  .load-more-row {
-    display: flex;
-    justify-content: center;
-    padding: 10px 0;
-    border-top: 1px solid var(--border);
   }
 </style>

@@ -66,7 +66,8 @@ export function makeColumnManager(
 
     let order = 0;
     for (const col of newVis) cols.find((c) => c.id === col.id)!.order = order++;
-    for (const col of cols.filter((c) => !c.visible)) cols.find((c) => c.id === col.id)!.order = order++;
+    for (const col of cols.filter((c) => !c.visible))
+      cols.find((c) => c.id === col.id)!.order = order++;
 
     onsavecolumns();
   }

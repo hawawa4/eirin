@@ -132,8 +132,8 @@
     <section class="card">
       <h2 class="section-title">Projects Folder</h2>
       <p class="section-desc">
-        Local folder where Siril projects are stored. Each project gets its own subfolder
-        containing a <code>lights/</code> directory with symlinks or copies of your frames.
+        Local folder where Siril projects are stored. Each project gets its own subfolder containing
+        a <code>lights/</code> directory with symlinks or copies of your frames.
       </p>
 
       <div class="path-row">
@@ -150,12 +150,15 @@
     <section class="card">
       <h2 class="section-title">Siril</h2>
       <p class="section-desc">
-        Siril is used for astrophotography processing. Eirin can open files directly in Siril
-        from the right-click context menu.
+        Siril is used for astrophotography processing. Eirin can open files directly in Siril from
+        the right-click context menu.
       </p>
 
       <div class="siril-status">
-        <span class="status-dot" class:dot-ok={sirilInfo.available} class:dot-err={!sirilInfo.available}
+        <span
+          class="status-dot"
+          class:dot-ok={sirilInfo.available}
+          class:dot-err={!sirilInfo.available}
         ></span>
         <span class="status-version">
           {#if sirilChecking}
@@ -199,8 +202,8 @@
       {/if}
 
       <p class="action-hint">
-        Leave blank or set to <code>siril</code> to use the system PATH. Use Browse to locate a
-        custom binary.
+        Leave blank or set to <code>siril</code> to use the system PATH. Use Browse to locate a custom
+        binary.
       </p>
     </section>
 
@@ -495,7 +498,9 @@
     padding: 3px 8px;
     cursor: pointer;
     flex-shrink: 0;
-    transition: color 0.15s, border-color 0.15s;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
   }
 
   .btn-ghost:hover {

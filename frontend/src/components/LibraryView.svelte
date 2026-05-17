@@ -18,9 +18,23 @@
   } from "../../wailsjs/go/app/App.js";
   import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import type { app } from "../../wailsjs/go/models";
-  import type { AnalysisProgress, ColFilter, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy, Project } from "../lib/types";
+  import type {
+    AnalysisProgress,
+    ColFilter,
+    ColumnDef,
+    CtxEntry,
+    CtxMenuState,
+    FrameType,
+    LibraryGroupBy,
+    Project,
+  } from "../lib/types";
   import { FRAME_TYPE_META } from "../lib/types";
-  import { getLibraryCellValue, getFrameTextVal, getFrameNumVal, getFrameSortVal } from "../lib/utils";
+  import {
+    getLibraryCellValue,
+    getFrameTextVal,
+    getFrameNumVal,
+    getFrameSortVal,
+  } from "../lib/utils";
   import { makeColumnManager } from "../lib/columnManager";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
@@ -38,7 +52,17 @@
     oncreateproject?: (project: Project) => void;
   }
 
-  let { rootFolder, columns, selectedNasPath, sirilAvailable, initialFilter, onfileclick, onsavecolumns, onframesreloaded, oncreateproject }: Props = $props();
+  let {
+    rootFolder,
+    columns,
+    selectedNasPath,
+    sirilAvailable,
+    initialFilter,
+    onfileclick,
+    onsavecolumns,
+    onframesreloaded,
+    oncreateproject,
+  }: Props = $props();
 
   // ── Data ─────────────────────────────────────────────────────────────────
   let frames = $state<app.LibraryFrame[]>([]);
@@ -65,8 +89,25 @@
   }
 
   // ── Column filters ────────────────────────────────────────────────────────
-  const TEXT_FILTER_COLS = new Set(["name", "object", "filter", "telescope", "instrument", "dateObs"]);
-  const NUMERIC_FILTER_COLS = new Set(["expTime", "size", "gain", "ccdTemp", "fwhm", "starCount", "background", "noise", "snr"]);
+  const TEXT_FILTER_COLS = new Set([
+    "name",
+    "object",
+    "filter",
+    "telescope",
+    "instrument",
+    "dateObs",
+  ]);
+  const NUMERIC_FILTER_COLS = new Set([
+    "expTime",
+    "size",
+    "gain",
+    "ccdTemp",
+    "fwhm",
+    "starCount",
+    "background",
+    "noise",
+    "snr",
+  ]);
 
   let colFilters = $state<Record<string, ColFilter>>({});
   let typeFilterPos = $state<{ x: number; y: number } | null>(null);
@@ -75,7 +116,7 @@
     const cf = colFilters[colId];
     if (!cf) return false;
     if (colId === "frameType") return (cf.types?.length ?? 0) > 0;
-    if (TEXT_FILTER_COLS.has(colId)) return !!(cf.text);
+    if (TEXT_FILTER_COLS.has(colId)) return !!cf.text;
     if (NUMERIC_FILTER_COLS.has(colId)) return cf.numOp != null && cf.numVal != null;
     return false;
   }
@@ -129,7 +170,13 @@
 
   // ── Column drag ───────────────────────────────────────────────────────────
   let dragOverIndex = $state(-1);
-  const colMgr = makeColumnManager(() => columns, (i) => { dragOverIndex = i; }, () => onsavecolumns());
+  const colMgr = makeColumnManager(
+    () => columns,
+    (i) => {
+      dragOverIndex = i;
+    },
+    () => onsavecolumns(),
+  );
 
   // ── Multi-select ──────────────────────────────────────────────────────────
   let selectedPaths = $state(new Set<string>());
@@ -182,9 +229,7 @@
   });
 
   async function analyzeGroup(group: LibGroup) {
-    const paths = group.frames
-      .filter((f) => !f.qualityAnalyzed)
-      .map((f) => f.nasPath);
+    const paths = group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
     if (!paths.length) return;
     analyzingGroup = group.key;
     analysisProgress = null;
@@ -221,7 +266,6 @@
     { value: "filter", label: "Filter" },
     { value: "frameType", label: "Type" },
   ];
-
 
   onMount(() => {
     reload();
@@ -263,13 +307,16 @@
           !f.fileName.toLowerCase().includes(q) &&
           !f.object.toLowerCase().includes(q) &&
           !f.filter.toLowerCase().includes(q)
-        ) return false;
+        )
+          return false;
       }
       for (const [colId, cf] of Object.entries(colFilters)) {
         if (colId === "frameType") {
-          if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType)) return false;
+          if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType))
+            return false;
         } else if (TEXT_FILTER_COLS.has(colId) && cf.text) {
-          if (!getFrameTextVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase())) return false;
+          if (!getFrameTextVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase()))
+            return false;
         } else if (NUMERIC_FILTER_COLS.has(colId) && cf.numOp && cf.numVal != null) {
           const val = getFrameNumVal(f, colId);
           if (val === null) continue;
@@ -447,7 +494,12 @@
     ctxMenu = {
       x: e.clientX,
       y: e.clientY,
-      entry: { path: frame.nasPath, name: frame.fileName, isRejected: frame.isRejected, frameType: frame.frameType },
+      entry: {
+        path: frame.nasPath,
+        name: frame.fileName,
+        isRejected: frame.isRejected,
+        frameType: frame.frameType,
+      },
       sirilAvailable: sirilAvailable && paths.length === 1,
       selectionCount: paths.length,
     };
@@ -568,12 +620,16 @@
     <button
       class="view-tab"
       class:active={!showRejected}
-      onclick={() => { showRejected = false; }}>Frames</button
+      onclick={() => {
+        showRejected = false;
+      }}>Frames</button
     >
     <button
       class="view-tab"
       class:active={showRejected}
-      onclick={() => { showRejected = true; }}
+      onclick={() => {
+        showRejected = true;
+      }}
     >
       Rejected
       {#if rejectedCount > 0}<span class="tab-badge">{rejectedCount}</span>{/if}
@@ -588,7 +644,9 @@
           <button
             class="seg-btn"
             class:active={groupBy === opt.value}
-            onclick={() => { groupBy = opt.value; }}>{opt.label}</button
+            onclick={() => {
+              groupBy = opt.value;
+            }}>{opt.label}</button
           >
         {/each}
       </div>
@@ -600,12 +658,22 @@
   <button class="tool-btn" onclick={expandAll} title="Expand all groups">⊞</button>
   <button class="tool-btn" onclick={collapseAll} title="Collapse all groups">⊟</button>
   {#if sortCol}
-    <button class="tool-btn sort-clear" onclick={() => { sortCol = null; }} title="Clear sort">
+    <button
+      class="tool-btn sort-clear"
+      onclick={() => {
+        sortCol = null;
+      }}
+      title="Clear sort"
+    >
       ✕ sort
     </button>
   {/if}
   {#if anyColFilterActive}
-    <button class="tool-btn filter-clear" onclick={clearColFilters} title="Clear all column filters">
+    <button
+      class="tool-btn filter-clear"
+      onclick={clearColFilters}
+      title="Clear all column filters"
+    >
       ✕ filters
     </button>
   {/if}
@@ -613,12 +681,18 @@
     class="tool-btn blink-btn"
     disabled={selectedPaths.size < 2}
     onclick={openBlink}
-    title={selectedPaths.size < 2 ? "Select 2+ frames (checkboxes or Ctrl+click) to blink" : `Blink ${selectedPaths.size} selected frames`}
+    title={selectedPaths.size < 2
+      ? "Select 2+ frames (checkboxes or Ctrl+click) to blink"
+      : `Blink ${selectedPaths.size} selected frames`}
   >
     ▶ Blink{selectedPaths.size >= 2 ? ` (${selectedPaths.size})` : ""}
   </button>
   {#if !showRejected}
-    <button class="tool-btn suggest-btn" onclick={openSuggest} title="Suggest statistical outliers for rejection">
+    <button
+      class="tool-btn suggest-btn"
+      onclick={openSuggest}
+      title="Suggest statistical outliers for rejection"
+    >
       ✦ Suggest rejects
     </button>
   {/if}
@@ -682,6 +756,7 @@
               {#if sortCol === col.id}
                 <span class="sort-indicator">{sortDir === "asc" ? "▲" : "▼"}</span>
               {/if}
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
                 class="resize-handle"
                 onmousedown={(e) => colMgr.startColResize(e, col.id)}
@@ -718,15 +793,16 @@
                   type="text"
                   placeholder="…"
                   value={colFilters[col.id]?.text ?? ""}
-                  oninput={(e) => setTextFilterDebounced(col.id, (e.target as HTMLInputElement).value)}
+                  oninput={(e) =>
+                    setTextFilterDebounced(col.id, (e.target as HTMLInputElement).value)}
                 />
               {:else if NUMERIC_FILTER_COLS.has(col.id)}
                 <div class="filter-num">
                   <button
                     class="filter-num-op"
                     onclick={() => toggleNumOp(col.id)}
-                    title="Toggle < / >"
-                  >{colFilters[col.id]?.numOp ?? "<"}</button>
+                    title="Toggle < / >">{colFilters[col.id]?.numOp ?? "<"}</button
+                  >
                   <input
                     class="filter-num-val"
                     class:filter-active={getColFilterActive(col.id)}
@@ -772,94 +848,104 @@
           <tr class="group-header-row" onclick={() => toggleGroup(group.key)}>
             <td colspan={visibleColumns.length + 1}>
               <div class="group-hdr-inner">
-              <span class="group-chevron">{expandedGroups.has(group.key) ? "▼" : "▶"}</span>
-              <span class="group-label">{group.label}</span>
-              <span class="group-count"
-                >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
-              >
-              <span class="group-type-breakdown">
-                {#each groupTypeBreakdown(group.frames) as { count, meta }}
-                  <span class="group-type-badge" style="color:{meta.color};background:{meta.bg}">
-                    {meta.short} {count}
-                  </span>
-                {/each}
-              </span>
-              {#if group.frames.some((f) => f.qualityAnalyzed)}
-                <span class="quality-dot" title="Quality data available">✦</span>
-              {/if}
-              <span class="group-spacer"></span>
-              {#if sirilAvailable && group.frames.some((f) => !f.qualityAnalyzed)}
-                {#if analyzingGroup === group.key}
-                  <span class="analysis-status">
-                    ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ?? unanalyzedPaths(group).length}
-                    {#if analysisProgress?.current}· {analysisProgress.current}{/if}
-                  </span>
-                  <button
-                    class="btn-cancel-analysis"
-                    onclick={(e) => { e.stopPropagation(); CancelAnalysis(); }}
-                    title="Cancel analysis"
-                  >✕</button>
-                {:else}
-                  <button
-                    class="btn-analyze"
-                    onclick={(e) => { e.stopPropagation(); analyzeGroup(group); }}
-                    disabled={analyzingGroup !== null}
-                    title="Analyze light frames with Siril (findstar)"
-                  >✦ Analyze</button>
+                <span class="group-chevron">{expandedGroups.has(group.key) ? "▼" : "▶"}</span>
+                <span class="group-label">{group.label}</span>
+                <span class="group-count"
+                  >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
+                >
+                <span class="group-type-breakdown">
+                  {#each groupTypeBreakdown(group.frames) as { count, meta }}
+                    <span class="group-type-badge" style="color:{meta.color};background:{meta.bg}">
+                      {meta.short}
+                      {count}
+                    </span>
+                  {/each}
+                </span>
+                {#if group.frames.some((f) => f.qualityAnalyzed)}
+                  <span class="quality-dot" title="Quality data available">✦</span>
                 {/if}
-              {/if}
+                <span class="group-spacer"></span>
+                {#if sirilAvailable && group.frames.some((f) => !f.qualityAnalyzed)}
+                  {#if analyzingGroup === group.key}
+                    <span class="analysis-status">
+                      ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ??
+                        unanalyzedPaths(group).length}
+                      {#if analysisProgress?.current}· {analysisProgress.current}{/if}
+                    </span>
+                    <button
+                      class="btn-cancel-analysis"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        CancelAnalysis();
+                      }}
+                      title="Cancel analysis">✕</button
+                    >
+                  {:else}
+                    <button
+                      class="btn-analyze"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        analyzeGroup(group);
+                      }}
+                      disabled={analyzingGroup !== null}
+                      title="Analyze light frames with Siril (findstar)">✦ Analyze</button
+                    >
+                  {/if}
+                {/if}
               </div>
             </td>
           </tr>
 
           <!-- Frame rows — only rendered when group is expanded -->
           {#if expandedGroups.has(group.key)}
-          {#each group.frames as frame (frame.nasPath)}
-            <tr
-              class="frame-row"
-              class:selected={selectedNasPath === frame.nasPath}
-              class:multi-selected={selectedPaths.has(frame.nasPath)}
-              onclick={(e) => handleRowClick(e, frame)}
-              oncontextmenu={(e) => openCtxMenu(e, frame)}
-            >
-              <td class="cb-td" onclick={(e) => { e.stopPropagation(); handleCheckbox(frame); }}>
-                <input
-                  type="checkbox"
-                  checked={selectedPaths.has(frame.nasPath)}
-                  onclick={(e) => e.stopPropagation()}
-                  onchange={() => handleCheckbox(frame)}
-                />
-              </td>
-              {#each visibleColumns as col (col.id)}
-                <td class="col-{col.id}">
-                  {#if col.id === "frameType"}
-                    {@const meta = frameTypeMeta(frame.frameType)}
-                    <select
-                      class="type-select"
-                      value={frame.frameType}
-                      style="color:{meta.color};background:{meta.bg}"
-                      onclick={(e) => e.stopPropagation()}
-                      onchange={(e) =>
-                        changeFrameType(
-                          frame.nasPath,
-                          (e.target as HTMLSelectElement).value,
-                          e,
-                        )}
-                    >
-                      {#each Object.entries(FRAME_TYPE_META) as [val, m]}
-                        <option value={val}>{m.short}</option>
-                      {/each}
-                    </select>
-                  {:else if col.id === "name"}
-                    <span class="file-icon">🔭</span>
-                    <span class="file-name">{frame.fileName}</span>
-                  {:else}
-                    {getLibraryCellValue(frame, col.id)}
-                  {/if}
+            {#each group.frames as frame (frame.nasPath)}
+              <tr
+                class="frame-row"
+                class:selected={selectedNasPath === frame.nasPath}
+                class:multi-selected={selectedPaths.has(frame.nasPath)}
+                onclick={(e) => handleRowClick(e, frame)}
+                oncontextmenu={(e) => openCtxMenu(e, frame)}
+              >
+                <td
+                  class="cb-td"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    handleCheckbox(frame);
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedPaths.has(frame.nasPath)}
+                    onclick={(e) => e.stopPropagation()}
+                    onchange={() => handleCheckbox(frame)}
+                  />
                 </td>
-              {/each}
-            </tr>
-          {/each}
+                {#each visibleColumns as col (col.id)}
+                  <td class="col-{col.id}">
+                    {#if col.id === "frameType"}
+                      {@const meta = frameTypeMeta(frame.frameType)}
+                      <select
+                        class="type-select"
+                        value={frame.frameType}
+                        style="color:{meta.color};background:{meta.bg}"
+                        onclick={(e) => e.stopPropagation()}
+                        onchange={(e) =>
+                          changeFrameType(frame.nasPath, (e.target as HTMLSelectElement).value, e)}
+                      >
+                        {#each Object.entries(FRAME_TYPE_META) as [val, m]}
+                          <option value={val}>{m.short}</option>
+                        {/each}
+                      </select>
+                    {:else if col.id === "name"}
+                      <span class="file-icon">🔭</span>
+                      <span class="file-name">{frame.fileName}</span>
+                    {:else}
+                      {getLibraryCellValue(frame, col.id)}
+                    {/if}
+                  </td>
+                {/each}
+              </tr>
+            {/each}
           {/if}
         {/each}
       </tbody>
@@ -868,7 +954,11 @@
 {/if}
 
 {#if typeFilterPos}
-  <div class="type-filter-popup" id="type-filter-popup" style="left: {typeFilterPos.x}px; top: {typeFilterPos.y}px">
+  <div
+    class="type-filter-popup"
+    id="type-filter-popup"
+    style="left: {typeFilterPos.x}px; top: {typeFilterPos.y}px"
+  >
     {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
       <label class="filter-popup-item">
         <input
@@ -885,45 +975,80 @@
 {#if ctxMenu}
   <ContextMenu
     menu={ctxMenu}
-    onclose={() => { ctxMenu = null; }}
+    onclose={() => {
+      ctxMenu = null;
+    }}
     onreject={onCtxReject}
     onrestore={onCtxRestore}
     onharddelete={onCtxHardDelete}
     onopensiril={onCtxOpenWithSiril}
     onchangetype={onCtxChangeType}
-    oncreateproject={oncreateproject ? () => {
-      ctxMenu = null;
-      cpModal = { paths: [...ctxPaths] };
-      cpName = "";
-      cpMode = "symlink";
-      cpError = "";
-    } : undefined}
+    oncreateproject={oncreateproject
+      ? () => {
+          ctxMenu = null;
+          cpModal = { paths: [...ctxPaths] };
+          cpName = "";
+          cpMode = "symlink";
+          cpError = "";
+        }
+      : undefined}
   />
 {/if}
 
 {#if cpModal}
-  <div class="cp-backdrop" onclick={() => { cpModal = null; }}>
-    <div class="cp-modal" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="cp-backdrop"
+    onclick={() => {
+      cpModal = null;
+    }}
+    onkeydown={(e) => e.key === "Escape" && (cpModal = null)}
+    role="presentation"
+  >
+    <div
+      class="cp-modal"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
       <p class="cp-title">Create project</p>
-      <p class="cp-sub">{cpModal.paths.length} frame{cpModal.paths.length !== 1 ? "s" : ""} will be added</p>
+      <p class="cp-sub">
+        {cpModal.paths.length} frame{cpModal.paths.length !== 1 ? "s" : ""} will be added
+      </p>
       <input
         class="cp-input"
         type="text"
         placeholder="Project name"
         bind:value={cpName}
         spellcheck="false"
-        onkeydown={(e) => { if (e.key === "Enter") doCreateProject(); }}
+        onkeydown={(e) => {
+          if (e.key === "Enter") doCreateProject();
+        }}
       />
       <div class="cp-mode">
-        <label class="cp-mode-opt"><input type="radio" name="cpMode" value="symlink" bind:group={cpMode} /> Symlink</label>
-        <label class="cp-mode-opt"><input type="radio" name="cpMode" value="copy" bind:group={cpMode} /> Copy</label>
+        <label class="cp-mode-opt"
+          ><input type="radio" name="cpMode" value="symlink" bind:group={cpMode} /> Symlink</label
+        >
+        <label class="cp-mode-opt"
+          ><input type="radio" name="cpMode" value="copy" bind:group={cpMode} /> Copy</label
+        >
       </div>
       {#if cpError}<p class="cp-error">{cpError}</p>{/if}
       <div class="cp-btns">
-        <button class="cp-btn-primary" onclick={doCreateProject} disabled={cpCreating || !cpName.trim()}>
+        <button
+          class="cp-btn-primary"
+          onclick={doCreateProject}
+          disabled={cpCreating || !cpName.trim()}
+        >
           {cpCreating ? "Creating…" : "Create project"}
         </button>
-        <button class="cp-btn-ghost" onclick={() => { cpModal = null; }}>Cancel</button>
+        <button
+          class="cp-btn-ghost"
+          onclick={() => {
+            cpModal = null;
+          }}>Cancel</button
+        >
       </div>
     </div>
   </div>
@@ -933,7 +1058,9 @@
   <HardDeleteModal
     target={confirmDel}
     onconfirm={doHardDelete}
-    oncancel={() => { confirmDel = null; }}
+    oncancel={() => {
+      confirmDel = null;
+    }}
   />
 {/if}
 
@@ -948,7 +1075,12 @@
 
 {#if showSuggest}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="suggest-backdrop" onmousedown={(e) => { if (e.target === e.currentTarget) showSuggest = false; }}>
+  <div
+    class="suggest-backdrop"
+    onmousedown={(e) => {
+      if (e.target === e.currentTarget) showSuggest = false;
+    }}
+  >
     <div class="suggest-modal">
       <div class="suggest-header">
         <span class="suggest-title">Suggested Rejects</span>
@@ -958,11 +1090,14 @@
         {#if suggestLoading}
           <p class="suggest-status">Analyzing quality metrics…</p>
         {:else if suggestResults.length === 0}
-          <p class="suggest-status">No outliers found. Either all frames are good quality, or not enough frames have been analyzed (run ✦ Analyze first).</p>
+          <p class="suggest-status">
+            No outliers found. Either all frames are good quality, or not enough frames have been
+            analyzed (run ✦ Analyze first).
+          </p>
         {:else}
           <p class="suggest-desc">
-            {suggestResults.length} frame{suggestResults.length !== 1 ? "s" : ""} with FWHM &gt; 2σ above their group median.
-            Deselect any you want to keep.
+            {suggestResults.length} frame{suggestResults.length !== 1 ? "s" : ""} with FWHM &gt; 2σ above
+            their group median. Deselect any you want to keep.
           </p>
           <div class="suggest-list">
             {#each suggestResults as r}
@@ -972,14 +1107,21 @@
                   checked={suggestSelected.has(r.frame.nasPath)}
                   onchange={() => {
                     const next = new Set(suggestSelected);
-                    if (next.has(r.frame.nasPath)) next.delete(r.frame.nasPath); else next.add(r.frame.nasPath);
+                    if (next.has(r.frame.nasPath)) next.delete(r.frame.nasPath);
+                    else next.add(r.frame.nasPath);
                     suggestSelected = next;
                   }}
                 />
                 <span class="suggest-name">{r.frame.fileName}</span>
                 <span class="suggest-obj">{r.frame.object}</span>
-                <span class="suggest-fwhm" title="FWHM: {r.frame.fwhm.toFixed(2)} vs median {r.groupMedian.toFixed(2)} (σ={r.groupSigma.toFixed(2)})">
-                  {r.frame.fwhm.toFixed(2)} {r.frame.fwhmUnit} · {r.sigmas.toFixed(1)}σ
+                <span
+                  class="suggest-fwhm"
+                  title="FWHM: {r.frame.fwhm.toFixed(2)} vs median {r.groupMedian.toFixed(
+                    2,
+                  )} (σ={r.groupSigma.toFixed(2)})"
+                >
+                  {r.frame.fwhm.toFixed(2)}
+                  {r.frame.fwhmUnit} · {r.sigmas.toFixed(1)}σ
                 </span>
               </label>
             {/each}
@@ -1095,7 +1237,9 @@
     color: var(--text-primary);
     cursor: pointer;
     border-right: 1px solid var(--border);
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s;
   }
 
   .seg-btn:last-child {
@@ -1159,7 +1303,9 @@
     color: var(--accent);
     border-radius: 4px;
     cursor: pointer;
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s;
   }
   .btn-clear-filters-inline:hover {
     background: var(--accent);
@@ -1381,7 +1527,9 @@
     color: var(--accent);
     border-radius: 3px;
     cursor: pointer;
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s;
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -1405,8 +1553,13 @@
   }
 
   @keyframes pulse-opacity {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 
   .btn-cancel-analysis {
@@ -1681,81 +1834,246 @@
 
   /* ── Create project modal ────────────────────────────────────────────────── */
   .cp-backdrop {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-    display: flex; align-items: center; justify-content: center; z-index: 2000;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
   }
   .cp-modal {
-    background: var(--bg-panel); border: 1px solid var(--border-accent); border-radius: 8px;
-    padding: 22px 26px; width: 340px; display: flex; flex-direction: column; gap: 10px;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 8px;
+    padding: 22px 26px;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
   }
-  .cp-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
-  .cp-sub { font-size: 0.8rem; color: var(--text-secondary); margin: 0; }
+  .cp-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+  .cp-sub {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+  }
   .cp-input {
-    background: var(--bg-base); border: 1px solid var(--border); border-radius: 4px;
-    color: var(--text-primary); font-size: 0.9rem; padding: 6px 10px; outline: none; width: 100%;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    padding: 6px 10px;
+    outline: none;
+    width: 100%;
     box-sizing: border-box;
   }
-  .cp-input:focus { border-color: var(--accent); }
-  .cp-mode { display: flex; gap: 16px; font-size: 0.82rem; color: var(--text-secondary); }
-  .cp-mode-opt { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-  .cp-mode-opt input { accent-color: var(--accent); cursor: pointer; }
-  .cp-error { font-size: 0.75rem; color: var(--danger); margin: 0; }
-  .cp-btns { display: flex; gap: 8px; margin-top: 4px; }
+  .cp-input:focus {
+    border-color: var(--accent);
+  }
+  .cp-mode {
+    display: flex;
+    gap: 16px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+  }
+  .cp-mode-opt {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+  }
+  .cp-mode-opt input {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .cp-error {
+    font-size: 0.75rem;
+    color: var(--danger);
+    margin: 0;
+  }
+  .cp-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
   .cp-btn-primary {
-    background: var(--accent); color: var(--bg-base); border: none; border-radius: 4px;
-    padding: 6px 16px; font-size: 0.85rem; cursor: pointer; font-weight: 500;
+    background: var(--accent);
+    color: var(--bg-base);
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-weight: 500;
     transition: opacity 0.12s;
   }
-  .cp-btn-primary:disabled { opacity: 0.45; cursor: default; }
-  .cp-btn-ghost {
-    background: transparent; border: 1px solid var(--border); border-radius: 4px;
-    color: var(--text-secondary); padding: 6px 14px; font-size: 0.85rem; cursor: pointer;
-    transition: background 0.1s, color 0.1s;
+  .cp-btn-primary:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
-  .cp-btn-ghost:hover { background: var(--bg-row-hover); color: var(--text-primary); }
+  .cp-btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition:
+      background 0.1s,
+      color 0.1s;
+  }
+  .cp-btn-ghost:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
 
   /* ── Blink + Suggest toolbar buttons ─────────────────────────────────────── */
-  .blink-btn  { color: var(--accent); border-color: var(--accent); }
-  .blink-btn:disabled { color: var(--text-secondary); border-color: var(--border); opacity: 0.5; cursor: not-allowed; }
-  .suggest-btn { color: var(--accent); }
+  .blink-btn {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .blink-btn:disabled {
+    color: var(--text-secondary);
+    border-color: var(--border);
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .suggest-btn {
+    color: var(--accent);
+  }
 
   /* ── Suggest rejects modal ─────────────────────────────────────────────── */
   .suggest-backdrop {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-    display: flex; align-items: center; justify-content: center; z-index: 500;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
   }
   .suggest-modal {
-    background: var(--bg-panel); border: 1px solid var(--border-accent);
-    border-radius: 8px; display: flex; flex-direction: column;
-    width: min(88vw, 680px); max-height: 80vh;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.7); overflow: hidden;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    width: min(88vw, 680px);
+    max-height: 80vh;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
   }
   .suggest-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
-  .suggest-title { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
-  .suggest-close { background: transparent; border: none; color: var(--text-secondary); font-size: 1rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
-  .suggest-close:hover { background: var(--bg-row-hover); }
-  .suggest-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-  .suggest-status { color: var(--text-secondary); font-size: 0.85rem; }
-  .suggest-desc { font-size: 0.8rem; color: var(--text-secondary); margin: 0; }
-  .suggest-list { display: flex; flex-direction: column; gap: 2px; }
+  .suggest-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .suggest-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .suggest-close:hover {
+    background: var(--bg-row-hover);
+  }
+  .suggest-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .suggest-status {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+  .suggest-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  .suggest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
   .suggest-row {
-    display: flex; align-items: center; gap: 10px; padding: 5px 8px;
-    border-radius: 4px; cursor: pointer; font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.82rem;
     transition: background 0.1s;
   }
-  .suggest-row:hover { background: var(--bg-row-hover); }
-  .suggest-row.deselected { opacity: 0.45; }
-  .suggest-row input { accent-color: var(--accent); flex-shrink: 0; }
-  .suggest-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "Consolas", monospace; color: var(--text-primary); }
-  .suggest-obj { width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-  .suggest-fwhm { width: 120px; text-align: right; color: var(--danger); font-size: 0.78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .suggest-footer {
-    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-    border-top: 1px solid var(--border); flex-shrink: 0;
+  .suggest-row:hover {
+    background: var(--bg-row-hover);
   }
-  .suggest-sel-count { font-size: 0.78rem; color: var(--text-secondary); margin-right: auto; }
+  .suggest-row.deselected {
+    opacity: 0.45;
+  }
+  .suggest-row input {
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+  .suggest-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "Consolas", monospace;
+    color: var(--text-primary);
+  }
+  .suggest-obj {
+    width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+  }
+  .suggest-fwhm {
+    width: 120px;
+    text-align: right;
+    color: var(--danger);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .suggest-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .suggest-sel-count {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-right: auto;
+  }
 </style>

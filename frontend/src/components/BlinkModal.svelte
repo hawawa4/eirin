@@ -16,7 +16,7 @@
   let currentIndex = $state(0);
   let intervalMs = $state(500);
   let playing = $state(false);
-  let previews = $state<(string | null)[]>(frames.map(() => null));
+  let previews = $state<(string | null)[]>([]);
   let loadingCount = $state(0);
   let stretchLevel = $state(2);
   let confirmDelete = $state(false);
@@ -26,6 +26,7 @@
   // Preload all preview images on mount
   $effect(() => {
     loadingCount = frames.length;
+    previews = frames.map(() => null);
     frames.forEach((f, i) => {
       GeneratePreview(f.nasPath, stretchLevel)
         .then((url) => {
@@ -48,11 +49,16 @@
   }
 
   function stopBlink() {
-    if (timerId) { clearInterval(timerId); timerId = null; }
+    if (timerId) {
+      clearInterval(timerId);
+      timerId = null;
+    }
     playing = false;
   }
 
-  function togglePlay() { playing ? stopBlink() : startBlink(); }
+  function togglePlay() {
+    playing ? stopBlink() : startBlink();
+  }
 
   function step(dir: -1 | 1) {
     stopBlink();
@@ -61,7 +67,10 @@
 
   function onSpeedChange(e: Event) {
     intervalMs = parseInt((e.target as HTMLInputElement).value);
-    if (playing) { stopBlink(); startBlink(); }
+    if (playing) {
+      stopBlink();
+      startBlink();
+    }
   }
 
   function doReject() {
@@ -88,10 +97,15 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") { confirmDelete ? (confirmDelete = false) : onclose(); }
-    if (e.key === " ") { e.preventDefault(); togglePlay(); }
+    if (e.key === "Escape") {
+      confirmDelete ? (confirmDelete = false) : onclose();
+    }
+    if (e.key === " ") {
+      e.preventDefault();
+      togglePlay();
+    }
     if (e.key === "ArrowRight") step(1);
-    if (e.key === "ArrowLeft")  step(-1);
+    if (e.key === "ArrowLeft") step(-1);
   }
 
   onDestroy(() => stopBlink());
@@ -100,10 +114,15 @@
   const currentPreview = $derived(previews[currentIndex]);
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="blink-backdrop" onmousedown={(e) => { if (e.target === e.currentTarget) onclose(); }}>
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div class="blink-modal" role="dialog" onkeydown={onKeydown}>
+<div
+  class="blink-backdrop"
+  onmousedown={(e) => {
+    if (e.target === e.currentTarget) onclose();
+  }}
+  onkeydown={(e) => e.key === "Escape" && onclose()}
+  role="presentation"
+>
+  <div class="blink-modal" role="dialog" tabindex="-1" aria-modal="true" onkeydown={onKeydown}>
     <div class="blink-header">
       <span class="blink-title">Blink Comparison — {frames.length} frames</span>
       <button class="blink-close" onclick={onclose}>✕</button>
@@ -111,9 +130,16 @@
 
     <div class="blink-viewport">
       {#if loadingCount > 0 && !currentPreview}
-        <div class="blink-loading">Loading previews… ({frames.length - loadingCount}/{frames.length})</div>
+        <div class="blink-loading">
+          Loading previews… ({frames.length - loadingCount}/{frames.length})
+        </div>
       {:else if currentPreview}
-        <img src={currentPreview} alt={current?.fileName ?? ""} class="blink-img" draggable="false" />
+        <img
+          src={currentPreview}
+          alt={current?.fileName ?? ""}
+          class="blink-img"
+          draggable="false"
+        />
       {:else}
         <div class="blink-loading">Preview unavailable</div>
       {/if}
@@ -138,7 +164,12 @@
 
     <div class="blink-controls">
       <button class="blink-btn" onclick={() => step(-1)} title="Previous (←)">◀</button>
-      <button class="blink-btn blink-play" class:playing onclick={togglePlay} title="Play/Pause (Space)">
+      <button
+        class="blink-btn blink-play"
+        class:playing
+        onclick={togglePlay}
+        title="Play/Pause (Space)"
+      >
         {playing ? "⏸" : "▶"}
       </button>
       <button class="blink-btn" onclick={() => step(1)} title="Next (→)">▶</button>
@@ -163,7 +194,10 @@
             class="blink-dot"
             class:active={i === currentIndex}
             class:rejected={frames[i]?.isRejected}
-            onclick={() => { stopBlink(); currentIndex = i; }}
+            onclick={() => {
+              stopBlink();
+              currentIndex = i;
+            }}
             title={frames[i]?.fileName ?? ""}
           ></button>
         {/each}
@@ -184,10 +218,18 @@
           {#if onharddelete}
             {#if confirmDelete}
               <span class="blink-confirm-text">Delete permanently?</span>
-              <button class="blink-action-btn delete-confirm-btn" onclick={doHardDelete}>Yes, delete</button>
-              <button class="blink-action-btn cancel-btn" onclick={() => (confirmDelete = false)}>Cancel</button>
+              <button class="blink-action-btn delete-confirm-btn" onclick={doHardDelete}
+                >Yes, delete</button
+              >
+              <button class="blink-action-btn cancel-btn" onclick={() => (confirmDelete = false)}
+                >Cancel</button
+              >
             {:else}
-              <button class="blink-action-btn delete-btn" onclick={() => (confirmDelete = true)} title="Hard delete this frame from disk">
+              <button
+                class="blink-action-btn delete-btn"
+                onclick={() => (confirmDelete = true)}
+                title="Hard delete this frame from disk"
+              >
                 🗑 Delete
               </button>
             {/if}
@@ -202,7 +244,7 @@
   .blink-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.72);
+    background: rgba(0, 0, 0, 0.72);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -217,7 +259,7 @@
     flex-direction: column;
     width: min(90vw, 900px);
     max-height: 90vh;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.7);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
     overflow: hidden;
     outline: none;
   }
@@ -231,9 +273,24 @@
     flex-shrink: 0;
   }
 
-  .blink-title { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
-  .blink-close { background: transparent; border: none; color: var(--text-secondary); font-size: 1rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
-  .blink-close:hover { background: var(--bg-row-hover); color: var(--text-primary); }
+  .blink-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .blink-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .blink-close:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
 
   .blink-viewport {
     flex: 1;
@@ -263,7 +320,7 @@
     position: absolute;
     top: 8px;
     left: 8px;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0, 0, 0, 0.6);
     color: var(--text-secondary);
     font-size: 0.72rem;
     padding: 2px 7px;
@@ -275,7 +332,7 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    background: rgba(180,40,40,0.8);
+    background: rgba(180, 40, 40, 0.8);
     color: #fff;
     font-size: 0.68rem;
     font-weight: 700;
@@ -294,10 +351,31 @@
     flex-shrink: 0;
   }
 
-  .blink-name { font-size: 0.8rem; font-family: "Consolas", monospace; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-  .blink-date { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .blink-stat { font-size: 0.75rem; color: var(--accent); white-space: nowrap; }
-  .blink-obj  { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+  .blink-name {
+    font-size: 0.8rem;
+    font-family: "Consolas", monospace;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .blink-date {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .blink-stat {
+    font-size: 0.75rem;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .blink-obj {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
 
   .blink-controls {
     display: flex;
@@ -316,12 +394,23 @@
     font-size: 0.8rem;
     padding: 4px 10px;
     cursor: pointer;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
     min-width: 32px;
   }
-  .blink-btn:hover { background: var(--bg-row-hover); color: var(--text-primary); }
-  .blink-play { min-width: 44px; font-size: 1rem; }
-  .blink-play.playing { color: var(--accent); border-color: var(--accent); }
+  .blink-btn:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
+  .blink-play {
+    min-width: 44px;
+    font-size: 1rem;
+  }
+  .blink-play.playing {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
 
   .blink-speed {
     display: flex;
@@ -329,9 +418,21 @@
     gap: 6px;
     margin-left: 8px;
   }
-  .blink-speed-label { font-size: 0.72rem; color: var(--text-secondary); }
-  .blink-slider { width: 90px; accent-color: var(--accent); cursor: pointer; }
-  .blink-speed-val { font-size: 0.72rem; color: var(--text-secondary); width: 42px; font-variant-numeric: tabular-nums; }
+  .blink-speed-label {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+  }
+  .blink-slider {
+    width: 90px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .blink-speed-val {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    width: 42px;
+    font-variant-numeric: tabular-nums;
+  }
 
   .blink-dots {
     display: flex;
@@ -342,13 +443,27 @@
     max-width: 300px;
   }
   .blink-dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     background: var(--border-accent);
-    border: none; cursor: pointer; padding: 0; transition: background 0.1s, transform 0.1s;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition:
+      background 0.1s,
+      transform 0.1s;
   }
-  .blink-dot.active { background: var(--accent); transform: scale(1.4); }
-  .blink-dot.rejected { background: var(--danger); }
-  .blink-dot:hover { background: var(--text-secondary); }
+  .blink-dot.active {
+    background: var(--accent);
+    transform: scale(1.4);
+  }
+  .blink-dot.rejected {
+    background: var(--danger);
+  }
+  .blink-dot:hover {
+    background: var(--text-secondary);
+  }
 
   /* ── Frame actions ────────────────────────────────────────────────────────── */
   .blink-actions {
@@ -365,7 +480,9 @@
     border-radius: 4px;
     cursor: pointer;
     border: 1px solid;
-    transition: background 0.1s, color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s;
     white-space: nowrap;
   }
 
@@ -374,15 +491,24 @@
     border-color: var(--danger);
     color: var(--danger);
   }
-  .reject-btn:hover:not(:disabled) { background: var(--danger); color: #fff; }
-  .reject-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .reject-btn:hover:not(:disabled) {
+    background: var(--danger);
+    color: #fff;
+  }
+  .reject-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
 
   .delete-btn {
     background: transparent;
     border-color: var(--border);
     color: var(--text-secondary);
   }
-  .delete-btn:hover { border-color: var(--danger); color: var(--danger); }
+  .delete-btn:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
 
   .delete-confirm-btn {
     background: var(--danger);
@@ -390,14 +516,18 @@
     color: #fff;
     font-weight: 600;
   }
-  .delete-confirm-btn:hover { opacity: 0.85; }
+  .delete-confirm-btn:hover {
+    opacity: 0.85;
+  }
 
   .cancel-btn {
     background: transparent;
     border-color: var(--border);
     color: var(--text-secondary);
   }
-  .cancel-btn:hover { background: var(--bg-row-hover); }
+  .cancel-btn:hover {
+    background: var(--bg-row-hover);
+  }
 
   .blink-confirm-text {
     font-size: 0.75rem;

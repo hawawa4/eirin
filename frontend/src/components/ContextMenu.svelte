@@ -13,7 +13,16 @@
     oncreateproject?: () => void;
   }
 
-  let { menu, onclose, onreject, onrestore, onharddelete, onopensiril, onchangetype, oncreateproject }: Props = $props();
+  let {
+    menu,
+    onclose,
+    onreject,
+    onrestore,
+    onharddelete,
+    onopensiril,
+    onchangetype,
+    oncreateproject,
+  }: Props = $props();
 
   $effect(() => {
     function onDoc(e: MouseEvent) {
@@ -31,7 +40,11 @@
     class:ctx-disabled={!menu.sirilAvailable}
     disabled={!menu.sirilAvailable}
     onclick={() => onopensiril(menu.entry)}
-    title={menu.sirilAvailable ? "Open in Siril" : menu.selectionCount > 1 ? "Only available for a single file" : "Siril not found — configure it in Settings"}
+    title={menu.sirilAvailable
+      ? "Open in Siril"
+      : menu.selectionCount > 1
+        ? "Only available for a single file"
+        : "Siril not found — configure it in Settings"}
   >
     Open with Siril
   </button>
@@ -42,7 +55,10 @@
       <button
         class="ctx-item ctx-type-item"
         class:ctx-type-current={menu.entry.frameType === type}
-        onclick={() => { onchangetype(menu.entry, type); onclose(); }}
+        onclick={() => {
+          onchangetype(menu.entry, type);
+          onclose();
+        }}
       >
         <span class="ctx-type-dot" style="color:{meta.color}">●</span>
         {meta.label}
@@ -64,9 +80,14 @@
     <div class="ctx-sep"></div>
     <button
       class="ctx-item ctx-create-project"
-      onclick={() => { oncreateproject!(); onclose(); }}
+      onclick={() => {
+        oncreateproject!();
+        onclose();
+      }}
     >
-      {menu.selectionCount > 1 ? `Create project (${menu.selectionCount} frames)…` : "Create project…"}
+      {menu.selectionCount > 1
+        ? `Create project (${menu.selectionCount} frames)…`
+        : "Create project…"}
     </button>
   {/if}
   <div class="ctx-sep"></div>

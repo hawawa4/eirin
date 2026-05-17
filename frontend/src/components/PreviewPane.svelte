@@ -1,7 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { app, fits, catalog } from "../../wailsjs/go/models";
-  import { GeneratePreviewRawSized, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
+  import {
+    GeneratePreviewRawSized,
+    ReadFITSHeader,
+    GetAnnotations,
+  } from "../../wailsjs/go/app/App.js";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
   import { mtfMidtone } from "../lib/stretchPreview";
 
@@ -25,7 +29,7 @@
     onclose,
   }: Props = $props();
 
-  let isProcessed = $derived(qualityFrame?.frameType === 'processed');
+  let isProcessed = $derived(qualityFrame?.frameType === "processed");
 
   let statsCollapsed = $state(false);
   let coordsCollapsed = $state(false);
@@ -34,7 +38,12 @@
 
   let showHistogram = $state(false);
   let histCanvas = $state<HTMLCanvasElement | null>(null);
-  interface HistBins { r: Float32Array; g: Float32Array; b: Float32Array; channels: number; }
+  interface HistBins {
+    r: Float32Array;
+    g: Float32Array;
+    b: Float32Array;
+    channels: number;
+  }
   let histBins = $state<HistBins | null>(null);
 
   let showAnnotations = $state(false);
@@ -72,7 +81,12 @@
   let panStartX = 0;
   let panStartY = 0;
 
-  function resetView() { zoom = 1; panX = 0; panY = 0; scheduleRender(); }
+  function resetView() {
+    zoom = 1;
+    panX = 0;
+    panY = 0;
+    scheduleRender();
+  }
 
   // Offscreen WebGL canvas — autostretch rendered here; displayCanvas blits it via ctx2d.drawImage.
   let glCanvas: HTMLCanvasElement | null = null;
@@ -87,7 +101,12 @@
     uChannels: WebGLUniformLocation;
     uChannelMode: WebGLUniformLocation;
   } | null = null;
-  let rawInfo = $state<{ width: number; height: number; channels: number; stats: fits.ChannelStats[]; } | null>(null);
+  let rawInfo = $state<{
+    width: number;
+    height: number;
+    channels: number;
+    stats: fits.ChannelStats[];
+  } | null>(null);
 
   let displayCanvas: HTMLCanvasElement;
   let ctx2d: CanvasRenderingContext2D | null = null;
@@ -149,13 +168,21 @@ void main() {
   }
 }`;
 
-  interface StretchUniforms { shadows: number; midtone: number; linear: boolean; }
+  interface StretchUniforms {
+    shadows: number;
+    midtone: number;
+    linear: boolean;
+  }
 
-  function computeUniforms(stats: fits.ChannelStats[], enabled: boolean, level: number): StretchUniforms[] {
+  function computeUniforms(
+    stats: fits.ChannelStats[],
+    enabled: boolean,
+    level: number,
+  ): StretchUniforms[] {
     const presets = [
-      { shadowsFactor: -1.25, targetBG: 0.1  },
-      { shadowsFactor: -2.8,  targetBG: 0.25 },
-      { shadowsFactor: -4.0,  targetBG: 0.4  },
+      { shadowsFactor: -1.25, targetBG: 0.1 },
+      { shadowsFactor: -2.8, targetBG: 0.25 },
+      { shadowsFactor: -4.0, targetBG: 0.4 },
     ];
     return stats.map((s) => {
       const { median: med, sigma: sig } = s;
@@ -177,7 +204,7 @@ void main() {
     const cW = displayCanvas.width;
     const cH = displayCanvas.height;
     ctx2d.clearRect(0, 0, cW, cH);
-    ctx2d.fillStyle = '#08090f';
+    ctx2d.fillStyle = "#08090f";
     ctx2d.fillRect(0, 0, cW, cH);
 
     const cssScale = Math.min(cW / rawInfo.width, cH / rawInfo.height, 1.0);
@@ -193,7 +220,10 @@ void main() {
   function scheduleRender() {
     if (_renderPending) return;
     _renderPending = true;
-    requestAnimationFrame(() => { _renderPending = false; renderGL(); });
+    requestAnimationFrame(() => {
+      _renderPending = false;
+      renderGL();
+    });
   }
 
   // ── Offscreen WebGL render ────────────────────────────────────────────────
@@ -206,9 +236,9 @@ void main() {
   ) {
     if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
     const uniforms = computeUniforms(
-      stats   ?? rawInfo.stats,
+      stats ?? rawInfo.stats,
       enabled ?? (stretchEnabled && !isProcessed),
-      level   ?? stretchLevel,
+      level ?? stretchLevel,
     );
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
@@ -218,7 +248,7 @@ void main() {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, glTex);
     gl.uniform1i(glU.uTex, 0);
-    gl.uniform3fv(glU.uShadows,  [u0.shadows, u1.shadows, u2.shadows]);
+    gl.uniform3fv(glU.uShadows, [u0.shadows, u1.shadows, u2.shadows]);
     gl.uniform3fv(glU.uMidtones, [u0.midtone, u1.midtone, u2.midtone]);
     gl.uniform1i(glU.uLinear, u0.linear ? 1 : 0);
     gl.uniform1i(glU.uChannels, rawInfo.channels);
@@ -235,12 +265,18 @@ void main() {
       const s = gl!.createShader(type)!;
       gl!.shaderSource(s, src);
       gl!.compileShader(s);
-      if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) { gl!.deleteShader(s); return null; }
+      if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) {
+        gl!.deleteShader(s);
+        return null;
+      }
       return s;
     };
     const vs = compile(gl.VERTEX_SHADER, VS);
     const fs = compile(gl.FRAGMENT_SHADER, FS);
-    if (!vs || !fs) { previewError = "Shader compile failed"; return false; }
+    if (!vs || !fs) {
+      previewError = "Shader compile failed";
+      return false;
+    }
     program = gl.createProgram()!;
     gl.attachShader(program, vs);
     gl.attachShader(program, fs);
@@ -253,17 +289,17 @@ void main() {
     gl.deleteShader(fs);
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const aPos = gl.getAttribLocation(program, "aPos");
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
     glTex = gl.createTexture();
     glU = {
-      uTex:         gl.getUniformLocation(program, "uTex")!,
-      uShadows:     gl.getUniformLocation(program, "uShadows")!,
-      uMidtones:    gl.getUniformLocation(program, "uMidtones")!,
-      uLinear:      gl.getUniformLocation(program, "uLinear")!,
-      uChannels:    gl.getUniformLocation(program, "uChannels")!,
+      uTex: gl.getUniformLocation(program, "uTex")!,
+      uShadows: gl.getUniformLocation(program, "uShadows")!,
+      uMidtones: gl.getUniformLocation(program, "uMidtones")!,
+      uLinear: gl.getUniformLocation(program, "uLinear")!,
+      uChannels: gl.getUniformLocation(program, "uChannels")!,
       uChannelMode: gl.getUniformLocation(program, "uChannelMode")!,
     };
     return true;
@@ -283,25 +319,33 @@ void main() {
   function createGLCanvas(width: number, height: number): boolean {
     if (gl && !gl.isContextLost()) {
       if (program) gl.deleteProgram(program);
-      if (glTex)   gl.deleteTexture(glTex);
+      if (glTex) gl.deleteTexture(glTex);
     }
-    gl = null; program = null; glTex = null; glU = null;
+    gl = null;
+    program = null;
+    glTex = null;
+    glU = null;
 
-    glCanvas = document.createElement('canvas');
-    glCanvas.width  = width;
+    glCanvas = document.createElement("canvas");
+    glCanvas.width = width;
     glCanvas.height = height;
-    const ctx = glCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
-    if (!ctx) { previewError = "WebGL2 not supported"; return false; }
+    const ctx = glCanvas.getContext("webgl2", { preserveDrawingBuffer: true });
+    if (!ctx) {
+      previewError = "WebGL2 not supported";
+      return false;
+    }
     return setupGLContext(ctx);
   }
 
   function initDisplay(node: HTMLCanvasElement) {
     displayCanvas = node;
-    node.width  = viewportW || 800;
+    node.width = viewportW || 800;
     node.height = viewportH || 600;
-    ctx2d = node.getContext('2d');
+    ctx2d = node.getContext("2d");
     return {
-      destroy() { ctx2d = null; },
+      destroy() {
+        ctx2d = null;
+      },
     };
   }
 
@@ -310,7 +354,7 @@ void main() {
     const h = viewportH;
     if (!displayCanvas || w === 0 || h === 0) return;
     if (displayCanvas.width === w && displayCanvas.height === h) return;
-    displayCanvas.width  = w;
+    displayCanvas.width = w;
     displayCanvas.height = h;
     redraw2d();
   });
@@ -320,12 +364,12 @@ void main() {
   $effect(() => {
     const e = entry;
     previewLoading = true;
-    previewError   = "";
-    fitsHeader     = null;
-    rawInfo        = null;
-    hasImage       = false;
-    histBins       = null;
-    annotations    = [];
+    previewError = "";
+    fitsHeader = null;
+    rawInfo = null;
+    hasImage = false;
+    histBins = null;
+    annotations = [];
     showAnnotations = false;
     resetView();
 
@@ -348,26 +392,42 @@ void main() {
           for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
           const f32 = new Float32Array(u8.buffer);
 
-          rawInfo = { width: result.width, height: result.height, channels: result.channels, stats: result.stats };
+          rawInfo = {
+            width: result.width,
+            height: result.height,
+            channels: result.channels,
+            stats: result.stats,
+          };
 
           if (!createGLCanvas(result.width, result.height)) return;
           uploadTexture(f32, result.width, result.height, false);
 
           const qf = untrack(() => qualityFrame);
-          renderGL(rawInfo.stats, se && qf?.frameType !== 'processed', sl, 0);
+          renderGL(rawInfo.stats, se && qf?.frameType !== "processed", sl, 0);
           hasImage = true;
 
-          setTimeout(() => { histBins = computeHistBins(f32, result.channels); }, 0);
+          setTimeout(() => {
+            histBins = computeHistBins(f32, result.channels);
+          }, 0);
         } else {
-          previewError = (rawResult as PromiseRejectedResult).reason?.toString() ?? "Preview failed";
+          previewError =
+            (rawResult as PromiseRejectedResult).reason?.toString() ?? "Preview failed";
         }
       },
     );
   });
 
-  function applyStretch()         { renderGL(); }
-  function setStretch(l: number)  { stretchLevel = l; renderGL(); }
-  function setChannelMode(m: 0|1|2|3) { channelMode = m; renderGL(); }
+  function applyStretch() {
+    renderGL();
+  }
+  function setStretch(l: number) {
+    stretchLevel = l;
+    renderGL();
+  }
+  function setChannelMode(m: 0 | 1 | 2 | 3) {
+    channelMode = m;
+    renderGL();
+  }
 
   // ── Histogram ────────────────────────────────────────────────────────────
 
@@ -376,9 +436,9 @@ void main() {
     const g = new Float32Array(256);
     const b = new Float32Array(256);
     for (let i = 0; i < f32.length; i += 4) {
-      r[Math.min(255, Math.max(0, (f32[i]   * 255) | 0))]++;
-      g[Math.min(255, Math.max(0, (f32[i+1] * 255) | 0))]++;
-      b[Math.min(255, Math.max(0, (f32[i+2] * 255) | 0))]++;
+      r[Math.min(255, Math.max(0, (f32[i] * 255) | 0))]++;
+      g[Math.min(255, Math.max(0, (f32[i + 1] * 255) | 0))]++;
+      b[Math.min(255, Math.max(0, (f32[i + 2] * 255) | 0))]++;
     }
     let peak = 1;
     for (let i = 1; i < 256; i++) {
@@ -386,23 +446,34 @@ void main() {
       if (channels > 1 && g[i] > peak) peak = g[i];
       if (channels > 1 && b[i] > peak) peak = b[i];
     }
-    for (let i = 0; i < 256; i++) { r[i] /= peak; g[i] /= peak; b[i] /= peak; }
+    for (let i = 0; i < 256; i++) {
+      r[i] /= peak;
+      g[i] /= peak;
+      b[i] /= peak;
+    }
     return { r, g, b, channels };
   }
 
   $effect(() => {
-    const hb  = histBins;
-    const hc  = histCanvas;
-    const se  = stretchEnabled;
-    const sl  = stretchLevel;
-    const ri  = rawInfo;
+    const hb = histBins;
+    const hc = histCanvas;
+    const se = stretchEnabled;
+    const sl = stretchLevel;
+    const ri = rawInfo;
     if (!showHistogram || !hb || !hc || !ri) return;
     const ctx2 = hc.getContext("2d");
     if (ctx2) drawHistogram(ctx2, hb, ri.stats, se, sl);
   });
 
-  function drawHistogram(ctx2: CanvasRenderingContext2D, hb: HistBins, stats: fits.ChannelStats[], enabled: boolean, level: number) {
-    const W = 200, H = 70;
+  function drawHistogram(
+    ctx2: CanvasRenderingContext2D,
+    hb: HistBins,
+    stats: fits.ChannelStats[],
+    enabled: boolean,
+    level: number,
+  ) {
+    const W = 200,
+      H = 70;
     ctx2.clearRect(0, 0, W, H);
     ctx2.fillStyle = "rgba(8,9,15,0.82)";
     ctx2.fillRect(0, 0, W, H);
@@ -411,7 +482,11 @@ void main() {
     const layers: [Float32Array, string][] =
       hb.channels === 1
         ? [[hb.r, "rgba(160,160,160,0.75)"]]
-        : [[hb.b, "rgba(80,140,255,0.5)"], [hb.g, "rgba(80,210,80,0.5)"], [hb.r, "rgba(255,90,90,0.5)"]];
+        : [
+            [hb.b, "rgba(80,140,255,0.5)"],
+            [hb.g, "rgba(80,210,80,0.5)"],
+            [hb.r, "rgba(255,90,90,0.5)"],
+          ];
 
     for (const [data, color] of layers) {
       ctx2.fillStyle = color;
@@ -428,7 +503,10 @@ void main() {
         ctx2.strokeStyle = "rgba(255,200,50,0.85)";
         ctx2.lineWidth = 1;
         ctx2.setLineDash([2, 2]);
-        ctx2.beginPath(); ctx2.moveTo(sx, 0); ctx2.lineTo(sx, H); ctx2.stroke();
+        ctx2.beginPath();
+        ctx2.moveTo(sx, 0);
+        ctx2.lineTo(sx, H);
+        ctx2.stroke();
         ctx2.setLineDash([]);
       }
     }
@@ -441,22 +519,25 @@ void main() {
   // ── Annotations ──────────────────────────────────────────────────────────
 
   let canAnnotate = $derived(
-    !!(qualityFrame?.wcsSolved ||
-      (fitsHeader?.ra && fitsHeader.pixelScale > 0))
+    !!(qualityFrame?.wcsSolved || (fitsHeader?.ra && fitsHeader.pixelScale > 0)),
   );
 
   $effect(() => {
     if (!showAnnotations || !canAnnotate || !rawInfo) return;
     if (annotations.length > 0) return;
     annotationsLoading = true;
-    const ra    = qualityFrame?.wcsSolved ? qualityFrame.ra         : (fitsHeader?.ra  ?? 0);
-    const dec   = qualityFrame?.wcsSolved ? qualityFrame.dec        : (fitsHeader?.dec ?? 0);
+    const ra = qualityFrame?.wcsSolved ? qualityFrame.ra : (fitsHeader?.ra ?? 0);
+    const dec = qualityFrame?.wcsSolved ? qualityFrame.dec : (fitsHeader?.dec ?? 0);
     const scale = qualityFrame?.wcsSolved ? qualityFrame.pixelScale : (fitsHeader?.pixelScale ?? 0);
-    const rot   = qualityFrame?.wcsSolved ? qualityFrame.rotation   : (fitsHeader?.rotation ?? 0);
-    GetAnnotations(ra, dec, scale, rot, rawInfo.width, rawInfo.height).then((res) => {
-      annotations = res ?? [];
-      annotationsLoading = false;
-    }).catch(() => { annotationsLoading = false; });
+    const rot = qualityFrame?.wcsSolved ? qualityFrame.rotation : (fitsHeader?.rotation ?? 0);
+    GetAnnotations(ra, dec, scale, rot, rawInfo.width, rawInfo.height)
+      .then((res) => {
+        annotations = res ?? [];
+        annotationsLoading = false;
+      })
+      .catch(() => {
+        annotationsLoading = false;
+      });
   });
 
   function imgToViewport(imgX: number, imgY: number): { x: number; y: number } {
@@ -464,7 +545,7 @@ void main() {
     const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
     const cx = viewportW / 2;
     const cy = viewportH / 2;
-    const dx = (imgX - rawInfo.width  / 2) * cssScale;
+    const dx = (imgX - rawInfo.width / 2) * cssScale;
     const dy = (imgY - rawInfo.height / 2) * cssScale;
     return {
       x: cx + dx * zoom + panX,
@@ -477,8 +558,8 @@ void main() {
     const factor = e.deltaY < 0 ? 1.15 : 0.87;
     const newZoom = Math.max(0.1, Math.min(20, zoom * factor));
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const mx = e.clientX - rect.left - rect.width  / 2;
-    const my = e.clientY - rect.top  - rect.height / 2;
+    const mx = e.clientX - rect.left - rect.width / 2;
+    const my = e.clientY - rect.top - rect.height / 2;
     panX = mx - ((mx - panX) * newZoom) / zoom;
     panY = my - ((my - panY) * newZoom) / zoom;
     zoom = newZoom;
@@ -491,8 +572,15 @@ void main() {
     panStartX = e.clientX - panX;
     panStartY = e.clientY - panY;
   }
-  function onPanMove(e: MouseEvent) { if (!isPanning) return; panX = e.clientX - panStartX; panY = e.clientY - panStartY; scheduleRender(); }
-  function onPanEnd()               { isPanning = false; }
+  function onPanMove(e: MouseEvent) {
+    if (!isPanning) return;
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    scheduleRender();
+  }
+  function onPanEnd() {
+    isPanning = false;
+  }
 </script>
 
 <div class="preview-pane">
@@ -500,39 +588,91 @@ void main() {
     <span class="preview-filename" title={entry.path}>{entry.name}</span>
     <div class="preview-controls">
       <span class="zoom-label">{Math.round(zoom * 100)}%</span>
-      <button class="tool-btn" onclick={resetView} title="Fit to window (double-click image)">Fit</button>
+      <button class="tool-btn" onclick={resetView} title="Fit to window (double-click image)"
+        >Fit</button
+      >
 
       {#if !isProcessed}
         <div class="stretch-group">
           <button
             class="tool-btn"
             class:active={stretchEnabled}
-            onclick={() => { stretchEnabled = !stretchEnabled; applyStretch(); }}
-            title="Toggle autostretch">Stretch</button>
+            onclick={() => {
+              stretchEnabled = !stretchEnabled;
+              applyStretch();
+            }}
+            title="Toggle autostretch">Stretch</button
+          >
           {#if stretchEnabled}
-            <button class="tool-btn preset" class:active={stretchLevel === 1} onclick={() => setStretch(1)}>Gentle</button>
-            <button class="tool-btn preset" class:active={stretchLevel === 2} onclick={() => setStretch(2)}>Normal</button>
-            <button class="tool-btn preset" class:active={stretchLevel === 3} onclick={() => setStretch(3)}>Strong</button>
+            <button
+              class="tool-btn preset"
+              class:active={stretchLevel === 1}
+              onclick={() => setStretch(1)}>Gentle</button
+            >
+            <button
+              class="tool-btn preset"
+              class:active={stretchLevel === 2}
+              onclick={() => setStretch(2)}>Normal</button
+            >
+            <button
+              class="tool-btn preset"
+              class:active={stretchLevel === 3}
+              onclick={() => setStretch(3)}>Strong</button
+            >
           {/if}
         </div>
       {/if}
 
       {#if rawInfo}
         {@const isColor = rawInfo.channels === 3}
-        <div class="channel-group" class:ch-disabled={!isColor} title={isColor ? "" : "Channel split requires a color (OSC) image"}>
-          <button class="tool-btn ch-btn"              class:active={channelMode === 0} disabled={!isColor} onclick={() => setChannelMode(0)}>RGB</button>
-          <button class="tool-btn ch-btn ch-r" class:active={channelMode === 1} disabled={!isColor} onclick={() => setChannelMode(1)}>R</button>
-          <button class="tool-btn ch-btn ch-g" class:active={channelMode === 2} disabled={!isColor} onclick={() => setChannelMode(2)}>G</button>
-          <button class="tool-btn ch-btn ch-b" class:active={channelMode === 3} disabled={!isColor} onclick={() => setChannelMode(3)}>B</button>
+        <div
+          class="channel-group"
+          class:ch-disabled={!isColor}
+          title={isColor ? "" : "Channel split requires a color (OSC) image"}
+        >
+          <button
+            class="tool-btn ch-btn"
+            class:active={channelMode === 0}
+            disabled={!isColor}
+            onclick={() => setChannelMode(0)}>RGB</button
+          >
+          <button
+            class="tool-btn ch-btn ch-r"
+            class:active={channelMode === 1}
+            disabled={!isColor}
+            onclick={() => setChannelMode(1)}>R</button
+          >
+          <button
+            class="tool-btn ch-btn ch-g"
+            class:active={channelMode === 2}
+            disabled={!isColor}
+            onclick={() => setChannelMode(2)}>G</button
+          >
+          <button
+            class="tool-btn ch-btn ch-b"
+            class:active={channelMode === 3}
+            disabled={!isColor}
+            onclick={() => setChannelMode(3)}>B</button
+          >
         </div>
       {/if}
 
       {#if rawInfo}
-        <button class="tool-btn" class:active={showHistogram} onclick={() => (showHistogram = !showHistogram)} title="Histogram overlay">Hist</button>
+        <button
+          class="tool-btn"
+          class:active={showHistogram}
+          onclick={() => (showHistogram = !showHistogram)}
+          title="Histogram overlay">Hist</button
+        >
       {/if}
 
       {#if canAnnotate && rawInfo}
-        <button class="tool-btn" class:active={showAnnotations} onclick={() => (showAnnotations = !showAnnotations)} title="Star / DSO annotations">✦ Labels</button>
+        <button
+          class="tool-btn"
+          class:active={showAnnotations}
+          onclick={() => (showAnnotations = !showAnnotations)}
+          title="Star / DSO annotations">✦ Labels</button
+        >
       {/if}
 
       <button class="btn-icon small" onclick={onclose} title="Close preview">✕</button>
@@ -562,19 +702,63 @@ void main() {
     {#if showAnnotations && rawInfo && viewportW > 0}
       <svg class="annotation-svg" width={viewportW} height={viewportH}>
         {#if annotationsLoading}
-          <text x={viewportW / 2} y={viewportH / 2} dominant-baseline="middle" text-anchor="middle" font-size="13" fill="rgba(255,200,50,0.7)">Loading annotations…</text>
+          <text
+            x={viewportW / 2}
+            y={viewportH / 2}
+            dominant-baseline="middle"
+            text-anchor="middle"
+            font-size="13"
+            fill="rgba(255,200,50,0.7)">Loading annotations…</text
+          >
         {:else if annotations.length === 0}
-          <text x="8" y={viewportH - 8} font-size="10" fill="rgba(255,200,50,0.55)">No catalog objects in this field</text>
+          <text x="8" y={viewportH - 8} font-size="10" fill="rgba(255,200,50,0.55)"
+            >No catalog objects in this field</text
+          >
         {:else}
           {#each annotations as ann (`${ann.label}${ann.x}${ann.y}`)}
             {@const vp = imgToViewport(ann.x, ann.y)}
             {#if ann.type === "star"}
-              <circle cx={vp.x} cy={vp.y} r="7" fill="none" stroke="rgba(136,196,255,0.75)" stroke-width="0.9"/>
-              <text x={vp.x} y={vp.y + 16} font-size="10" fill="rgba(136,196,255,0.95)" text-anchor="middle" class="ann-lbl">{ann.label}</text>
+              <circle
+                cx={vp.x}
+                cy={vp.y}
+                r="7"
+                fill="none"
+                stroke="rgba(136,196,255,0.75)"
+                stroke-width="0.9"
+              />
+              <text
+                x={vp.x}
+                y={vp.y + 16}
+                font-size="10"
+                fill="rgba(136,196,255,0.95)"
+                text-anchor="middle"
+                class="ann-lbl">{ann.label}</text
+              >
             {:else}
-              <line x1={vp.x - 9} y1={vp.y} x2={vp.x + 9} y2={vp.y} stroke="rgba(255,204,68,0.8)" stroke-width="0.9"/>
-              <line x1={vp.x} y1={vp.y - 9} x2={vp.x} y2={vp.y + 9} stroke="rgba(255,204,68,0.8)" stroke-width="0.9"/>
-              <text x={vp.x} y={vp.y + 17} font-size="10" fill="rgba(255,204,68,1)" text-anchor="middle" class="ann-lbl">{ann.label}</text>
+              <line
+                x1={vp.x - 9}
+                y1={vp.y}
+                x2={vp.x + 9}
+                y2={vp.y}
+                stroke="rgba(255,204,68,0.8)"
+                stroke-width="0.9"
+              />
+              <line
+                x1={vp.x}
+                y1={vp.y - 9}
+                x2={vp.x}
+                y2={vp.y + 9}
+                stroke="rgba(255,204,68,0.8)"
+                stroke-width="0.9"
+              />
+              <text
+                x={vp.x}
+                y={vp.y + 17}
+                font-size="10"
+                fill="rgba(255,204,68,1)"
+                text-anchor="middle"
+                class="ann-lbl">{ann.label}</text
+              >
             {/if}
           {/each}
         {/if}
@@ -620,20 +804,46 @@ void main() {
           </button>
           {#if !coordsCollapsed}
             {#if qualityFrame?.wcsSolved}
-              <div class="meta-row"><span class="meta-key">RA</span><span class="meta-val">{formatRA(qualityFrame.ra)}</span></div>
-              <div class="meta-row"><span class="meta-key">Dec</span><span class="meta-val">{formatDec(qualityFrame.dec)}</span></div>
+              <div class="meta-row">
+                <span class="meta-key">RA</span><span class="meta-val"
+                  >{formatRA(qualityFrame.ra)}</span
+                >
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Dec</span><span class="meta-val"
+                  >{formatDec(qualityFrame.dec)}</span
+                >
+              </div>
               {#if qualityFrame.pixelScale}
-                <div class="meta-row"><span class="meta-key">Scale</span><span class="meta-val">{qualityFrame.pixelScale.toFixed(2)} "/px</span></div>
+                <div class="meta-row">
+                  <span class="meta-key">Scale</span><span class="meta-val"
+                    >{qualityFrame.pixelScale.toFixed(2)} "/px</span
+                  >
+                </div>
               {/if}
               {#if qualityFrame.rotation}
-                <div class="meta-row"><span class="meta-key">Rotation</span><span class="meta-val">{qualityFrame.rotation.toFixed(1)}°</span></div>
+                <div class="meta-row">
+                  <span class="meta-key">Rotation</span><span class="meta-val"
+                    >{qualityFrame.rotation.toFixed(1)}°</span
+                  >
+                </div>
               {/if}
             {:else if fitsHeader?.ra}
-              <div class="meta-row"><span class="meta-key">RA</span><span class="meta-val">{formatRA(fitsHeader.ra)}</span></div>
-              <div class="meta-row"><span class="meta-key">Dec</span><span class="meta-val">{formatDec(fitsHeader.dec)}</span></div>
+              <div class="meta-row">
+                <span class="meta-key">RA</span><span class="meta-val"
+                  >{formatRA(fitsHeader.ra)}</span
+                >
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Dec</span><span class="meta-val"
+                  >{formatDec(fitsHeader.dec)}</span
+                >
+              </div>
             {:else if qualityFrame}
               <div class="meta-row stats-hint">
-                <span class="meta-val">Not plate solved. Use <strong>✦ Analyze</strong> in the Library View.</span>
+                <span class="meta-val"
+                  >Not plate solved. Use <strong>✦ Analyze</strong> in the Library View.</span
+                >
               </div>
             {/if}
           {/if}
@@ -662,20 +872,42 @@ void main() {
           </button>
           {#if !statsCollapsed}
             {#if qualityFrame.qualityAnalyzed}
-              <div class="meta-row"><span class="meta-key">Stars</span><span class="meta-val">{qualityFrame.starCount}</span></div>
-              <div class="meta-row"><span class="meta-key">FWHM</span><span class="meta-val">{qualityFrame.fwhm.toFixed(2)} {qualityFrame.fwhmUnit || "px"}</span></div>
+              <div class="meta-row">
+                <span class="meta-key">Stars</span><span class="meta-val"
+                  >{qualityFrame.starCount}</span
+                >
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">FWHM</span><span class="meta-val"
+                  >{qualityFrame.fwhm.toFixed(2)} {qualityFrame.fwhmUnit || "px"}</span
+                >
+              </div>
               {#if qualityFrame.background}
-                <div class="meta-row"><span class="meta-key">Background</span><span class="meta-val">{qualityFrame.background.toFixed(1)} ADU</span></div>
+                <div class="meta-row">
+                  <span class="meta-key">Background</span><span class="meta-val"
+                    >{qualityFrame.background.toFixed(1)} ADU</span
+                  >
+                </div>
               {/if}
               {#if qualityFrame.noise}
-                <div class="meta-row"><span class="meta-key">Noise</span><span class="meta-val">{qualityFrame.noise.toFixed(2)} ADU</span></div>
+                <div class="meta-row">
+                  <span class="meta-key">Noise</span><span class="meta-val"
+                    >{qualityFrame.noise.toFixed(2)} ADU</span
+                  >
+                </div>
               {/if}
               {#if qualityFrame.snr}
-                <div class="meta-row"><span class="meta-key">SNR</span><span class="meta-val">{qualityFrame.snr.toFixed(1)}</span></div>
+                <div class="meta-row">
+                  <span class="meta-key">SNR</span><span class="meta-val"
+                    >{qualityFrame.snr.toFixed(1)}</span
+                  >
+                </div>
               {/if}
             {:else}
               <div class="meta-row stats-hint">
-                <span class="meta-val">Not analyzed. Use <strong>✦ Analyze</strong> in the Library View.</span>
+                <span class="meta-val"
+                  >Not analyzed. Use <strong>✦ Analyze</strong> in the Library View.</span
+                >
               </div>
             {/if}
           {/if}
@@ -732,14 +964,37 @@ void main() {
     text-align: right;
   }
 
-  .stretch-group, .channel-group { display: flex; align-items: center; gap: 2px; }
+  .stretch-group,
+  .channel-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
 
-  .ch-btn { min-width: 24px !important; padding: 2px 5px !important; font-weight: 700 !important; }
-  .ch-r.active { color: #ff6060 !important; border-color: #ff6060 !important; }
-  .ch-g.active { color: #50d050 !important; border-color: #50d050 !important; }
-  .ch-b.active { color: #6098ff !important; border-color: #6098ff !important; }
-  .ch-disabled { opacity: 0.38; cursor: not-allowed; }
-  .ch-disabled .ch-btn { cursor: not-allowed; }
+  .ch-btn {
+    min-width: 24px !important;
+    padding: 2px 5px !important;
+    font-weight: 700 !important;
+  }
+  .ch-r.active {
+    color: #ff6060 !important;
+    border-color: #ff6060 !important;
+  }
+  .ch-g.active {
+    color: #50d050 !important;
+    border-color: #50d050 !important;
+  }
+  .ch-b.active {
+    color: #6098ff !important;
+    border-color: #6098ff !important;
+  }
+  .ch-disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+  }
+  .ch-disabled .ch-btn {
+    cursor: not-allowed;
+  }
 
   /* ── Image viewport ──────────────────────────────────────────────────── */
   .image-viewport {
@@ -752,7 +1007,9 @@ void main() {
     position: relative;
     background: #08090f;
   }
-  .image-viewport.panning { cursor: grabbing; }
+  .image-viewport.panning {
+    cursor: grabbing;
+  }
 
   .display-canvas {
     position: absolute;
@@ -764,7 +1021,9 @@ void main() {
     pointer-events: none;
     visibility: hidden;
   }
-  .display-canvas.visible { visibility: visible; }
+  .display-canvas.visible {
+    visibility: visible;
+  }
 
   /* ── Annotation SVG (absolute, viewport-space) ───────────────────────── */
   .annotation-svg {
@@ -778,7 +1037,7 @@ void main() {
   :global(.ann-lbl) {
     font-family: "Consolas", "Fira Code", monospace;
     paint-order: stroke fill;
-    stroke: rgba(0,0,0,0.7);
+    stroke: rgba(0, 0, 0, 0.7);
     stroke-width: 2.5px;
   }
 
@@ -810,7 +1069,14 @@ void main() {
     color: var(--accent);
     font-size: 1.2rem;
   }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .preview-error {
     position: absolute;
     color: var(--danger);
@@ -830,24 +1096,74 @@ void main() {
     max-height: 220px;
     border-top: 1px solid var(--border);
   }
-  .preview-meta::-webkit-scrollbar { width: 4px; }
-  .preview-meta::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 2px; }
-
-  .meta-section { border-bottom: 1px solid var(--border); }
-  .meta-section-hdr {
-    display: flex; align-items: center; justify-content: space-between; width: 100%;
-    background: transparent; border: none; cursor: pointer; padding: 5px 0 3px;
-    color: var(--text-secondary); font-size: 0.68rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.08em;
+  .preview-meta::-webkit-scrollbar {
+    width: 4px;
   }
-  .meta-section-hdr:hover { color: var(--text-primary); }
-  .meta-caret { font-size: 0.8rem; opacity: 0.8; }
+  .preview-meta::-webkit-scrollbar-thumb {
+    background: var(--border-accent);
+    border-radius: 2px;
+  }
 
-  .meta-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.79rem; border-bottom: 1px solid var(--border); }
-  .meta-key { color: var(--text-secondary); width: 80px; flex-shrink: 0; }
-  .meta-val { color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta-section {
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-section-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 5px 0 3px;
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .meta-section-hdr:hover {
+    color: var(--text-primary);
+  }
+  .meta-caret {
+    font-size: 0.8rem;
+    opacity: 0.8;
+  }
 
-  .stats-badge { font-size: 0.6rem; color: var(--accent); margin-left: 4px; margin-right: auto; }
-  .stats-hint { opacity: 0.7; font-style: italic; }
-  .stats-hint .meta-val { text-align: left; white-space: normal; font-size: 0.73rem; }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 0.79rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-key {
+    color: var(--text-secondary);
+    width: 80px;
+    flex-shrink: 0;
+  }
+  .meta-val {
+    color: var(--text-primary);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stats-badge {
+    font-size: 0.6rem;
+    color: var(--accent);
+    margin-left: 4px;
+    margin-right: auto;
+  }
+  .stats-hint {
+    opacity: 0.7;
+    font-style: italic;
+  }
+  .stats-hint .meta-val {
+    text-align: left;
+    white-space: normal;
+    font-size: 0.73rem;
+  }
 </style>

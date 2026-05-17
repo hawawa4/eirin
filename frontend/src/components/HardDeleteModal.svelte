@@ -8,8 +8,20 @@
   let { target, onconfirm, oncancel }: Props = $props();
 </script>
 
-<div class="modal-backdrop" onclick={oncancel}>
-  <div class="modal" onclick={(e) => e.stopPropagation()}>
+<div
+  class="modal-backdrop"
+  onclick={oncancel}
+  onkeydown={(e) => e.key === "Escape" && oncancel()}
+  role="presentation"
+>
+  <div
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    onclick={(e) => e.stopPropagation()}
+    onkeydown={(e) => e.stopPropagation()}
+  >
     <div class="modal-icon">⚠</div>
     <p class="modal-title">Delete file permanently?</p>
     <p class="modal-filename">{target.name}</p>

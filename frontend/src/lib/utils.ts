@@ -97,9 +97,7 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
     case "starCount":
       return frame.qualityAnalyzed && frame.starCount ? String(frame.starCount) : "—";
     case "background":
-      return frame.qualityAnalyzed && frame.background
-        ? `${frame.background.toFixed(1)} ADU`
-        : "—";
+      return frame.qualityAnalyzed && frame.background ? `${frame.background.toFixed(1)} ADU` : "—";
     case "noise":
       return frame.qualityAnalyzed && frame.noise ? `${frame.noise.toFixed(2)} ADU` : "—";
     case "snr":
@@ -117,42 +115,68 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
 
 export function getFrameTextVal(f: app.LibraryFrame, colId: string): string {
   switch (colId) {
-    case "name":       return f.fileName;
-    case "object":     return f.object;
-    case "filter":     return f.filter;
-    case "telescope":  return f.telescope;
-    case "instrument": return f.instrument;
-    case "dateObs":    return f.dateObs;
-    default:           return "";
+    case "name":
+      return f.fileName;
+    case "object":
+      return f.object;
+    case "filter":
+      return f.filter;
+    case "telescope":
+      return f.telescope;
+    case "instrument":
+      return f.instrument;
+    case "dateObs":
+      return f.dateObs;
+    default:
+      return "";
   }
 }
 
 export function getFrameNumVal(f: app.LibraryFrame, colId: string): number | null {
   switch (colId) {
-    case "expTime":    return f.expTime;
-    case "size":       return f.fileSize;
-    case "gain":       return f.gain;
-    case "ccdTemp":    return f.ccdTemp;
-    case "fwhm":       return f.qualityAnalyzed ? f.fwhm : null;
-    case "starCount":  return f.qualityAnalyzed ? f.starCount : null;
-    case "background": return f.qualityAnalyzed ? f.background : null;
-    case "noise":      return f.qualityAnalyzed ? f.noise : null;
-    case "snr":        return f.qualityAnalyzed ? f.snr : null;
-    default:           return null;
+    case "expTime":
+      return f.expTime;
+    case "size":
+      return f.fileSize;
+    case "gain":
+      return f.gain;
+    case "ccdTemp":
+      return f.ccdTemp;
+    case "fwhm":
+      return f.qualityAnalyzed ? f.fwhm : null;
+    case "starCount":
+      return f.qualityAnalyzed ? f.starCount : null;
+    case "background":
+      return f.qualityAnalyzed ? f.background : null;
+    case "noise":
+      return f.qualityAnalyzed ? f.noise : null;
+    case "snr":
+      return f.qualityAnalyzed ? f.snr : null;
+    default:
+      return null;
   }
 }
 
 export function getFrameSortVal(f: app.LibraryFrame, col: string): number | string {
   switch (col) {
-    case "fwhm":       return f.qualityAnalyzed ? f.fwhm       : Infinity;
-    case "starCount":  return f.qualityAnalyzed ? -f.starCount  : Infinity;
-    case "background": return f.qualityAnalyzed ? f.background  : Infinity;
-    case "noise":      return f.qualityAnalyzed ? f.noise       : Infinity;
-    case "snr":        return f.qualityAnalyzed ? -f.snr        : Infinity;
-    case "expTime":    return -f.expTime;
-    case "gain":       return f.gain;
-    case "size":       return -f.fileSize;
-    default:           return String((f as unknown as Record<string, unknown>)[col] ?? "");
+    case "fwhm":
+      return f.qualityAnalyzed ? f.fwhm : Infinity;
+    case "starCount":
+      return f.qualityAnalyzed ? -f.starCount : Infinity;
+    case "background":
+      return f.qualityAnalyzed ? f.background : Infinity;
+    case "noise":
+      return f.qualityAnalyzed ? f.noise : Infinity;
+    case "snr":
+      return f.qualityAnalyzed ? -f.snr : Infinity;
+    case "expTime":
+      return -f.expTime;
+    case "gain":
+      return f.gain;
+    case "size":
+      return -f.fileSize;
+    default:
+      return String((f as unknown as Record<string, unknown>)[col] ?? "");
   }
 }
 

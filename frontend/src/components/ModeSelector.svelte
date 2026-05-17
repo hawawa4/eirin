@@ -17,12 +17,12 @@
   let { mode, rootFolder, onmodechange }: Props = $props();
 
   const modes: ModeOption[] = [
-    { value: "browser",  label: "Browse",   icon: "⊞", requiresRoot: true  },
-    { value: "library",  label: "Library",  icon: "◈", requiresRoot: true  },
-    { value: "atlas",    label: "Sky Atlas", icon: "✦", requiresRoot: true  },
-    { value: "import",   label: "Import",   icon: "⇪", requiresRoot: true  },
+    { value: "browser", label: "Browse", icon: "⊞", requiresRoot: true },
+    { value: "library", label: "Library", icon: "◈", requiresRoot: true },
+    { value: "atlas", label: "Sky Atlas", icon: "✦", requiresRoot: true },
+    { value: "import", label: "Import", icon: "⇪", requiresRoot: true },
     { value: "projects", label: "Projects", icon: "◧", requiresRoot: false },
-    { value: "storage",  label: "Storage",  icon: "◉", requiresRoot: true  },
+    { value: "storage", label: "Storage", icon: "◉", requiresRoot: true },
     { value: "settings", label: "Settings", icon: "⚙", requiresRoot: false },
   ];
 </script>
