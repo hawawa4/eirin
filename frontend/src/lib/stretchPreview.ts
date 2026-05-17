@@ -12,16 +12,20 @@ function mtf(m: number, x: number): number {
   if (x >= 1) return 1;
   if (m <= 0) return 0;
   if (m >= 1) return 1;
-  return (m - 1) * x / ((2 * m - 1) * x - m);
+  return ((m - 1) * x) / ((2 * m - 1) * x - m);
 }
 
-interface ChannelParams { shadows: number; midtone: number; linear: boolean; }
+interface ChannelParams {
+  shadows: number;
+  midtone: number;
+  linear: boolean;
+}
 
 function computeParams(stats: fits.ChannelStats[], stretchLevel: number): ChannelParams[] {
   const presets = [
-    { shadowsFactor: -1.25, targetBG: 0.1  },
-    { shadowsFactor: -2.8,  targetBG: 0.25 },
-    { shadowsFactor: -4.0,  targetBG: 0.4  },
+    { shadowsFactor: -1.25, targetBG: 0.1 },
+    { shadowsFactor: -2.8, targetBG: 0.25 },
+    { shadowsFactor: -4.0, targetBG: 0.4 },
   ];
 
   if (stretchLevel <= 0) {
@@ -77,11 +81,11 @@ export function renderStretched(
   for (let i = 0, o = 0; i < f32.length; i += 4, o += 4) {
     if (channels === 1) {
       const v = Math.round(applyStretch(p0, f32[i]) * 255);
-      out[o]     = v;
+      out[o] = v;
       out[o + 1] = v;
       out[o + 2] = v;
     } else {
-      out[o]     = Math.round(applyStretch(p0, f32[i])     * 255);
+      out[o] = Math.round(applyStretch(p0, f32[i]) * 255);
       out[o + 1] = Math.round(applyStretch(p1, f32[i + 1]) * 255);
       out[o + 2] = Math.round(applyStretch(p2, f32[i + 2]) * 255);
     }

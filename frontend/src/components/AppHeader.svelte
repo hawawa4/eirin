@@ -14,7 +14,7 @@
 
   const THEMES: { id: Theme; color: string; title: string }[] = [
     { id: "blue", color: "#7c9ef5", title: "Blue theme" },
-    { id: "red",  color: "#e07060", title: "Red (night) theme" },
+    { id: "red", color: "#e07060", title: "Red (night) theme" },
     { id: "grey", color: "#9ba4b8", title: "Grey theme" },
   ];
 </script>

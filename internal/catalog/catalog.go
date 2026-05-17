@@ -40,7 +40,7 @@ func AllEntries() []Entry {
 	raw := loadCatalog()
 	out := make([]Entry, len(raw))
 	for i, e := range raw {
-		out[i] = Entry{RA: e.RA, Dec: e.Dec, Name: e.Name, Mag: e.Mag, Type: e.Type}
+		out[i] = Entry(e)
 	}
 	return out
 }

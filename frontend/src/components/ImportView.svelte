@@ -24,10 +24,10 @@
   // ── Import options ────────────────────────────────────────────────────────
 
   const FORMAT_GROUPS: { key: string; label: string; exts: string[] }[] = [
-    { key: "fits", label: "FITS",  exts: ["fit", "fits"] },
-    { key: "png",  label: "PNG",   exts: ["png"] },
-    { key: "jpeg", label: "JPEG",  exts: ["jpg", "jpeg"] },
-    { key: "tiff", label: "TIFF",  exts: ["tif", "tiff"] },
+    { key: "fits", label: "FITS", exts: ["fit", "fits"] },
+    { key: "png", label: "PNG", exts: ["png"] },
+    { key: "jpeg", label: "JPEG", exts: ["jpg", "jpeg"] },
+    { key: "tiff", label: "TIFF", exts: ["tif", "tiff"] },
   ];
 
   let selectedFormats = $state(new Set<string>(["fits"]));
@@ -86,7 +86,14 @@
   }
 
   type FlatRow =
-    | { kind: "folder"; depth: number; name: string; folderPath: string; count: number; size: number }
+    | {
+        kind: "folder";
+        depth: number;
+        name: string;
+        folderPath: string;
+        count: number;
+        size: number;
+      }
     | { kind: "file"; depth: number; candidate: ImportCandidate };
 
   function flattenTree(node: FolderNode, depth: number, col: Set<string>): FlatRow[] {
@@ -224,14 +231,15 @@
           <button
             class="fmt-btn"
             class:active={selectedFormats.has(g.key)}
-            onclick={() => toggleFormat(g.key)}
-          >{g.label}</button>
+            onclick={() => toggleFormat(g.key)}>{g.label}</button
+          >
         {/each}
       </div>
       <button
         class="btn-primary btn-large"
         disabled={selectedFormats.size === 0}
-        onclick={selectSource}>Select Source Folder</button>
+        onclick={selectSource}>Select Source Folder</button
+      >
       {#if errorMsg}
         <p class="error-msg">{errorMsg}</p>
       {/if}
@@ -253,7 +261,8 @@
           <div class="scan-actions">
             {#if candidates.length > 0}
               <button class="btn-ghost" onclick={expandAll} title="Expand all folders">⊞</button>
-              <button class="btn-ghost" onclick={collapseAll} title="Collapse all folders">⊟</button>
+              <button class="btn-ghost" onclick={collapseAll} title="Collapse all folders">⊟</button
+              >
             {/if}
             <button class="btn-secondary" onclick={selectSource}>Change Folder</button>
             {#if candidates.length > 0}
@@ -270,8 +279,8 @@
             <button
               class="fmt-btn"
               class:active={selectedFormats.has(g.key)}
-              onclick={() => toggleFormat(g.key)}
-            >{g.label}</button>
+              onclick={() => toggleFormat(g.key)}>{g.label}</button
+            >
           {/each}
           <div class="opt-sep"></div>
           <label class="delete-toggle" class:delete-active={deleteAfterCopy}>
@@ -310,7 +319,9 @@
                     <td style="padding-left: {row.depth * 18 + 10}px">
                       <span class="chevron">{collapsed.has(row.folderPath) ? "▶" : "▼"}</span>
                       <span class="folder-name">{row.name}</span>
-                      <span class="folder-meta">{row.count} {row.count === 1 ? "file" : "files"}</span>
+                      <span class="folder-meta"
+                        >{row.count} {row.count === 1 ? "file" : "files"}</span
+                      >
                     </td>
                     <td class="dest-path folder-dest">→ {row.name}/</td>
                     <td class="size-cell">{formatSize(row.size)}</td>
@@ -538,7 +549,10 @@
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    transition:
+      background 0.1s,
+      color 0.1s,
+      border-color 0.1s;
   }
   .fmt-btn:hover {
     border-color: var(--accent);
@@ -722,7 +736,9 @@
     font-size: 0.85rem;
     padding: 3px 7px;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
   }
 
   .btn-ghost:hover {

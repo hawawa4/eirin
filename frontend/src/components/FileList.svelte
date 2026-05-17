@@ -37,7 +37,13 @@
   let showColumnMenu = $state(false);
 
   let dragOverIndex = $state(-1);
-  const colMgr = makeColumnManager(() => columns, (i) => { dragOverIndex = i; }, () => onsavecolumns());
+  const colMgr = makeColumnManager(
+    () => columns,
+    (i) => {
+      dragOverIndex = i;
+    },
+    () => onsavecolumns(),
+  );
 
   // ── Derived ───────────────────────────────────────────────────────────────
   let visibleColumns = $derived(
@@ -211,6 +217,7 @@
               }}
             >
               <span class="th-text">{col.label}</span>
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
                 class="resize-handle"
                 onmousedown={(e) => colMgr.startColResize(e, col.id)}

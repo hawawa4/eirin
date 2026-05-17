@@ -22,12 +22,25 @@
     loading = true;
     error = "";
     Promise.all([GetStorageStats(rootPath), GetFrameTypeSummary(rootPath)])
-      .then(([r, t]) => { root = r; typeSummary = t ?? []; loading = false; })
-      .catch((e) => { error = String(e); loading = false; });
+      .then(([r, t]) => {
+        root = r;
+        typeSummary = t ?? [];
+        loading = false;
+      })
+      .catch((e) => {
+        error = String(e);
+        loading = false;
+      });
   });
 
   // ── Treemap layout ────────────────────────────────────────────────────────
-  interface Rect { x: number; y: number; w: number; h: number; node: app.StorageNode; }
+  interface Rect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    node: app.StorageNode;
+  }
 
   function squarify(nodes: app.StorageNode[], x: number, y: number, w: number, h: number): Rect[] {
     if (!nodes.length) return [];
@@ -36,7 +49,10 @@
 
     const rects: Rect[] = [];
     let remaining = [...nodes];
-    let rx = x, ry = y, rw = w, rh = h;
+    let rx = x,
+      ry = y,
+      rw = w,
+      rh = h;
 
     while (remaining.length > 0) {
       const rowArea = rw * rh;
@@ -60,18 +76,32 @@
 
       // Layout the row
       const rowFrac = rowTotal / total;
-      let cx = rx, cy = ry;
+      let cx = rx,
+        cy = ry;
       if (rw <= rh) {
         // horizontal strip
-        const stripH = rh * (rowTotal / (total - (nodes.reduce((s,n)=>s+n.totalBytes,0) - rowTotal - remaining.reduce((s,n)=>s+n.totalBytes,0))));
+        const stripH =
+          rh *
+          (rowTotal /
+            (total -
+              (nodes.reduce((s, n) => s + n.totalBytes, 0) -
+                rowTotal -
+                remaining.reduce((s, n) => s + n.totalBytes, 0))));
         const fixedH = (rowTotal / total) * (rw <= rh ? rh : rw);
         for (const node of row) {
           const frac = node.totalBytes / rowTotal;
-          rects.push({ x: cx, y: cy, w: rw * (rw > rh ? 1 : frac), h: rw > rh ? frac * rh : fixedH, node });
+          rects.push({
+            x: cx,
+            y: cy,
+            w: rw * (rw > rh ? 1 : frac),
+            h: rw > rh ? frac * rh : fixedH,
+            node,
+          });
           if (rw > rh) cx += rw * frac;
-          else         cy += fixedH; // wrong but let's simplify
+          else cy += fixedH; // wrong but let's simplify
         }
-        void rowFrac; void stripH;
+        void rowFrac;
+        void stripH;
         ry += fixedH;
         rh -= fixedH;
       } else {
@@ -105,17 +135,29 @@
   // ── Human-readable bytes ──────────────────────────────────────────────────
   function fmtBytes(b: number): string {
     if (b >= 1e12) return (b / 1e12).toFixed(1) + " TB";
-    if (b >= 1e9)  return (b / 1e9).toFixed(1)  + " GB";
-    if (b >= 1e6)  return (b / 1e6).toFixed(1)  + " MB";
-    if (b >= 1e3)  return (b / 1e3).toFixed(0)  + " KB";
+    if (b >= 1e9) return (b / 1e9).toFixed(1) + " GB";
+    if (b >= 1e6) return (b / 1e6).toFixed(1) + " MB";
+    if (b >= 1e3) return (b / 1e3).toFixed(0) + " KB";
     return b + " B";
   }
 
   // ── Colors ────────────────────────────────────────────────────────────────
   const PALETTE = [
-    "#1e4e8c", "#2e6ca6", "#3a85bb", "#1a6b5a", "#21875e",
-    "#5a3a8c", "#7b3db8", "#8c4a1a", "#b06020", "#6b1a1a",
-    "#8c1a6b", "#1a4e6b", "#2a6e3a", "#4e3a8c", "#6b5a1a",
+    "#1e4e8c",
+    "#2e6ca6",
+    "#3a85bb",
+    "#1a6b5a",
+    "#21875e",
+    "#5a3a8c",
+    "#7b3db8",
+    "#8c4a1a",
+    "#b06020",
+    "#6b1a1a",
+    "#8c1a6b",
+    "#1a4e6b",
+    "#2a6e3a",
+    "#4e3a8c",
+    "#6b5a1a",
   ];
   function nodeColor(label: string, idx: number): string {
     // hash the label for a stable color assignment
@@ -125,7 +167,8 @@
   }
 
   // ── Derived treemap data ──────────────────────────────────────────────────
-  const TW = 720, TH = 400;
+  const TW = 720,
+    TH = 400;
 
   let treemapNodes = $derived.by(() => {
     if (!root) return [];
@@ -149,9 +192,7 @@
     </div>
 
     {#if drillObject}
-      <button class="breadcrumb-btn" onclick={() => (drillObject = null)}>
-        ← All objects
-      </button>
+      <button class="breadcrumb-btn" onclick={() => (drillObject = null)}> ← All objects </button>
     {/if}
   </div>
 
@@ -182,6 +223,7 @@
           {@const label = rect.node.label}
           {@const color = nodeColor(label, i)}
           {@const isHovered = hovered === label}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <g
             class="treemap-cell"
             onmouseenter={() => (hovered = label)}
@@ -189,11 +231,24 @@
             onclick={() => {
               if (!drillObject && rect.node.children?.length) drillObject = label;
             }}
+            onkeydown={(e) => {
+              if (
+                (e.key === "Enter" || e.key === " ") &&
+                !drillObject &&
+                rect.node.children?.length
+              )
+                drillObject = label;
+            }}
+            role={rect.node.children?.length && !drillObject ? "button" : "img"}
+            tabindex={rect.node.children?.length && !drillObject ? 0 : undefined}
+            aria-label={label}
             style="cursor: {!drillObject && rect.node.children?.length ? 'pointer' : 'default'}"
           >
             <rect
-              x={rect.x + 1} y={rect.y + 1}
-              width={Math.max(0, rect.w - 2)} height={Math.max(0, rect.h - 2)}
+              x={rect.x + 1}
+              y={rect.y + 1}
+              width={Math.max(0, rect.w - 2)}
+              height={Math.max(0, rect.h - 2)}
               fill={color}
               fill-opacity={isHovered ? 0.95 : 0.75}
               stroke={isHovered ? "var(--accent)" : "rgba(255,255,255,0.08)"}
@@ -202,28 +257,36 @@
             />
             {#if rect.w > 60 && rect.h > 36}
               <text
-                x={rect.x + rect.w / 2} y={rect.y + rect.h / 2 - 7}
-                text-anchor="middle" dominant-baseline="middle"
-                class="tm-label"
-              >{label}</text>
+                x={rect.x + rect.w / 2}
+                y={rect.y + rect.h / 2 - 7}
+                text-anchor="middle"
+                dominant-baseline="middle"
+                class="tm-label">{label}</text
+              >
               <text
-                x={rect.x + rect.w / 2} y={rect.y + rect.h / 2 + 9}
-                text-anchor="middle" dominant-baseline="middle"
-                class="tm-sub"
-              >{fmtBytes(rect.node.totalBytes)}</text>
+                x={rect.x + rect.w / 2}
+                y={rect.y + rect.h / 2 + 9}
+                text-anchor="middle"
+                dominant-baseline="middle"
+                class="tm-sub">{fmtBytes(rect.node.totalBytes)}</text
+              >
               {#if rect.h > 56}
                 <text
-                  x={rect.x + rect.w / 2} y={rect.y + rect.h / 2 + 23}
-                  text-anchor="middle" dominant-baseline="middle"
-                  class="tm-sub"
-                >{rect.node.frameCount} frames</text>
+                  x={rect.x + rect.w / 2}
+                  y={rect.y + rect.h / 2 + 23}
+                  text-anchor="middle"
+                  dominant-baseline="middle"
+                  class="tm-sub">{rect.node.frameCount} frames</text
+                >
               {/if}
             {:else if rect.w > 28 && rect.h > 20}
               <text
-                x={rect.x + rect.w / 2} y={rect.y + rect.h / 2}
-                text-anchor="middle" dominant-baseline="middle"
-                class="tm-label-sm"
-              >{label.length > 14 ? label.slice(0, 12) + "…" : label}</text>
+                x={rect.x + rect.w / 2}
+                y={rect.y + rect.h / 2}
+                text-anchor="middle"
+                dominant-baseline="middle"
+                class="tm-label-sm">{label.length > 14 ? label.slice(0, 12) + "…" : label}</text
+              >
             {/if}
           </g>
         {/each}
@@ -231,7 +294,9 @@
 
       {#if hovered}
         {@const hNode = drillObject
-          ? root?.children?.find((c) => c.label === drillObject)?.children?.find((c) => c.label === hovered)
+          ? root?.children
+              ?.find((c) => c.label === drillObject)
+              ?.children?.find((c) => c.label === hovered)
           : root?.children?.find((c) => c.label === hovered)}
         {#if hNode}
           <div class="treemap-tooltip">
@@ -248,16 +313,24 @@
 
     <!-- Object list below treemap -->
     <div class="object-list">
-      {#each (drillObject
-        ? (root.children?.find((c) => c.label === drillObject)?.children ?? [])
-        : (root.children ?? [])
-      ).slice().sort((a, b) => b.totalBytes - a.totalBytes) as node}
+      {#each (drillObject ? (root.children?.find((c) => c.label === drillObject)?.children ?? []) : (root.children ?? []))
+        .slice()
+        .sort((a, b) => b.totalBytes - a.totalBytes) as node}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="object-row"
           class:hovered={hovered === node.label}
           onmouseenter={() => (hovered = node.label)}
           onmouseleave={() => (hovered = null)}
-          onclick={() => { if (!drillObject && node.children?.length) drillObject = node.label; }}
+          onclick={() => {
+            if (!drillObject && node.children?.length) drillObject = node.label;
+          }}
+          onkeydown={(e) => {
+            if ((e.key === "Enter" || e.key === " ") && !drillObject && node.children?.length)
+              drillObject = node.label;
+          }}
+          role={node.children?.length && !drillObject ? "button" : "listitem"}
+          tabindex={node.children?.length && !drillObject ? 0 : undefined}
           style="cursor: {!drillObject && node.children?.length ? 'pointer' : 'default'}"
         >
           <span class="obj-label">{node.label}</span>
@@ -286,40 +359,113 @@
     min-height: 0;
   }
 
-  .storage-header { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
-  .storage-title-row { display: flex; align-items: baseline; gap: 12px; }
-  .storage-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0; }
-  .storage-total { font-size: 0.8rem; color: var(--text-secondary); }
+  .storage-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .storage-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .storage-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+  }
+  .storage-total {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
 
   .breadcrumb-btn {
-    font-size: 0.78rem; padding: 3px 10px; background: transparent;
-    border: 1px solid var(--border); border-radius: 4px;
-    color: var(--text-secondary); cursor: pointer; align-self: flex-start;
-    transition: background 0.1s, color 0.1s;
+    font-size: 0.78rem;
+    padding: 3px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    align-self: flex-start;
+    transition:
+      background 0.1s,
+      color 0.1s;
   }
-  .breadcrumb-btn:hover { background: var(--bg-row-hover); color: var(--text-primary); }
+  .breadcrumb-btn:hover {
+    background: var(--bg-row-hover);
+    color: var(--text-primary);
+  }
 
-  .storage-status { color: var(--text-secondary); font-size: 0.875rem; padding: 20px 0; }
-  .storage-status.error { color: var(--danger); }
+  .storage-status {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    padding: 20px 0;
+  }
+  .storage-status.error {
+    color: var(--danger);
+  }
 
   /* ── Type summary bar ────────────────────────────────────────────────── */
-  .type-bar { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
-  .type-chip {
-    display: flex; align-items: center; gap: 6px;
-    background: var(--bg-panel); border: 1px solid var(--border);
-    border-radius: 5px; padding: 4px 10px; font-size: 0.76rem;
+  .type-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
   }
-  .type-label { color: var(--text-secondary); text-transform: capitalize; }
-  .type-size { color: var(--text-primary); font-variant-numeric: tabular-nums; }
-  .type-count { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .type-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 0.76rem;
+  }
+  .type-label {
+    color: var(--text-secondary);
+    text-transform: capitalize;
+  }
+  .type-size {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .type-count {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
 
   /* ── Treemap ─────────────────────────────────────────────────────────── */
-  .treemap-container { position: relative; flex-shrink: 0; }
-  .treemap-svg { display: block; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .treemap-container {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .treemap-svg {
+    display: block;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
 
-  :global(.tm-label) { font-size: 0.75rem; font-weight: 600; fill: rgba(255,255,255,0.92); pointer-events: none; }
-  :global(.tm-label-sm) { font-size: 0.62rem; fill: rgba(255,255,255,0.75); pointer-events: none; }
-  :global(.tm-sub) { font-size: 0.62rem; fill: rgba(255,255,255,0.65); pointer-events: none; }
+  :global(.tm-label) {
+    font-size: 0.75rem;
+    font-weight: 600;
+    fill: rgba(255, 255, 255, 0.92);
+    pointer-events: none;
+  }
+  :global(.tm-label-sm) {
+    font-size: 0.62rem;
+    fill: rgba(255, 255, 255, 0.75);
+    pointer-events: none;
+  }
+  :global(.tm-sub) {
+    font-size: 0.62rem;
+    fill: rgba(255, 255, 255, 0.65);
+    pointer-events: none;
+  }
 
   .treemap-tooltip {
     position: absolute;
@@ -334,11 +480,15 @@
     flex-direction: column;
     gap: 2px;
     pointer-events: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     z-index: 10;
     color: var(--text-primary);
   }
-  .tooltip-hint { font-size: 0.68rem; color: var(--accent); margin-top: 2px; }
+  .tooltip-hint {
+    font-size: 0.68rem;
+    color: var(--accent);
+    margin-top: 2px;
+  }
 
   /* ── Object list ─────────────────────────────────────────────────────── */
   .object-list {
@@ -356,11 +506,43 @@
     border-radius: 4px;
     transition: background 0.1s;
   }
-  .object-row.hovered { background: var(--bg-row-hover); }
+  .object-row.hovered {
+    background: var(--bg-row-hover);
+  }
 
-  .obj-label { font-size: 0.82rem; color: var(--text-primary); min-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .obj-count { font-size: 0.72rem; color: var(--text-secondary); width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
-  .obj-bar-wrap { flex: 1; height: 6px; background: var(--bg-base); border-radius: 3px; overflow: hidden; }
-  .obj-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
-  .obj-size { font-size: 0.78rem; color: var(--text-secondary); width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+  .obj-label {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    min-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obj-count {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    width: 70px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .obj-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-base);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .obj-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .obj-size {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    width: 70px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 </style>

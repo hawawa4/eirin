@@ -47,7 +47,7 @@ lint: lint-go lint-frontend
 
 # Run staticcheck on all Go packages
 lint-go:
-    staticcheck ./
+    staticcheck ./...
 
 # Run ESLint + Prettier check on the frontend
 lint-frontend:

@@ -126,7 +126,9 @@
 
   // ── Atlas mount guard — keep the atlas in DOM once opened ─────────────────
   let atlasOpened = $state(false);
-  $effect(() => { if (appMode === "atlas") atlasOpened = true; });
+  $effect(() => {
+    if (appMode === "atlas") atlasOpened = true;
+  });
 
   onMount(async () => {
     const [p, info, siril, pf] = await Promise.all([
@@ -430,7 +432,13 @@
       </div>
 
       {#if selectedEntry}
-        <div class="divider" onmousedown={onDividerMouseDown}>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          class="divider"
+          onmousedown={onDividerMouseDown}
+          role="separator"
+          aria-label="Resize panel"
+        >
           <button
             class="collapse-btn"
             onmousedown={(e) => e.stopPropagation()}
@@ -480,7 +488,13 @@
       </div>
 
       {#if selectedEntry}
-        <div class="divider" onmousedown={onDividerMouseDown}>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          class="divider"
+          onmousedown={onDividerMouseDown}
+          role="separator"
+          aria-label="Resize panel"
+        >
           <button
             class="collapse-btn"
             onmousedown={(e) => e.stopPropagation()}

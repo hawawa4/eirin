@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { app } from "../../wailsjs/go/models";
-  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog, GeneratePreviewRawSized } from "../../wailsjs/go/app/App.js";
+  import {
+    GetAtlasIndex,
+    GetAtlasFrameSize,
+    GetCatalog,
+    GeneratePreviewRawSized,
+  } from "../../wailsjs/go/app/App.js";
   import { renderStretched } from "../lib/stretchPreview";
 
   interface Props {
@@ -18,11 +23,11 @@
   let canvasW = $state(800);
   let canvasH = $state(600);
 
-  let viewRA  = $state(180);
+  let viewRA = $state(180);
   let viewDec = $state(0);
   let pixPerDeg = $state(12);
 
-  let index   = $state<app.AtlasIndexEntry[]>([]);
+  let index = $state<app.AtlasIndexEntry[]>([]);
   let catalog = $state<app.CatalogObject[]>([]);
   let loading = $state(true);
   let loadError = $state("");
@@ -43,11 +48,11 @@
   let isPanning = $state(false);
   let panStartX = 0;
   let panStartY = 0;
-  let panStartRA  = 0;
+  let panStartRA = 0;
   let panStartDec = 0;
 
   // Hover / selection
-  let hoveredEntry  = $state<app.AtlasIndexEntry | null>(null);
+  let hoveredEntry = $state<app.AtlasIndexEntry | null>(null);
   let hoverX = $state(0);
   let hoverY = $state(0);
 
@@ -69,9 +74,7 @@
   let rotOverVersion = $state(0);
 
   // True when any preview image or frame size is currently being fetched
-  let anyLoading = $derived(
-    (previewVersion >= 0 && loadingPaths.size > 0) || fetchingCount > 0,
-  );
+  let anyLoading = $derived((previewVersion >= 0 && loadingPaths.size > 0) || fetchingCount > 0);
 
   let lazyTimer: ReturnType<typeof setTimeout> | null = null;
   const LAZY_PPD = 8;
@@ -102,48 +105,66 @@
           const u8 = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
           const f32 = new Float32Array(u8.buffer);
-          const stretchLevel = entry.frameType === 'processed' ? 0 : 2;
-          const rendered = renderStretched(f32, result.width, result.height, result.channels, result.stats, stretchLevel);
+          const stretchLevel = entry.frameType === "processed" ? 0 : 2;
+          const rendered = renderStretched(
+            f32,
+            result.width,
+            result.height,
+            result.channels,
+            result.stats,
+            stretchLevel,
+          );
           if (rendered) previewImgs.set(path, rendered);
           loadingPaths.delete(path);
           previewVersion++;
         })
-        .catch(() => { loadingPaths.delete(path); previewVersion++; });
+        .catch(() => {
+          loadingPaths.delete(path);
+          previewVersion++;
+        });
     }
   });
 
   // ── Projection ────────────────────────────────────────────────────────────
 
   function project(ra: number, dec: number): [number, number] | null {
-    const ra0  = viewRA  * Math.PI / 180;
-    const dec0 = viewDec * Math.PI / 180;
-    const raR  = ra  * Math.PI / 180;
-    const decR = dec * Math.PI / 180;
+    const ra0 = (viewRA * Math.PI) / 180;
+    const dec0 = (viewDec * Math.PI) / 180;
+    const raR = (ra * Math.PI) / 180;
+    const decR = (dec * Math.PI) / 180;
 
-    const dRA   = raR - ra0;
+    const dRA = raR - ra0;
     const denom = Math.sin(dec0) * Math.sin(decR) + Math.cos(dec0) * Math.cos(decR) * Math.cos(dRA);
     if (denom <= 0.001) return null;
 
-    const xi  = Math.cos(decR) * Math.sin(dRA) / denom;
-    const eta = (Math.cos(dec0) * Math.sin(decR) - Math.sin(dec0) * Math.cos(decR) * Math.cos(dRA)) / denom;
+    const xi = (Math.cos(decR) * Math.sin(dRA)) / denom;
+    const eta =
+      (Math.cos(dec0) * Math.sin(decR) - Math.sin(dec0) * Math.cos(decR) * Math.cos(dRA)) / denom;
 
     return [
-      canvasW / 2 - (xi  * 180 / Math.PI) * pixPerDeg,
-      canvasH / 2 - (eta * 180 / Math.PI) * pixPerDeg,
+      canvasW / 2 - ((xi * 180) / Math.PI) * pixPerDeg,
+      canvasH / 2 - ((eta * 180) / Math.PI) * pixPerDeg,
     ];
   }
 
   function unproject(x: number, y: number): [number, number] {
-    const xi  = (-(x - canvasW / 2) / pixPerDeg) * Math.PI / 180;
-    const eta = (-(y - canvasH / 2) / pixPerDeg) * Math.PI / 180;
-    const dec0 = viewDec * Math.PI / 180;
-    const ra0  = viewRA  * Math.PI / 180;
-    const rho  = Math.sqrt(xi * xi + eta * eta);
+    const xi = ((-(x - canvasW / 2) / pixPerDeg) * Math.PI) / 180;
+    const eta = ((-(y - canvasH / 2) / pixPerDeg) * Math.PI) / 180;
+    const dec0 = (viewDec * Math.PI) / 180;
+    const ra0 = (viewRA * Math.PI) / 180;
+    const rho = Math.sqrt(xi * xi + eta * eta);
     if (rho < 1e-10) return [viewRA, viewDec];
-    const c   = Math.atan(rho);
-    const dec = Math.asin(Math.cos(c) * Math.sin(dec0) + (eta * Math.sin(c) * Math.cos(dec0)) / rho);
-    const ra  = ra0 + Math.atan2(xi * Math.sin(c), rho * Math.cos(dec0) * Math.cos(c) - eta * Math.sin(dec0) * Math.sin(c));
-    return [((ra * 180 / Math.PI) + 360) % 360, dec * 180 / Math.PI];
+    const c = Math.atan(rho);
+    const dec = Math.asin(
+      Math.cos(c) * Math.sin(dec0) + (eta * Math.sin(c) * Math.cos(dec0)) / rho,
+    );
+    const ra =
+      ra0 +
+      Math.atan2(
+        xi * Math.sin(c),
+        rho * Math.cos(dec0) * Math.cos(c) - eta * Math.sin(dec0) * Math.sin(c),
+      );
+    return [((ra * 180) / Math.PI + 360) % 360, (dec * 180) / Math.PI];
   }
 
   // ── Footprint helpers ─────────────────────────────────────────────────────
@@ -153,12 +174,17 @@
     sz: { width: number; height: number },
   ): ([number, number] | null)[] {
     const scaleDeg = entry.pixelScale / 3600;
-    const hw = (sz.width  / 2) * scaleDeg;
+    const hw = (sz.width / 2) * scaleDeg;
     const hh = (sz.height / 2) * scaleDeg;
-    const θ  = entry.rotation * Math.PI / 180;
-    const cosDec = Math.cos(entry.dec * Math.PI / 180);
+    const θ = (entry.rotation * Math.PI) / 180;
+    const cosDec = Math.cos((entry.dec * Math.PI) / 180);
     return (
-      [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]] as [number, number][]
+      [
+        [-hw, -hh],
+        [hw, -hh],
+        [hw, hh],
+        [-hw, hh],
+      ] as [number, number][]
     ).map(([dx, dy]) => {
       const rx = dx * Math.cos(θ) - dy * Math.sin(θ);
       const ry = dx * Math.sin(θ) + dy * Math.cos(θ);
@@ -168,7 +194,12 @@
 
   function isOnScreen(corners: ([number, number] | null)[], margin = 80): boolean {
     return corners.some(
-      (c) => c !== null && c[0] >= -margin && c[0] <= canvasW + margin && c[1] >= -margin && c[1] <= canvasH + margin,
+      (c) =>
+        c !== null &&
+        c[0] >= -margin &&
+        c[0] <= canvasW + margin &&
+        c[1] >= -margin &&
+        c[1] <= canvasH + margin,
     );
   }
 
@@ -212,11 +243,11 @@
     ctx.font = "11px monospace";
 
     const decStep = pixPerDeg >= 30 ? 5 : 10;
-    const raStep  = pixPerDeg >= 50 ? 5 : 15;
+    const raStep = pixPerDeg >= 50 ? 5 : 15;
     // At high zoom only a small FOV is visible; sample fewer points per line.
-    const fovDeg  = canvasW / pixPerDeg;
-    const ptStep  = Math.max(1, Math.round(fovDeg / 40));
-    const margin  = 60;
+    const fovDeg = canvasW / pixPerDeg;
+    const ptStep = Math.max(1, Math.round(fovDeg / 40));
+    const margin = 60;
 
     for (let dec = -90; dec <= 90; dec += decStep) {
       // Quick cull: center of this dec line must be near the screen
@@ -229,7 +260,12 @@
       }
       if (pts.length < 2) continue;
       // Skip if entirely off-screen
-      if (pts.every(([x, y]) => x < -margin || x > canvasW + margin || y < -margin || y > canvasH + margin)) continue;
+      if (
+        pts.every(
+          ([x, y]) => x < -margin || x > canvasW + margin || y < -margin || y > canvasH + margin,
+        )
+      )
+        continue;
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -245,7 +281,12 @@
         if (p) pts.push(p);
       }
       if (pts.length < 2) continue;
-      if (pts.every(([x, y]) => x < -margin || x > canvasW + margin || y < -margin || y > canvasH + margin)) continue;
+      if (
+        pts.every(
+          ([x, y]) => x < -margin || x > canvasW + margin || y < -margin || y > canvasH + margin,
+        )
+      )
+        continue;
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -299,8 +340,10 @@
         ctx.strokeStyle = "rgba(255,210,80,0.6)";
         ctx.lineWidth = 0.8;
         ctx.beginPath();
-        ctx.moveTo(x - size, y); ctx.lineTo(x + size, y);
-        ctx.moveTo(x, y - size); ctx.lineTo(x, y + size);
+        ctx.moveTo(x - size, y);
+        ctx.lineTo(x + size, y);
+        ctx.moveTo(x, y - size);
+        ctx.lineTo(x, y + size);
         ctx.stroke();
         if (pixPerDeg > 8) {
           ctx.fillStyle = "rgba(255,210,80,0.7)";
@@ -345,8 +388,8 @@
     if (!cp) return;
     const [cx, cy] = cp;
 
-    const sz    = sizes.get(entry.nasPath);
-    const img   = previewImgs.get(entry.nasPath);
+    const sz = sizes.get(entry.nasPath);
+    const img = previewImgs.get(entry.nasPath);
     const isLoading = loadingPaths.has(entry.nasPath);
 
     if (sz && pixPerDeg >= LAZY_PPD) {
@@ -360,11 +403,11 @@
       if (isSel && img) {
         // Draw actual image aligned to footprint, with optional manual rotation offset
         const rotDeg = entry.rotation + (rotationOverrides.get(entry.nasPath) ?? 0);
-        const wPx = sz.width  * entry.pixelScale / 3600 * pixPerDeg;
-        const hPx = sz.height * entry.pixelScale / 3600 * pixPerDeg;
+        const wPx = ((sz.width * entry.pixelScale) / 3600) * pixPerDeg;
+        const hPx = ((sz.height * entry.pixelScale) / 3600) * pixPerDeg;
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(-rotDeg * Math.PI / 180);
+        ctx.rotate((-rotDeg * Math.PI) / 180);
         ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
         ctx.restore();
       } else if (isSel && isLoading) {
@@ -372,7 +415,7 @@
         ctx.moveTo(valid[0][0], valid[0][1]);
         for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
         ctx.closePath();
-        ctx.fillStyle   = "rgba(255,190,70,0.12)";
+        ctx.fillStyle = "rgba(255,190,70,0.12)";
         ctx.strokeStyle = "rgba(255,210,80,0.6)";
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
@@ -389,13 +432,25 @@
         ctx.moveTo(valid[0][0], valid[0][1]);
         for (let i = 1; i < valid.length; i++) ctx.lineTo(valid[i][0], valid[i][1]);
         ctx.closePath();
-        ctx.fillStyle   = isHov ? "rgba(100,190,255,0.22)" : isSel ? "rgba(255,190,70,0.10)" : "rgba(80,140,220,0.10)";
-        ctx.strokeStyle = isHov ? "rgba(120,210,255,0.95)" : isSel ? "rgba(255,210,80,0.7)" : "rgba(100,160,255,0.55)";
-        ctx.lineWidth   = isHov ? 2 : isSel ? 1.8 : 1.2;
+        ctx.fillStyle = isHov
+          ? "rgba(100,190,255,0.22)"
+          : isSel
+            ? "rgba(255,190,70,0.10)"
+            : "rgba(80,140,220,0.10)";
+        ctx.strokeStyle = isHov
+          ? "rgba(120,210,255,0.95)"
+          : isSel
+            ? "rgba(255,210,80,0.7)"
+            : "rgba(100,160,255,0.55)";
+        ctx.lineWidth = isHov ? 2 : isSel ? 1.8 : 1.2;
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = isHov ? "rgba(190,230,255,1)" : isSel ? "rgba(255,220,100,0.9)" : "rgba(160,205,255,0.85)";
-        ctx.font      = isHov ? "bold 11px monospace" : "10px monospace";
+        ctx.fillStyle = isHov
+          ? "rgba(190,230,255,1)"
+          : isSel
+            ? "rgba(255,220,100,0.9)"
+            : "rgba(160,205,255,0.85)";
+        ctx.font = isHov ? "bold 11px monospace" : "10px monospace";
         ctx.textAlign = "center";
         ctx.fillText(entry.object || entry.name, cx, cy + 4);
         ctx.textAlign = "left";
@@ -405,7 +460,11 @@
       const r = isSel ? 5 : isHov ? 4 : 3;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = isSel ? "rgba(255,210,80,0.95)" : isHov ? "rgba(120,210,255,0.9)" : "rgba(100,165,255,0.65)";
+      ctx.fillStyle = isSel
+        ? "rgba(255,210,80,0.95)"
+        : isHov
+          ? "rgba(120,210,255,0.9)"
+          : "rgba(100,165,255,0.65)";
       ctx.fill();
       if (pixPerDeg >= 4) {
         ctx.fillStyle = isSel ? "rgba(255,220,100,1)" : "rgba(165,205,255,0.75)";
@@ -430,13 +489,26 @@
   function scheduleRedraw() {
     if (_redrawPending) return;
     _redrawPending = true;
-    requestAnimationFrame(() => { _redrawPending = false; redraw(); });
+    requestAnimationFrame(() => {
+      _redrawPending = false;
+      redraw();
+    });
   }
 
   $effect(() => {
-    void viewRA; void viewDec; void pixPerDeg; void index; void catalog;
-    void hoveredEntry; void selectedEntries; void canvasW; void canvasH; void sizesVersion;
-    void previewVersion; void showStacked; void rotOverVersion;
+    void viewRA;
+    void viewDec;
+    void pixPerDeg;
+    void index;
+    void catalog;
+    void hoveredEntry;
+    void selectedEntries;
+    void canvasW;
+    void canvasH;
+    void sizesVersion;
+    void previewVersion;
+    void showStacked;
+    void rotOverVersion;
     scheduleRedraw();
   });
 
@@ -466,7 +538,10 @@
             sizesVersion++;
           }
         })
-        .catch(() => { fetchingPaths.delete(entry.nasPath); fetchingCount--; });
+        .catch(() => {
+          fetchingPaths.delete(entry.nasPath);
+          fetchingCount--;
+        });
     }
   }
 
@@ -483,7 +558,7 @@
     pixPerDeg = Math.max(0.3, Math.min(8000, pixPerDeg * factor));
 
     const [nx, ny] = project(skyRA, skyDec) ?? [canvasW / 2, canvasH / 2];
-    viewRA  += (mx - nx) / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
+    viewRA += (mx - nx) / pixPerDeg / Math.cos((viewDec * Math.PI) / 180);
     viewDec += (my - ny) / pixPerDeg;
     scheduleLazyLoad();
   }
@@ -491,9 +566,9 @@
   function onMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
     isPanning = true;
-    panStartX   = e.clientX;
-    panStartY   = e.clientY;
-    panStartRA  = viewRA;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panStartRA = viewRA;
     panStartDec = viewDec;
   }
 
@@ -505,7 +580,7 @@
     if (isPanning) {
       const dx = e.clientX - panStartX;
       const dy = e.clientY - panStartY;
-      viewRA  = panStartRA  + dx / pixPerDeg / Math.cos(viewDec * Math.PI / 180);
+      viewRA = panStartRA + dx / pixPerDeg / Math.cos((viewDec * Math.PI) / 180);
       viewDec = Math.max(-89, Math.min(89, panStartDec + dy / pixPerDeg));
       hoveredEntry = null;
       scheduleLazyLoad();
@@ -518,12 +593,18 @@
       if (sz && pixPerDeg >= LAZY_PPD) {
         const corners = footprintCorners(entry, sz);
         const valid = corners.filter((c): c is [number, number] => c !== null);
-        if (valid.length >= 3 && pointInPolygon(mx, my, valid)) { found = entry; break; }
+        if (valid.length >= 3 && pointInPolygon(mx, my, valid)) {
+          found = entry;
+          break;
+        }
       } else {
         const pt = project(entry.ra, entry.dec);
         if (pt) {
           const [px, py] = pt;
-          if (Math.sqrt((mx - px) ** 2 + (my - py) ** 2) <= 6) { found = entry; break; }
+          if (Math.sqrt((mx - px) ** 2 + (my - py) ** 2) <= 6) {
+            found = entry;
+            break;
+          }
         }
       }
     }
@@ -535,7 +616,8 @@
   function onMouseUp(e: MouseEvent) {
     const wasPanning = isPanning;
     isPanning = false;
-    if (wasPanning && (Math.abs(e.clientX - panStartX) > 4 || Math.abs(e.clientY - panStartY) > 4)) return;
+    if (wasPanning && (Math.abs(e.clientX - panStartX) > 4 || Math.abs(e.clientY - panStartY) > 4))
+      return;
 
     // Empty space click is a no-op — images stay loaded
     if (!hoveredEntry) return;
@@ -559,7 +641,7 @@
     ctx = canvas.getContext("2d");
 
     const ro = new ResizeObserver((entries) => {
-      canvasW = entries[0].contentRect.width  || canvasW;
+      canvasW = entries[0].contentRect.width || canvasW;
       canvasH = entries[0].contentRect.height || canvasH;
     });
     ro.observe(container);
@@ -571,8 +653,8 @@
       .then((indexResult) => {
         index = indexResult ?? [];
         if (index.length > 0) {
-          viewRA    = index.reduce((s, f) => s + f.ra,  0) / index.length;
-          viewDec   = index.reduce((s, f) => s + f.dec, 0) / index.length;
+          viewRA = index.reduce((s, f) => s + f.ra, 0) / index.length;
+          viewDec = index.reduce((s, f) => s + f.dec, 0) / index.length;
           pixPerDeg = canvasW / 30;
         }
         loading = false;
@@ -605,7 +687,10 @@
     onmousedown={onMouseDown}
     onmousemove={onMouseMove}
     onmouseup={onMouseUp}
-    onmouseleave={() => { isPanning = false; hoveredEntry = null; }}
+    onmouseleave={() => {
+      isPanning = false;
+      hoveredEntry = null;
+    }}
     style="cursor: {isPanning ? 'grabbing' : hoveredEntry ? 'pointer' : 'grab'};"
   ></canvas>
 
@@ -621,7 +706,10 @@
     <div class="atlas-overlay atlas-empty">
       <div class="empty-icon">◎</div>
       <p>No stacked frames with sky coordinates found.</p>
-      <p class="atlas-hint">Run <strong>Build Index</strong> to read WCS from FITS headers,<br>or <strong>✦ Analyze</strong> to plate-solve stacked frames.</p>
+      <p class="atlas-hint">
+        Run <strong>Build Index</strong> to read WCS from FITS headers,<br />or
+        <strong>✦ Analyze</strong> to plate-solve stacked frames.
+      </p>
     </div>
   {/if}
 
@@ -644,26 +732,29 @@
 
   <!-- Frame type toggle -->
   <div class="atlas-toggle">
-    <button
-      class="toggle-btn"
-      class:active={!showStacked}
-      onclick={() => (showStacked = false)}
-    >Processed</button>
-    <button
-      class="toggle-btn"
-      class:active={showStacked}
-      onclick={() => (showStacked = true)}
-    >All</button>
+    <button class="toggle-btn" class:active={!showStacked} onclick={() => (showStacked = false)}
+      >Processed</button
+    >
+    <button class="toggle-btn" class:active={showStacked} onclick={() => (showStacked = true)}
+      >All</button
+    >
   </div>
 
   <!-- Hover tooltip -->
   {#if hoveredEntry && !selectedEntries.includes(hoveredEntry)}
     <div
       class="atlas-tooltip"
-      style="left: {Math.min(hoverX + 14, canvasW - 195)}px; top: {Math.min(hoverY - 10, canvasH - 80)}px;"
+      style="left: {Math.min(hoverX + 14, canvasW - 195)}px; top: {Math.min(
+        hoverY - 10,
+        canvasH - 80,
+      )}px;"
     >
       <div class="tt-name">{hoveredEntry.object || hoveredEntry.name}</div>
-      <div class="tt-row">RA {hoveredEntry.ra.toFixed(3)}° · Dec {hoveredEntry.dec >= 0 ? "+" : ""}{hoveredEntry.dec.toFixed(3)}°</div>
+      <div class="tt-row">
+        RA {hoveredEntry.ra.toFixed(3)}° · Dec {hoveredEntry.dec >= 0
+          ? "+"
+          : ""}{hoveredEntry.dec.toFixed(3)}°
+      </div>
       <div class="tt-row">{hoveredEntry.pixelScale.toFixed(2)} ″/px · {hoveredEntry.frameType}</div>
       <div class="tt-hint">Click to add / bring to front</div>
     </div>
@@ -682,10 +773,22 @@
         {#if selectedEntries.length > 1}
           <div class="ap-stack-hint">{selectedEntries.length} frames shown · showing latest</div>
         {/if}
-        <div class="ap-row"><span class="ap-lbl">Type</span><span class="ap-val">{panelEntry.frameType}</span></div>
-        <div class="ap-row"><span class="ap-lbl">RA</span><span class="ap-val">{panelEntry.ra.toFixed(4)}°</span></div>
-        <div class="ap-row"><span class="ap-lbl">Dec</span><span class="ap-val">{panelEntry.dec >= 0 ? "+" : ""}{panelEntry.dec.toFixed(4)}°</span></div>
-        <div class="ap-row"><span class="ap-lbl">Scale</span><span class="ap-val">{panelEntry.pixelScale.toFixed(2)} ″/px</span></div>
+        <div class="ap-row">
+          <span class="ap-lbl">Type</span><span class="ap-val">{panelEntry.frameType}</span>
+        </div>
+        <div class="ap-row">
+          <span class="ap-lbl">RA</span><span class="ap-val">{panelEntry.ra.toFixed(4)}°</span>
+        </div>
+        <div class="ap-row">
+          <span class="ap-lbl">Dec</span><span class="ap-val"
+            >{panelEntry.dec >= 0 ? "+" : ""}{panelEntry.dec.toFixed(4)}°</span
+          >
+        </div>
+        <div class="ap-row">
+          <span class="ap-lbl">Scale</span><span class="ap-val"
+            >{panelEntry.pixelScale.toFixed(2)} ″/px</span
+          >
+        </div>
         <div class="ap-row">
           <span class="ap-lbl">Rotation</span>
           <span class="ap-val">{panelEntry.rotation.toFixed(1)}°</span>
@@ -703,8 +806,8 @@
                   const path = panelEntry!.nasPath;
                   rotationOverrides.set(path, cur === -90 ? 0 : -90);
                   rotOverVersion++;
-                }}
-              >↺ 90°</button>
+                }}>↺ 90°</button
+              >
               <button
                 class="rot-btn"
                 class:rot-active={cur === 0}
@@ -712,8 +815,8 @@
                 onclick={() => {
                   rotationOverrides.set(panelEntry!.nasPath, 0);
                   rotOverVersion++;
-                }}
-              >0°</button>
+                }}>0°</button
+              >
               <button
                 class="rot-btn"
                 class:rot-active={cur === 90}
@@ -722,22 +825,26 @@
                   const path = panelEntry!.nasPath;
                   rotationOverrides.set(path, cur === 90 ? 0 : 90);
                   rotOverVersion++;
-                }}
-              >↻ 90°</button>
+                }}>↻ 90°</button
+              >
             </span>
           </div>
         {/if}
         {#if sz}
-          <div class="ap-row"><span class="ap-lbl">Size</span><span class="ap-val">{sz.width} × {sz.height} px</span></div>
+          <div class="ap-row">
+            <span class="ap-lbl">Size</span><span class="ap-val">{sz.width} × {sz.height} px</span>
+          </div>
           <div class="ap-row">
             <span class="ap-lbl">FOV</span>
             <span class="ap-val">
-              {((sz.width  * panelEntry.pixelScale) / 3600).toFixed(2)}° ×
+              {((sz.width * panelEntry.pixelScale) / 3600).toFixed(2)}° ×
               {((sz.height * panelEntry.pixelScale) / 3600).toFixed(2)}°
             </span>
           </div>
         {/if}
-        <div class="ap-row ap-file-row"><span class="ap-lbl">File</span><span class="ap-val ap-file">{panelEntry.name}</span></div>
+        <div class="ap-row ap-file-row">
+          <span class="ap-lbl">File</span><span class="ap-val ap-file">{panelEntry.name}</span>
+        </div>
       </div>
 
       {#if onframeopen}
@@ -748,7 +855,9 @@
     </div>
   {/if}
 
-  <div class="atlas-help">Scroll to zoom · Drag to pan · Click frames to overlay · Click again to bring to front</div>
+  <div class="atlas-help">
+    Scroll to zoom · Drag to pan · Click frames to overlay · Click again to bring to front
+  </div>
 </div>
 
 <style>
@@ -783,10 +892,23 @@
     pointer-events: none;
     background: rgba(5, 6, 16, 0.75);
   }
-  .atlas-error { color: var(--danger); }
-  .atlas-empty { gap: 6px; text-align: center; }
-  .empty-icon  { font-size: 2.5rem; color: var(--accent-dim); }
-  .atlas-hint  { font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7; line-height: 1.5; }
+  .atlas-error {
+    color: var(--danger);
+  }
+  .atlas-empty {
+    gap: 6px;
+    text-align: center;
+  }
+  .empty-icon {
+    font-size: 2.5rem;
+    color: var(--accent-dim);
+  }
+  .atlas-hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    line-height: 1.5;
+  }
 
   .atlas-spinner {
     width: 32px;
@@ -796,7 +918,11 @@
     border-radius: 50%;
     animation: spin 0.9s linear infinite;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   /* Per-image loading indicator (bottom-left corner) */
   .atlas-img-loading {
@@ -838,7 +964,9 @@
     border-radius: 4px;
     border: 1px solid var(--border);
   }
-  .hud-sep { opacity: 0.4; }
+  .hud-sep {
+    opacity: 0.4;
+  }
 
   /* Frame type toggle */
   .atlas-toggle {
@@ -860,7 +988,9 @@
     background: none;
     border: none;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
   .toggle-btn.active {
     background: color-mix(in srgb, var(--accent-dim) 40%, transparent);
@@ -882,9 +1012,23 @@
     z-index: 20;
     min-width: 175px;
   }
-  .tt-name { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
-  .tt-row  { font-size: 0.72rem; color: var(--text-secondary); font-family: "Consolas", monospace; }
-  .tt-hint { font-size: 0.68rem; color: var(--accent); margin-top: 4px; font-style: italic; }
+  .tt-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+  }
+  .tt-row {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-family: "Consolas", monospace;
+  }
+  .tt-hint {
+    font-size: 0.68rem;
+    color: var(--accent);
+    margin-top: 4px;
+    font-style: italic;
+  }
 
   /* Selected-frame panel */
   .atlas-panel {
@@ -930,7 +1074,10 @@
     line-height: 1;
     opacity: 0.6;
   }
-  .ap-close:hover { opacity: 1; color: var(--text-primary); }
+  .ap-close:hover {
+    opacity: 1;
+    color: var(--text-primary);
+  }
 
   .ap-body {
     padding: 8px 10px;
@@ -962,7 +1109,9 @@
     font-family: "Consolas", monospace;
     text-align: right;
   }
-  .ap-file-row { margin-top: 4px; }
+  .ap-file-row {
+    margin-top: 4px;
+  }
   .ap-file {
     font-size: 0.68rem;
     word-break: break-all;
@@ -971,7 +1120,10 @@
   }
 
   /* Rotation override row */
-  .ap-rot-row { align-items: center; margin-top: 2px; }
+  .ap-rot-row {
+    align-items: center;
+    margin-top: 2px;
+  }
   .ap-rot-btns {
     display: flex;
     gap: 3px;
@@ -985,9 +1137,15 @@
     border-radius: 3px;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s,
+      border-color 0.12s;
   }
-  .rot-btn:hover { border-color: var(--border-accent); color: var(--text-primary); }
+  .rot-btn:hover {
+    border-color: var(--border-accent);
+    color: var(--text-primary);
+  }
   .rot-btn.rot-active {
     background: color-mix(in srgb, var(--accent-dim) 40%, transparent);
     border-color: var(--accent);
@@ -1003,7 +1161,9 @@
     color: var(--accent);
     font-size: 0.78rem;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition:
+      background 0.15s,
+      border-color 0.15s;
   }
   .ap-open-btn:hover {
     background: color-mix(in srgb, var(--accent-dim) 55%, transparent);
