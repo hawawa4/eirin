@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { app } from "../../wailsjs/go/models";
-  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog, GeneratePreviewSized } from "../../wailsjs/go/app/App.js";
+  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog, GeneratePreviewRawSized } from "../../wailsjs/go/app/App.js";
+  import { renderStretched } from "../lib/stretchPreview";
 
   interface Props {
     rootPath: string;
@@ -58,22 +59,10 @@
     selectedEntries.length > 0 ? selectedEntries[selectedEntries.length - 1] : null,
   );
 
-  // Preview images per frame — stored as pre-scaled offscreen canvases for fast drawImage
+  // Preview images per frame — stored as offscreen canvases, drawn at footprint size each frame
   const previewImgs = new Map<string, HTMLCanvasElement>();
   const loadingPaths = new Set<string>();
   let previewVersion = $state(0);
-
-  const THUMB_MAX = 512;
-
-  function makeThumb(img: HTMLImageElement): HTMLCanvasElement {
-    const scale = Math.min(1, THUMB_MAX / img.naturalWidth, THUMB_MAX / img.naturalHeight);
-    const w = Math.round(img.naturalWidth  * scale);
-    const h = Math.round(img.naturalHeight * scale);
-    const c = document.createElement("canvas");
-    c.width = w; c.height = h;
-    c.getContext("2d")!.drawImage(img, 0, 0, w, h);
-    return c;
-  }
 
   // Per-frame rotation overrides: -90 | 0 | 90 degrees added on top of stored rotation
   const rotationOverrides = new Map<string, number>();
@@ -107,16 +96,17 @@
       const path = entry.nasPath;
       if (previewImgs.has(path) || loadingPaths.has(path)) continue;
       loadingPaths.add(path);
-      GeneratePreviewSized(path, 2048, entry.frameType === 'processed' ? 0 : 2)
-        .then((url) => {
-          const img = new Image();
-          img.onload = () => {
-            previewImgs.set(path, makeThumb(img));
-            loadingPaths.delete(path);
-            previewVersion++;
-          };
-          img.onerror = () => { loadingPaths.delete(path); previewVersion++; };
-          img.src = url;
+      GeneratePreviewRawSized(path, 2048)
+        .then((result) => {
+          const bin = atob(result.data);
+          const u8 = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+          const f32 = new Float32Array(u8.buffer);
+          const stretchLevel = entry.frameType === 'processed' ? 0 : 2;
+          const rendered = renderStretched(f32, result.width, result.height, result.channels, result.stats, stretchLevel);
+          if (rendered) previewImgs.set(path, rendered);
+          loadingPaths.delete(path);
+          previewVersion++;
         })
         .catch(() => { loadingPaths.delete(path); previewVersion++; });
     }
