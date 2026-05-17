@@ -13,10 +13,7 @@ The main features of the application are:
 
 ## Development notes
 
-We are currently in an unreleased version. Any data in the SQLite database does NOT need to be migrated and it's perfectly fine to assume we can throw it away. Making the code simpler and not dealing with sequential migrations for now is better.
-
 Do not put all the code into one file. Prefer a cleaner approach.
-
 
 ## Tool notes
 

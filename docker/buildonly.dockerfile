@@ -1,5 +1,5 @@
 # ── Stage 1: Build ───────────────────────────────────────────────────────────
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 # Install Node.js 22
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 
 # Wails Linux build dependencies (GTK3 + WebKit2GTK embedded browser)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        pkg-config \
-        libgtk-3-dev \
-        libwebkit2gtk-4.0-dev \
+    build-essential \
+    pkg-config \
+    libgtk-3-dev \
+    libwebkit2gtk-4.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install the Wails CLI matching the project version
