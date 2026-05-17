@@ -58,6 +58,10 @@ export function GeneratePreviewRawSized(arg1, arg2) {
   return window['go']['app']['App']['GeneratePreviewRawSized'](arg1, arg2);
 }
 
+export function GeneratePreviewSized(arg1, arg2, arg3) {
+  return window['go']['app']['App']['GeneratePreviewSized'](arg1, arg2, arg3);
+}
+
 export function GetAnnotations(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['app']['App']['GetAnnotations'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
