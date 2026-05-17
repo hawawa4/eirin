@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import type { app } from "../../wailsjs/go/models";
   import type { ColFilter, ColumnDef, FrameType } from "../lib/types";
@@ -19,6 +20,7 @@
     loadingMore?: boolean;
     onloadmore?: () => void;
     hiddenColumns?: string[];
+    resetKey?: unknown;
   }
 
   let {
@@ -30,6 +32,7 @@
     loadingMore = false,
     onloadmore,
     hiddenColumns = [],
+    resetKey = undefined,
   }: Props = $props();
 
   // ── Columns ───────────────────────────────────────────────────────────────
@@ -246,11 +249,14 @@
     );
   }
 
-  // Reset selection when frames list changes substantially
+  // Reset selection whenever the parent passes a new resetKey value.
+  // untrack prevents selectedPaths.clear() from adding a dependency back into this effect.
   $effect(() => {
-    void frames;
-    selectedPaths.clear();
-    onselectionchange?.(new SvelteSet());
+    void resetKey;
+    untrack(() => {
+      selectedPaths.clear();
+      onselectionchange?.(new SvelteSet());
+    });
   });
 </script>
 
