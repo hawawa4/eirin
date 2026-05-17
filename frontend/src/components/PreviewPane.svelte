@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { untrack } from "svelte";
   import type { app } from "../../wailsjs/go/models";
-  import { GeneratePreviewRaw, GeneratePreviewRawSized, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
+  import { GeneratePreviewRawSized, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
 
   interface Props {
@@ -44,7 +43,7 @@
   let annotations = $state<app.Annotation[]>([]);
   let annotationsLoading = $state(false);
 
-  // ── Viewport size tracking (for annotation coordinate projection) ─────────
+  // ── Viewport size tracking ─────────────────────────────────────────────────
   let viewportEl = $state<HTMLElement | null>(null);
   let viewportW = $state(0);
   let viewportH = $state(0);
@@ -68,12 +67,6 @@
   let previewReqId = 0;
   let hasImage = $state(false);
 
-  // ── Dynamic resolution ────────────────────────────────────────────────────
-  // Tracks the maxSize used for the currently loaded texture (768 = initial).
-  let loadedMaxSize = $state(768);
-  let zoomReqId = 0;
-  let upgradeTimer: ReturnType<typeof setTimeout> | null = null;
-
   // ── Zoom / pan ────────────────────────────────────────────────────────────
   let zoom = $state(1);
   let panX = $state(0);
@@ -82,10 +75,11 @@
   let panStartX = 0;
   let panStartY = 0;
 
-  function resetView() { zoom = 1; panX = 0; panY = 0; }
+  function resetView() { zoom = 1; panX = 0; panY = 0; scheduleRender(); }
 
-  // ── WebGL state ───────────────────────────────────────────────────────────
-  let canvas: HTMLCanvasElement;
+  // ── Offscreen WebGL canvas (never in DOM) ─────────────────────────────────
+  // Autostretch is rendered here; displayCanvas draws it via ctx2d.drawImage.
+  let glCanvas: HTMLCanvasElement | null = null;
   let gl: WebGL2RenderingContext | null = null;
   let program: WebGLProgram | null = null;
   let glTex: WebGLTexture | null = null;
@@ -98,6 +92,10 @@
     uChannelMode: WebGLUniformLocation;
   } | null = null;
   let rawInfo = $state<{ width: number; height: number; channels: number; stats: app.ChannelStats[]; } | null>(null);
+
+  // ── Visible 2D canvas (covers the full viewport, like SkyAtlas) ───────────
+  let displayCanvas: HTMLCanvasElement;
+  let ctx2d: CanvasRenderingContext2D | null = null;
 
   // ── GLSL shaders ──────────────────────────────────────────────────────────
   const VS = `#version 300 es
@@ -186,15 +184,42 @@ void main() {
     });
   }
 
-  // ── WebGL render ──────────────────────────────────────────────────────────
+  // ── 2D canvas display ─────────────────────────────────────────────────────
+
+  // Draws the offscreen glCanvas onto the visible 2D canvas with zoom/pan.
+  function redraw2d() {
+    if (!ctx2d || !glCanvas || !rawInfo) return;
+    const cW = displayCanvas.width;
+    const cH = displayCanvas.height;
+    ctx2d.clearRect(0, 0, cW, cH);
+    ctx2d.fillStyle = '#08090f';
+    ctx2d.fillRect(0, 0, cW, cH);
+
+    const cssScale = Math.min(cW / rawInfo.width, cH / rawInfo.height, 1.0);
+    const dW = zoom * cssScale * rawInfo.width;
+    const dH = zoom * cssScale * rawInfo.height;
+    const destX = (cW - dW) / 2 + panX;
+    const destY = (cH - dH) / 2 + panY;
+
+    ctx2d.drawImage(glCanvas, destX, destY, dW, dH);
+  }
+
+  let _renderPending = false;
+  function scheduleRender() {
+    if (_renderPending) return;
+    _renderPending = true;
+    requestAnimationFrame(() => { _renderPending = false; renderGL(); });
+  }
+
+  // ── Offscreen WebGL render ────────────────────────────────────────────────
 
   function renderGL() {
-    if (!gl || !program || !glTex || !glU || !rawInfo || gl.isContextLost()) return;
+    if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
     const uniforms = computeUniforms(rawInfo.stats, stretchEnabled && !isProcessed, stretchLevel);
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
     const u2 = uniforms[2] ?? u0;
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
     gl.useProgram(program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, glTex);
@@ -205,15 +230,16 @@ void main() {
     gl.uniform1i(glU.uChannels, rawInfo.channels);
     gl.uniform1i(glU.uChannelMode, channelMode);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    redraw2d();
   }
 
   function renderGLWith(stats: app.ChannelStats[], enabled: boolean, level: number, chMode: 0|1|2|3 = 0) {
-    if (!gl || !program || !glTex || !glU || !rawInfo || gl.isContextLost()) return;
+    if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
     const uniforms = computeUniforms(stats, enabled, level);
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
     const u2 = uniforms[2] ?? u0;
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
     gl.useProgram(program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, glTex);
@@ -224,49 +250,39 @@ void main() {
     gl.uniform1i(glU.uChannels, rawInfo.channels);
     gl.uniform1i(glU.uChannelMode, chMode);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    redraw2d();
   }
 
-  // ── WebGL init ────────────────────────────────────────────────────────────
+  // ── WebGL helpers ─────────────────────────────────────────────────────────
 
-  onMount(() => {
-    const ctx = canvas.getContext("webgl2");
-    if (!ctx) { previewError = "WebGL2 not supported"; return; }
+  function setupGLContext(ctx: WebGL2RenderingContext): boolean {
     gl = ctx;
-
-    const compileShader = (type: number, src: string): WebGLShader | null => {
+    const compile = (type: number, src: string): WebGLShader | null => {
       const s = gl!.createShader(type)!;
       gl!.shaderSource(s, src);
       gl!.compileShader(s);
-      if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) {
-        console.error("Shader error:", gl!.getShaderInfoLog(s));
-        gl!.deleteShader(s);
-        return null;
-      }
+      if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) { gl!.deleteShader(s); return null; }
       return s;
     };
-
-    const vs = compileShader(gl.VERTEX_SHADER, VS);
-    const fs = compileShader(gl.FRAGMENT_SHADER, FS);
-    if (!vs || !fs) { previewError = "Shader compile failed"; return; }
-
+    const vs = compile(gl.VERTEX_SHADER, VS);
+    const fs = compile(gl.FRAGMENT_SHADER, FS);
+    if (!vs || !fs) { previewError = "Shader compile failed"; return false; }
     program = gl.createProgram()!;
     gl.attachShader(program, vs);
     gl.attachShader(program, fs);
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
       previewError = "Shader link failed: " + gl.getProgramInfoLog(program);
-      return;
+      return false;
     }
     gl.deleteShader(vs);
     gl.deleteShader(fs);
-
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
     const aPos = gl.getAttribLocation(program, "aPos");
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-
     glTex = gl.createTexture();
     glU = {
       uTex:         gl.getUniformLocation(program, "uTex")!,
@@ -276,6 +292,57 @@ void main() {
       uChannels:    gl.getUniformLocation(program, "uChannels")!,
       uChannelMode: gl.getUniformLocation(program, "uChannelMode")!,
     };
+    return true;
+  }
+
+  function uploadTexture(f32: Float32Array, width: number, height: number, linear: boolean) {
+    if (!gl || !glTex || gl.isContextLost()) return;
+    const filter = linear ? gl.LINEAR : gl.NEAREST;
+    gl.bindTexture(gl.TEXTURE_2D, glTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, f32);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  // Creates a fresh offscreen WebGL canvas sized to the given image dimensions.
+  function createGLCanvas(width: number, height: number): boolean {
+    if (gl && !gl.isContextLost()) {
+      if (program) gl.deleteProgram(program);
+      if (glTex)   gl.deleteTexture(glTex);
+    }
+    gl = null; program = null; glTex = null; glU = null;
+
+    glCanvas = document.createElement('canvas');
+    glCanvas.width  = width;
+    glCanvas.height = height;
+    const ctx = glCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+    if (!ctx) { previewError = "WebGL2 not supported"; return false; }
+    return setupGLContext(ctx);
+  }
+
+  // ── Svelte action — mounts the visible 2D canvas ──────────────────────────
+
+  function initDisplay(node: HTMLCanvasElement) {
+    displayCanvas = node;
+    node.width  = viewportW || 800;
+    node.height = viewportH || 600;
+    ctx2d = node.getContext('2d');
+    return {
+      destroy() { ctx2d = null; },
+    };
+  }
+
+  // Resize the visible 2D canvas when the viewport changes; redraw immediately.
+  $effect(() => {
+    const w = viewportW;
+    const h = viewportH;
+    if (!displayCanvas || w === 0 || h === 0) return;
+    if (displayCanvas.width === w && displayCanvas.height === h) return;
+    displayCanvas.width  = w;
+    displayCanvas.height = h;
+    redraw2d();
   });
 
   // ── Load when entry changes ───────────────────────────────────────────────
@@ -290,15 +357,13 @@ void main() {
     histBins       = null;
     annotations    = [];
     showAnnotations = false;
-    loadedMaxSize  = 768;
-    if (upgradeTimer) { clearTimeout(upgradeTimer); upgradeTimer = null; }
     resetView();
 
     const id = ++previewReqId;
     const se = untrack(() => stretchEnabled);
     const sl = untrack(() => stretchLevel);
 
-    Promise.allSettled([ReadFITSHeader(e.path), GeneratePreviewRaw(e.path)]).then(
+    Promise.allSettled([ReadFITSHeader(e.path), GeneratePreviewRawSized(e.path, 2048)]).then(
       ([hdrResult, rawResult]) => {
         if (id !== previewReqId) return;
         previewLoading = false;
@@ -315,17 +380,8 @@ void main() {
 
           rawInfo = { width: result.width, height: result.height, channels: result.channels, stats: result.stats };
 
-          canvas.width  = result.width;
-          canvas.height = result.height;
-
-          if (gl && glTex) {
-            gl.bindTexture(gl.TEXTURE_2D, glTex);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, result.width, result.height, 0, gl.RGBA, gl.FLOAT, f32);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-          }
+          if (!createGLCanvas(result.width, result.height)) return;
+          uploadTexture(f32, result.width, result.height, false);
 
           const qf = untrack(() => qualityFrame);
           renderGLWith(rawInfo.stats, se && qf?.frameType !== 'processed', sl, 0);
@@ -357,7 +413,6 @@ void main() {
       g[Math.min(255, Math.max(0, (f32[i+1] * 255) | 0))]++;
       b[Math.min(255, Math.max(0, (f32[i+2] * 255) | 0))]++;
     }
-    // Normalize excluding bin 0 (black sky background dominates)
     let peak = 1;
     for (let i = 1; i < 256; i++) {
       if (r[i] > peak) peak = r[i];
@@ -368,7 +423,6 @@ void main() {
     return { r, g, b, channels };
   }
 
-  // Redraw histogram whenever the canvas is mounted or data/stretch changes.
   $effect(() => {
     const hb  = histBins;
     const hc  = histCanvas;
@@ -400,7 +454,6 @@ void main() {
       }
     }
 
-    // Shadow clip marker
     if (stats.length > 0) {
       const u0 = computeUniforms(stats, enabled, level)[0];
       if (u0 && u0.shadows > 0) {
@@ -420,7 +473,6 @@ void main() {
 
   // ── Annotations ───────────────────────────────────────────────────────────
 
-  // True when we have enough WCS data to attempt annotation projection.
   let canAnnotate = $derived(
     !!(qualityFrame?.wcsSolved ||
       (fitsHeader?.ra && fitsHeader.pixelScale > 0))
@@ -440,21 +492,14 @@ void main() {
     }).catch(() => { annotationsLoading = false; });
   });
 
-  // Convert image-space pixel coordinates to viewport-space coordinates.
-  // The canvas uses max-width/max-height CSS (scales down to fit viewport, preserves AR),
-  // followed by a translate+scale CSS transform for zoom/pan.
+  // Image-space pixel → viewport-space pixel (matches the drawImage transform in redraw2d).
   function imgToViewport(imgX: number, imgY: number): { x: number; y: number } {
     if (!rawInfo || viewportW === 0 || viewportH === 0) return { x: -9999, y: -9999 };
     const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
-    const displayW = rawInfo.width  * cssScale;
-    const displayH = rawInfo.height * cssScale;
-    // Canvas center in viewport (before zoom/pan)
     const cx = viewportW / 2;
     const cy = viewportH / 2;
-    // Image pixel → offset from canvas center in CSS px
     const dx = (imgX - rawInfo.width  / 2) * cssScale;
     const dy = (imgY - rawInfo.height / 2) * cssScale;
-    void displayW; void displayH; // used implicitly via cssScale
     return {
       x: cx + dx * zoom + panX,
       y: cy + dy * zoom + panY,
@@ -466,57 +511,14 @@ void main() {
   function onWheel(e: WheelEvent) {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 0.87;
-    const newZoom = Math.max(0.1, Math.min(1.85, zoom * factor));
+    const newZoom = Math.max(0.1, Math.min(20, zoom * factor));
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const mx = e.clientX - rect.left - rect.width  / 2;
     const my = e.clientY - rect.top  - rect.height / 2;
     panX = mx - ((mx - panX) * newZoom) / zoom;
     panY = my - ((my - panY) * newZoom) / zoom;
     zoom = newZoom;
-
-    if (upgradeTimer) clearTimeout(upgradeTimer);
-    upgradeTimer = setTimeout(checkResolution, 450);
-  }
-
-  // Upgrades the WebGL texture to a higher resolution when the user has zoomed
-  // in past the point where the current texture provides native pixel quality.
-  async function checkResolution() {
-    upgradeTimer = null;
-    if (!rawInfo || !entry || !viewportW) return;
-    const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
-    const effective = zoom * cssScale;
-
-    if (!(effective > 1.3 && loadedMaxSize <= 768)) return;
-    const neededSize = 2048;
-
-    const id = ++zoomReqId;
-    let result;
-    try {
-      result = await GeneratePreviewRawSized(entry.path, neededSize);
-    } catch {
-      return;
-    }
-    if (id !== zoomReqId) return; // superseded
-
-    const bin = atob(result.data);
-    const u8 = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    const f32 = new Float32Array(u8.buffer);
-
-    rawInfo = { width: result.width, height: result.height, channels: result.channels, stats: rawInfo.stats };
-    canvas.width  = result.width;
-    canvas.height = result.height;
-    loadedMaxSize = neededSize;
-
-    if (gl && glTex && !gl.isContextLost()) {
-      gl.bindTexture(gl.TEXTURE_2D, glTex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, result.width, result.height, 0, gl.RGBA, gl.FLOAT, f32);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    }
-    renderGL();
+    scheduleRender();
   }
 
   function onPanStart(e: MouseEvent) {
@@ -525,7 +527,7 @@ void main() {
     panStartX = e.clientX - panX;
     panStartY = e.clientY - panY;
   }
-  function onPanMove(e: MouseEvent) { if (!isPanning) return; panX = e.clientX - panStartX; panY = e.clientY - panStartY; }
+  function onPanMove(e: MouseEvent) { if (!isPanning) return; panX = e.clientX - panStartX; panY = e.clientY - panStartY; scheduleRender(); }
   function onPanEnd()               { isPanning = false; }
 </script>
 
@@ -585,12 +587,10 @@ void main() {
     onmouseleave={onPanEnd}
     ondblclick={resetView}
   >
-    <!-- Canvas kept in DOM so WebGL context survives re-renders -->
     <canvas
-      bind:this={canvas}
-      class="preview-canvas"
+      use:initDisplay
+      class="display-canvas"
       class:visible={hasImage && !previewLoading}
-      style="transform: translate({panX}px, {panY}px) scale({zoom});"
       draggable="false"
     ></canvas>
 
@@ -790,17 +790,17 @@ void main() {
   }
   .image-viewport.panning { cursor: grabbing; }
 
-  .preview-canvas {
-    max-width: 100%;
-    max-height: 100%;
+  .display-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     display: block;
     user-select: none;
     pointer-events: none;
-    transform-origin: center;
-    will-change: transform;
     visibility: hidden;
   }
-  .preview-canvas.visible { visibility: visible; }
+  .display-canvas.visible { visibility: visible; }
 
   /* ── Annotation SVG (absolute, viewport-space) ───────────────────────── */
   .annotation-svg {
