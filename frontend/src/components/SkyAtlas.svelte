@@ -12,6 +12,7 @@
 
   // ── State ─────────────────────────────────────────────────────────────────
   let canvas: HTMLCanvasElement;
+  let ctx: CanvasRenderingContext2D | null = null;
   let container: HTMLElement;
   let canvasW = $state(800);
   let canvasH = $state(600);
@@ -57,10 +58,22 @@
     selectedEntries.length > 0 ? selectedEntries[selectedEntries.length - 1] : null,
   );
 
-  // Preview images per frame (Map; previewVersion drives redraws)
-  const previewImgs = new Map<string, HTMLImageElement>();
+  // Preview images per frame — stored as pre-scaled offscreen canvases for fast drawImage
+  const previewImgs = new Map<string, HTMLCanvasElement>();
   const loadingPaths = new Set<string>();
   let previewVersion = $state(0);
+
+  const THUMB_MAX = 512;
+
+  function makeThumb(img: HTMLImageElement): HTMLCanvasElement {
+    const scale = Math.min(1, THUMB_MAX / img.naturalWidth, THUMB_MAX / img.naturalHeight);
+    const w = Math.round(img.naturalWidth  * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d")!.drawImage(img, 0, 0, w, h);
+    return c;
+  }
 
   // Per-frame rotation overrides: -90 | 0 | 90 degrees added on top of stored rotation
   const rotationOverrides = new Map<string, number>();
@@ -98,7 +111,7 @@
         .then((url) => {
           const img = new Image();
           img.onload = () => {
-            previewImgs.set(path, img);
+            previewImgs.set(path, makeThumb(img));
             loadingPaths.delete(path);
             previewVersion++;
           };
@@ -182,8 +195,6 @@
   // ── Draw ──────────────────────────────────────────────────────────────────
 
   function redraw() {
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
     ctx.fillStyle = "#050610";
@@ -212,14 +223,23 @@
 
     const decStep = pixPerDeg >= 30 ? 5 : 10;
     const raStep  = pixPerDeg >= 50 ? 5 : 15;
+    // At high zoom only a small FOV is visible; sample fewer points per line.
+    const fovDeg  = canvasW / pixPerDeg;
+    const ptStep  = Math.max(1, Math.round(fovDeg / 40));
+    const margin  = 60;
 
     for (let dec = -90; dec <= 90; dec += decStep) {
+      // Quick cull: center of this dec line must be near the screen
+      const mid = project(viewRA, dec);
+      if (mid && (mid[1] < -canvasH || mid[1] > canvasH * 2)) continue;
       const pts: [number, number][] = [];
-      for (let ra = 0; ra <= 360; ra += 2) {
+      for (let ra = 0; ra <= 360; ra += ptStep) {
         const p = project(ra, dec);
         if (p) pts.push(p);
       }
       if (pts.length < 2) continue;
+      // Skip if entirely off-screen
+      if (pts.every(([x, y]) => x < -margin || x > canvasW + margin || y < -margin || y > canvasH + margin)) continue;
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -227,12 +247,15 @@
     }
 
     for (let ra = 0; ra < 360; ra += raStep) {
+      const mid = project(ra, viewDec);
+      if (mid && (mid[0] < -canvasW || mid[0] > canvasW * 2)) continue;
       const pts: [number, number][] = [];
-      for (let dec = -85; dec <= 85; dec += 2) {
+      for (let dec = -85; dec <= 85; dec += ptStep) {
         const p = project(ra, dec);
         if (p) pts.push(p);
       }
       if (pts.length < 2) continue;
+      if (pts.every(([x, y]) => x < -margin || x > canvasW + margin || y < -margin || y > canvasH + margin)) continue;
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -413,11 +436,18 @@
 
   // ── Reactive redraw ───────────────────────────────────────────────────────
 
+  let _redrawPending = false;
+  function scheduleRedraw() {
+    if (_redrawPending) return;
+    _redrawPending = true;
+    requestAnimationFrame(() => { _redrawPending = false; redraw(); });
+  }
+
   $effect(() => {
     void viewRA; void viewDec; void pixPerDeg; void index; void catalog;
     void hoveredEntry; void selectedEntries; void canvasW; void canvasH; void sizesVersion;
     void previewVersion; void showStacked; void rotOverVersion;
-    requestAnimationFrame(redraw);
+    scheduleRedraw();
   });
 
   // ── Lazy size loading ─────────────────────────────────────────────────────
@@ -536,6 +566,8 @@
   // ── Mount / resize ────────────────────────────────────────────────────────
 
   onMount(() => {
+    ctx = canvas.getContext("2d");
+
     const ro = new ResizeObserver((entries) => {
       canvasW = entries[0].contentRect.width  || canvasW;
       canvasH = entries[0].contentRect.height || canvasH;

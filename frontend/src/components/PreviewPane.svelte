@@ -29,16 +29,13 @@
   let statsCollapsed = $state(false);
   let coordsCollapsed = $state(false);
 
-  // ── Channel display mode (0=all, 1=R, 2=G, 3=B) ───────────────────────────
   let channelMode = $state<0 | 1 | 2 | 3>(0);
 
-  // ── Histogram overlay ─────────────────────────────────────────────────────
   let showHistogram = $state(false);
   let histCanvas = $state<HTMLCanvasElement | null>(null);
   interface HistBins { r: Float32Array; g: Float32Array; b: Float32Array; channels: number; }
   let histBins = $state<HistBins | null>(null);
 
-  // ── Annotation overlay ────────────────────────────────────────────────────
   let showAnnotations = $state(false);
   let annotations = $state<app.Annotation[]>([]);
   let annotationsLoading = $state(false);
@@ -60,7 +57,6 @@
     return () => obs.disconnect();
   });
 
-  // ── Preview load state ───────────────────────────────────────────────────
   let previewLoading = $state(false);
   let previewError = $state("");
   let fitsHeader = $state<app.FITSHeader | null>(null);
@@ -77,8 +73,7 @@
 
   function resetView() { zoom = 1; panX = 0; panY = 0; scheduleRender(); }
 
-  // ── Offscreen WebGL canvas (never in DOM) ─────────────────────────────────
-  // Autostretch is rendered here; displayCanvas draws it via ctx2d.drawImage.
+  // Offscreen WebGL canvas — autostretch rendered here; displayCanvas blits it via ctx2d.drawImage.
   let glCanvas: HTMLCanvasElement | null = null;
   let gl: WebGL2RenderingContext | null = null;
   let program: WebGLProgram | null = null;
@@ -93,7 +88,6 @@
   } | null = null;
   let rawInfo = $state<{ width: number; height: number; channels: number; stats: app.ChannelStats[]; } | null>(null);
 
-  // ── Visible 2D canvas (covers the full viewport, like SkyAtlas) ───────────
   let displayCanvas: HTMLCanvasElement;
   let ctx2d: CanvasRenderingContext2D | null = null;
 
@@ -154,8 +148,6 @@ void main() {
   }
 }`;
 
-  // ── Stretch math ─────────────────────────────────────────────────────────
-
   function mtfMidtone(target: number, x: number): number {
     if (x === 0) return 0;
     const d = x * (1 - 2 * target) + target;
@@ -186,7 +178,6 @@ void main() {
 
   // ── 2D canvas display ─────────────────────────────────────────────────────
 
-  // Draws the offscreen glCanvas onto the visible 2D canvas with zoom/pan.
   function redraw2d() {
     if (!ctx2d || !glCanvas || !rawInfo) return;
     const cW = displayCanvas.width;
@@ -213,9 +204,18 @@ void main() {
 
   // ── Offscreen WebGL render ────────────────────────────────────────────────
 
-  function renderGL() {
+  function renderGL(
+    stats?: app.ChannelStats[],
+    enabled?: boolean,
+    level?: number,
+    chMode?: 0 | 1 | 2 | 3,
+  ) {
     if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
-    const uniforms = computeUniforms(rawInfo.stats, stretchEnabled && !isProcessed, stretchLevel);
+    const uniforms = computeUniforms(
+      stats   ?? rawInfo.stats,
+      enabled ?? (stretchEnabled && !isProcessed),
+      level   ?? stretchLevel,
+    );
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
     const u2 = uniforms[2] ?? u0;
@@ -228,32 +228,12 @@ void main() {
     gl.uniform3fv(glU.uMidtones, [u0.midtone, u1.midtone, u2.midtone]);
     gl.uniform1i(glU.uLinear, u0.linear ? 1 : 0);
     gl.uniform1i(glU.uChannels, rawInfo.channels);
-    gl.uniform1i(glU.uChannelMode, channelMode);
+    gl.uniform1i(glU.uChannelMode, chMode ?? channelMode);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     redraw2d();
   }
 
-  function renderGLWith(stats: app.ChannelStats[], enabled: boolean, level: number, chMode: 0|1|2|3 = 0) {
-    if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
-    const uniforms = computeUniforms(stats, enabled, level);
-    const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
-    const u1 = uniforms[1] ?? u0;
-    const u2 = uniforms[2] ?? u0;
-    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
-    gl.useProgram(program);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, glTex);
-    gl.uniform1i(glU.uTex, 0);
-    gl.uniform3fv(glU.uShadows,  [u0.shadows, u1.shadows, u2.shadows]);
-    gl.uniform3fv(glU.uMidtones, [u0.midtone, u1.midtone, u2.midtone]);
-    gl.uniform1i(glU.uLinear, u0.linear ? 1 : 0);
-    gl.uniform1i(glU.uChannels, rawInfo.channels);
-    gl.uniform1i(glU.uChannelMode, chMode);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    redraw2d();
-  }
-
-  // ── WebGL helpers ─────────────────────────────────────────────────────────
+  // ── WebGL helpers ────────────────────────────────────────────────────────
 
   function setupGLContext(ctx: WebGL2RenderingContext): boolean {
     gl = ctx;
@@ -306,7 +286,6 @@ void main() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
-  // Creates a fresh offscreen WebGL canvas sized to the given image dimensions.
   function createGLCanvas(width: number, height: number): boolean {
     if (gl && !gl.isContextLost()) {
       if (program) gl.deleteProgram(program);
@@ -322,8 +301,6 @@ void main() {
     return setupGLContext(ctx);
   }
 
-  // ── Svelte action — mounts the visible 2D canvas ──────────────────────────
-
   function initDisplay(node: HTMLCanvasElement) {
     displayCanvas = node;
     node.width  = viewportW || 800;
@@ -334,7 +311,6 @@ void main() {
     };
   }
 
-  // Resize the visible 2D canvas when the viewport changes; redraw immediately.
   $effect(() => {
     const w = viewportW;
     const h = viewportH;
@@ -345,7 +321,7 @@ void main() {
     redraw2d();
   });
 
-  // ── Load when entry changes ───────────────────────────────────────────────
+  // ── Load when entry changes ──────────────────────────────────────────────
 
   $effect(() => {
     const e = entry;
@@ -384,10 +360,9 @@ void main() {
           uploadTexture(f32, result.width, result.height, false);
 
           const qf = untrack(() => qualityFrame);
-          renderGLWith(rawInfo.stats, se && qf?.frameType !== 'processed', sl, 0);
+          renderGL(rawInfo.stats, se && qf?.frameType !== 'processed', sl, 0);
           hasImage = true;
 
-          // Compute histogram off the main render path
           setTimeout(() => { histBins = computeHistBins(f32, result.channels); }, 0);
         } else {
           previewError = (rawResult as PromiseRejectedResult).reason?.toString() ?? "Preview failed";
@@ -396,13 +371,11 @@ void main() {
     );
   });
 
-  // ── Stretch / channel controls ────────────────────────────────────────────
-
   function applyStretch()         { renderGL(); }
   function setStretch(l: number)  { stretchLevel = l; renderGL(); }
   function setChannelMode(m: 0|1|2|3) { channelMode = m; renderGL(); }
 
-  // ── Histogram ─────────────────────────────────────────────────────────────
+  // ── Histogram ────────────────────────────────────────────────────────────
 
   function computeHistBins(f32: Float32Array, channels: number): HistBins {
     const r = new Float32Array(256);
@@ -471,7 +444,7 @@ void main() {
     ctx2.strokeRect(0, 0, W, H);
   }
 
-  // ── Annotations ───────────────────────────────────────────────────────────
+  // ── Annotations ──────────────────────────────────────────────────────────
 
   let canAnnotate = $derived(
     !!(qualityFrame?.wcsSolved ||
@@ -492,7 +465,6 @@ void main() {
     }).catch(() => { annotationsLoading = false; });
   });
 
-  // Image-space pixel → viewport-space pixel (matches the drawImage transform in redraw2d).
   function imgToViewport(imgX: number, imgY: number): { x: number; y: number } {
     if (!rawInfo || viewportW === 0 || viewportH === 0) return { x: -9999, y: -9999 };
     const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
@@ -505,8 +477,6 @@ void main() {
       y: cy + dy * zoom + panY,
     };
   }
-
-  // ── Wheel zoom ────────────────────────────────────────────────────────────
 
   function onWheel(e: WheelEvent) {
     e.preventDefault();
