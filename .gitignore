@@ -10,6 +10,7 @@ vendor/
 
 # Wails build output
 build/bin/
+build/
 dist/
 
 # Frontend
