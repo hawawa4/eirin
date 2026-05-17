@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { app } from "../../wailsjs/go/models";
+  import type { app, fits, catalog } from "../../wailsjs/go/models";
   import { GeneratePreviewRawSized, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
   import { mtfMidtone } from "../lib/stretchPreview";
@@ -38,7 +38,7 @@
   let histBins = $state<HistBins | null>(null);
 
   let showAnnotations = $state(false);
-  let annotations = $state<app.Annotation[]>([]);
+  let annotations = $state<catalog.Annotation[]>([]);
   let annotationsLoading = $state(false);
 
   // ── Viewport size tracking ─────────────────────────────────────────────────
@@ -60,7 +60,7 @@
 
   let previewLoading = $state(false);
   let previewError = $state("");
-  let fitsHeader = $state<app.FITSHeader | null>(null);
+  let fitsHeader = $state<fits.FITSHeader | null>(null);
   let previewReqId = 0;
   let hasImage = $state(false);
 
@@ -87,7 +87,7 @@
     uChannels: WebGLUniformLocation;
     uChannelMode: WebGLUniformLocation;
   } | null = null;
-  let rawInfo = $state<{ width: number; height: number; channels: number; stats: app.ChannelStats[]; } | null>(null);
+  let rawInfo = $state<{ width: number; height: number; channels: number; stats: fits.ChannelStats[]; } | null>(null);
 
   let displayCanvas: HTMLCanvasElement;
   let ctx2d: CanvasRenderingContext2D | null = null;
@@ -151,7 +151,7 @@ void main() {
 
   interface StretchUniforms { shadows: number; midtone: number; linear: boolean; }
 
-  function computeUniforms(stats: app.ChannelStats[], enabled: boolean, level: number): StretchUniforms[] {
+  function computeUniforms(stats: fits.ChannelStats[], enabled: boolean, level: number): StretchUniforms[] {
     const presets = [
       { shadowsFactor: -1.25, targetBG: 0.1  },
       { shadowsFactor: -2.8,  targetBG: 0.25 },
@@ -199,7 +199,7 @@ void main() {
   // ── Offscreen WebGL render ────────────────────────────────────────────────
 
   function renderGL(
-    stats?: app.ChannelStats[],
+    stats?: fits.ChannelStats[],
     enabled?: boolean,
     level?: number,
     chMode?: 0 | 1 | 2 | 3,
@@ -401,7 +401,7 @@ void main() {
     if (ctx2) drawHistogram(ctx2, hb, ri.stats, se, sl);
   });
 
-  function drawHistogram(ctx2: CanvasRenderingContext2D, hb: HistBins, stats: app.ChannelStats[], enabled: boolean, level: number) {
+  function drawHistogram(ctx2: CanvasRenderingContext2D, hb: HistBins, stats: fits.ChannelStats[], enabled: boolean, level: number) {
     const W = 200, H = 70;
     ctx2.clearRect(0, 0, W, H);
     ctx2.fillStyle = "rgba(8,9,15,0.82)";
