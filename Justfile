@@ -60,8 +60,11 @@ format:
 # ── Utilities ────────────────────────────────────────────────────────────────
 
 # Install frontend npm dependencies
-install:
+install-frontend:
     cd frontend && npm install
+
+install-backend:
+    go mod tidy
 
 # Remove all build artifacts
 clean:
