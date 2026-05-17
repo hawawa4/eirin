@@ -57,7 +57,8 @@
   }
 
   function togglePlay() {
-    playing ? stopBlink() : startBlink();
+    if (playing) stopBlink();
+    else startBlink();
   }
 
   function step(dir: -1 | 1) {
@@ -98,7 +99,8 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-      confirmDelete ? (confirmDelete = false) : onclose();
+      if (confirmDelete) confirmDelete = false;
+      else onclose();
     }
     if (e.key === " ") {
       e.preventDefault();
@@ -189,7 +191,7 @@
       </div>
 
       <div class="blink-dots">
-        {#each frames as _, i}
+        {#each frames as frame, i (frame.nasPath)}
           <button
             class="blink-dot"
             class:active={i === currentIndex}

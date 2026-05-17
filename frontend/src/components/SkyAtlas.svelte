@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import type { app } from "../../wailsjs/go/models";
   import {
     GetAtlasIndex,
@@ -38,10 +39,10 @@
     showStacked ? index : index.filter((e) => e.frameType === "processed"),
   );
 
-  // Size cache: nasPath → pixel dimensions (plain Map; sizesVersion drives redraws)
-  const sizes = new Map<string, { width: number; height: number }>();
+  // Size cache: nasPath → pixel dimensions (sizesVersion drives redraws)
+  const sizes = new SvelteMap<string, { width: number; height: number }>();
   let sizesVersion = $state(0);
-  const fetchingPaths = new Set<string>();
+  const fetchingPaths = new SvelteSet<string>();
   let fetchingCount = $state(0); // reactive counter for in-flight GetAtlasFrameSize calls
 
   // Pan state
@@ -65,12 +66,12 @@
   );
 
   // Preview images per frame — stored as offscreen canvases, drawn at footprint size each frame
-  const previewImgs = new Map<string, HTMLCanvasElement>();
-  const loadingPaths = new Set<string>();
+  const previewImgs = new SvelteMap<string, HTMLCanvasElement>();
+  const loadingPaths = new SvelteSet<string>();
   let previewVersion = $state(0);
 
   // Per-frame rotation overrides: -90 | 0 | 90 degrees added on top of stored rotation
-  const rotationOverrides = new Map<string, number>();
+  const rotationOverrides = new SvelteMap<string, number>();
   let rotOverVersion = $state(0);
 
   // True when any preview image or frame size is currently being fetched
@@ -676,7 +677,6 @@
   });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="atlas-root" bind:this={container}>
   <canvas
     bind:this={canvas}

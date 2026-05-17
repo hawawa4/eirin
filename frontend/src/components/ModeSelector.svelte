@@ -28,7 +28,7 @@
 </script>
 
 <div class="mode-selector">
-  {#each modes as m}
+  {#each modes as m (m.value)}
     {@const disabled = m.requiresRoot && !rootFolder}
     <button
       class="mode-btn"

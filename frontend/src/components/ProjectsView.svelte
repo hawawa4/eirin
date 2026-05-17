@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import {
     ListProjects,
     CreateProject,
@@ -220,7 +221,7 @@
   }
 
   function toggleObject(obj: string) {
-    const next = new Set(pickerObjects);
+    const next = new SvelteSet(pickerObjects);
     if (next.has(obj)) next.delete(obj);
     else next.add(obj);
     pickerObjects = next;
@@ -250,7 +251,7 @@
   }
 
   function toggleImportFile(path: string) {
-    const next = new Set(importSelected);
+    const next = new SvelteSet(importSelected);
     if (next.has(path)) next.delete(path);
     else next.add(path);
     importSelected = next;
@@ -528,7 +529,7 @@
             <p class="hint padded">No indexed light frames found. Run Build Index first.</p>
           {:else}
             <div class="object-list">
-              {#each availableObjects as obj}
+              {#each availableObjects as obj (obj)}
                 <label class="object-item">
                   <input
                     type="checkbox"

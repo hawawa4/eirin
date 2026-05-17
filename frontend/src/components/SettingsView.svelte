@@ -7,14 +7,13 @@
     SelectProjectsFolder,
     SetProjectsFolder,
   } from "../../wailsjs/go/app/App.js";
-  import type { AppInfo, IndexProgress, SirilInfo } from "../lib/types";
+  import type { AppInfo, SirilInfo } from "../lib/types";
 
   interface Props {
     rootFolder: string;
     projectsFolder: string;
     appInfo: AppInfo;
     indexRunning: boolean;
-    indexProgress: IndexProgress | null;
     onselectfolder: () => void;
     onbuildindex: () => void;
     onsirilchange: (info: SirilInfo) => void;
@@ -26,7 +25,7 @@
     projectsFolder,
     appInfo,
     indexRunning,
-    indexProgress,
+
     onselectfolder,
     onbuildindex,
     onsirilchange,
