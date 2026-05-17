@@ -84,6 +84,7 @@
   let pickerLoading = $state(false);
   let pickerLoadingMore = $state(false);
   let pickerSelected = $state<Set<string>>(new Set());
+  let pickerResetKey = $state(0);
   let addMode = $state<"symlink" | "copy">("symlink");
   let adding = $state(false);
   let addError = $state("");
@@ -202,6 +203,7 @@
       pickerFrames = [];
       pickerOffset = 0;
       pickerHasMore = false;
+      pickerResetKey++;
     }
     pickerLoadingMore = true;
     try {
@@ -418,6 +420,7 @@
                   frames={projectLibraryFrames}
                   onremove={doRemoveFrames}
                   hiddenColumns={["frameType"]}
+                  resetKey={selected?.id}
                 />
               {/if}
             </div>
@@ -577,6 +580,7 @@
               onloadmore={() => loadPickerFrames(false)}
               onselectionchange={(s) => (pickerSelected = s)}
               hiddenColumns={["frameType"]}
+              resetKey={pickerResetKey}
             />
           {/if}
         </div>
