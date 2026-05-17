@@ -76,6 +76,10 @@ func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 	return generatePreview(path, 1024, stretchLevel)
 }
 
+func (a *App) GeneratePreviewSized(path string, maxSize, stretchLevel int) (string, error) {
+	return generatePreview(path, maxSize, stretchLevel)
+}
+
 // GeneratePreviewRaw returns raw float32 RGBA pixel data (base64-encoded) plus
 // per-channel statistics for WebGL-based MTF rendering on the frontend.
 // All channels are globally normalised so colour balance is preserved.

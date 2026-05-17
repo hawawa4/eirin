@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { app } from "../../wailsjs/go/models";
-  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog, GeneratePreview } from "../../wailsjs/go/app/App.js";
+  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog, GeneratePreviewSized } from "../../wailsjs/go/app/App.js";
 
   interface Props {
     rootPath: string;
@@ -107,7 +107,7 @@
       const path = entry.nasPath;
       if (previewImgs.has(path) || loadingPaths.has(path)) continue;
       loadingPaths.add(path);
-      GeneratePreview(path, entry.frameType === 'processed' ? 0 : 2)
+      GeneratePreviewSized(path, 2048, entry.frameType === 'processed' ? 0 : 2)
         .then((url) => {
           const img = new Image();
           img.onload = () => {
