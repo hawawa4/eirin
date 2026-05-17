@@ -27,11 +27,7 @@ export function DeleteProject(arg1:number):Promise<void>;
 
 export function GeneratePreview(arg1:string,arg2:number):Promise<string>;
 
-export function GeneratePreviewRaw(arg1:string):Promise<app.RawPreviewData>;
-
 export function GeneratePreviewRawSized(arg1:string,arg2:number):Promise<app.RawPreviewData>;
-
-export function GeneratePreviewSized(arg1:string,arg2:number,arg3:number):Promise<string>;
 
 export function GetAnnotations(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number,arg6:number):Promise<Array<app.Annotation>>;
 

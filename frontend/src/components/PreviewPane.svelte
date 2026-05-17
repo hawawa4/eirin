@@ -3,6 +3,7 @@
   import type { app } from "../../wailsjs/go/models";
   import { GeneratePreviewRawSized, ReadFITSHeader, GetAnnotations } from "../../wailsjs/go/app/App.js";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
+  import { mtfMidtone } from "../lib/stretchPreview";
 
   interface Props {
     entry: app.EnrichedFileEntry;
@@ -147,13 +148,6 @@ void main() {
     fragColor = vec4(r, g, b, 1.0);
   }
 }`;
-
-  function mtfMidtone(target: number, x: number): number {
-    if (x === 0) return 0;
-    const d = x * (1 - 2 * target) + target;
-    if (d === 0) return 0;
-    return (x * (1 - target)) / d;
-  }
 
   interface StretchUniforms { shadows: number; midtone: number; linear: boolean; }
 

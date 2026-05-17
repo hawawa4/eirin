@@ -62,6 +62,13 @@ export type Theme = "blue" | "red" | "grey";
 
 export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "processed";
 
+export interface ColFilter {
+  text?: string;
+  numOp?: "<" | ">";
+  numVal?: number | null;
+  types?: FrameType[];
+}
+
 export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
 
 export type ImportState = "idle" | "scanning" | "scanned" | "importing" | "done" | "error";

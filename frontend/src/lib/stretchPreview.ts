@@ -1,6 +1,6 @@
 import type { app } from "../../wailsjs/go/models";
 
-function mtfMidtone(target: number, x: number): number {
+export function mtfMidtone(target: number, x: number): number {
   if (x === 0) return 0;
   const d = x * (1 - 2 * target) + target;
   if (d === 0) return 0;

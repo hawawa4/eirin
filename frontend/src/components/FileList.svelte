@@ -2,6 +2,7 @@
   import type { app } from "../../wailsjs/go/models";
   import type { ColumnDef, FileGroup, ViewMode } from "../lib/types";
   import { isFits, getCellValue } from "../lib/utils";
+  import { makeColumnManager } from "../lib/columnManager";
   import { SvelteMap } from "svelte/reactivity";
 
   interface Props {
@@ -35,9 +36,8 @@
   let groupByObject = $state(false);
   let showColumnMenu = $state(false);
 
-  // Column drag (non-reactive)
-  let dragSourceId = "";
   let dragOverIndex = $state(-1);
+  const colMgr = makeColumnManager(() => columns, (i) => { dragOverIndex = i; }, () => onsavecolumns());
 
   // ── Derived ───────────────────────────────────────────────────────────────
   let visibleColumns = $derived(
@@ -109,64 +109,6 @@
     return [...map.values()].sort((a, b) =>
       a.object !== b.object ? a.object.localeCompare(b.object) : a.date.localeCompare(b.date),
     );
-  }
-
-  // ── Column resize ─────────────────────────────────────────────────────────
-  function startColResize(e: MouseEvent, colId: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const col = columns.find((c) => c.id === colId)!;
-    const startWidth = col.width;
-
-    function onMove(ev: MouseEvent) {
-      columns.find((c) => c.id === colId)!.width = Math.max(48, startWidth + ev.clientX - startX);
-    }
-    function onUp() {
-      onsavecolumns();
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  // ── Column drag-reorder ───────────────────────────────────────────────────
-  function onColDragStart(e: DragEvent, visIdx: number) {
-    dragSourceId = visibleColumns[visIdx].id;
-    e.dataTransfer!.effectAllowed = "move";
-  }
-
-  function onColDragOver(e: DragEvent, visIdx: number) {
-    e.preventDefault();
-    e.dataTransfer!.dropEffect = "move";
-    dragOverIndex = visIdx;
-  }
-
-  function onColDrop(e: DragEvent, targetVisIdx: number) {
-    e.preventDefault();
-    dragOverIndex = -1;
-    if (!dragSourceId) return;
-
-    const srcVisIdx = visibleColumns.findIndex((c) => c.id === dragSourceId);
-    dragSourceId = "";
-    if (srcVisIdx === -1 || srcVisIdx === targetVisIdx) return;
-
-    const newVis = [...visibleColumns];
-    const [moved] = newVis.splice(srcVisIdx, 1);
-    newVis.splice(targetVisIdx, 0, moved);
-
-    const invisible = columns.filter((c) => !c.visible);
-    let order = 0;
-    for (const col of newVis) columns.find((c) => c.id === col.id)!.order = order++;
-    for (const col of invisible) columns.find((c) => c.id === col.id)!.order = order++;
-
-    onsavecolumns();
-  }
-
-  function onColDragEnd() {
-    dragSourceId = "";
-    dragOverIndex = -1;
   }
 
   function toggleColumn(colId: string) {
@@ -260,10 +202,10 @@
             <th
               class:drag-over={dragOverIndex === i}
               draggable={col.id !== "name"}
-              ondragstart={(e) => onColDragStart(e, i)}
-              ondragover={(e) => onColDragOver(e, i)}
-              ondrop={(e) => onColDrop(e, i)}
-              ondragend={onColDragEnd}
+              ondragstart={(e) => colMgr.onColDragStart(e, i)}
+              ondragover={(e) => colMgr.onColDragOver(e, i)}
+              ondrop={(e) => colMgr.onColDrop(e, i)}
+              ondragend={colMgr.onColDragEnd}
               ondragleave={() => {
                 if (dragOverIndex === i) dragOverIndex = -1;
               }}
@@ -271,7 +213,7 @@
               <span class="th-text">{col.label}</span>
               <span
                 class="resize-handle"
-                onmousedown={(e) => startColResize(e, col.id)}
+                onmousedown={(e) => colMgr.startColResize(e, col.id)}
                 role="separator"
                 aria-label="Resize column"
               ></span>

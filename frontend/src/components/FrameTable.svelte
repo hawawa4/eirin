@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { app } from "../../wailsjs/go/models";
-  import type { ColumnDef, FrameType } from "../lib/types";
+  import type { ColFilter, ColumnDef, FrameType } from "../lib/types";
   import { FRAME_TYPE_META, DEFAULT_LIBRARY_COLUMNS } from "../lib/types";
-  import { getLibraryCellValue } from "../lib/utils";
+  import { getLibraryCellValue, getFrameTextVal, getFrameNumVal, getFrameSortVal } from "../lib/utils";
 
   interface Props {
     frames: app.LibraryFrame[];
@@ -52,7 +52,6 @@
   }
 
   // ── Column filters ────────────────────────────────────────────────────────
-  interface ColFilter { text?: string; numOp?: "<" | ">"; numVal?: number | null; types?: FrameType[]; }
   const TEXT_COLS = new Set(["name", "object", "filter", "telescope", "instrument", "dateObs"]);
   const NUM_COLS  = new Set(["expTime", "size", "gain", "ccdTemp", "fwhm", "starCount", "background", "noise", "snr"]);
 
@@ -93,37 +92,6 @@
   }
   function clearAll() { colFilters = {}; typeFilterPos = null; search = ""; }
 
-  function textVal(f: app.LibraryFrame, colId: string): string {
-    switch (colId) {
-      case "name": return f.fileName; case "object": return f.object;
-      case "filter": return f.filter; case "telescope": return f.telescope;
-      case "instrument": return f.instrument; case "dateObs": return f.dateObs;
-      default: return "";
-    }
-  }
-  function numVal(f: app.LibraryFrame, colId: string): number | null {
-    switch (colId) {
-      case "expTime": return f.expTime; case "size": return f.fileSize;
-      case "gain": return f.gain; case "ccdTemp": return f.ccdTemp;
-      case "fwhm": return f.qualityAnalyzed ? f.fwhm : null;
-      case "starCount": return f.qualityAnalyzed ? f.starCount : null;
-      case "background": return f.qualityAnalyzed ? f.background : null;
-      case "noise": return f.qualityAnalyzed ? f.noise : null;
-      case "snr": return f.qualityAnalyzed ? f.snr : null;
-      default: return null;
-    }
-  }
-  function sortVal(f: app.LibraryFrame, col: string): number | string {
-    switch (col) {
-      case "fwhm": return f.qualityAnalyzed ? f.fwhm : Infinity;
-      case "starCount": return f.qualityAnalyzed ? -f.starCount : Infinity;
-      case "background": return f.qualityAnalyzed ? f.background : Infinity;
-      case "noise": return f.qualityAnalyzed ? f.noise : Infinity;
-      case "snr": return f.qualityAnalyzed ? -f.snr : Infinity;
-      case "expTime": return -f.expTime; case "gain": return f.gain; case "size": return -f.fileSize;
-      default: return String((f as unknown as Record<string, unknown>)[col] ?? "");
-    }
-  }
 
   let filtered = $derived(
     frames.filter((f) => {
@@ -135,9 +103,9 @@
         if (colId === "frameType") {
           if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType)) return false;
         } else if (TEXT_COLS.has(colId) && cf.text) {
-          if (!textVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase())) return false;
+          if (!getFrameTextVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase())) return false;
         } else if (NUM_COLS.has(colId) && cf.numOp && cf.numVal != null) {
-          const v = numVal(f, colId);
+          const v = getFrameNumVal(f, colId);
           if (v === null) continue;
           if (cf.numOp === "<" && v >= cf.numVal) return false;
           if (cf.numOp === ">" && v <= cf.numVal) return false;
@@ -149,7 +117,7 @@
   let sorted = $derived(
     sortCol
       ? [...filtered].sort((a, b) => {
-          const av = sortVal(a, sortCol!), bv = sortVal(b, sortCol!);
+          const av = getFrameSortVal(a, sortCol!), bv = getFrameSortVal(b, sortCol!);
           const m = sortDir === "asc" ? 1 : -1;
           return av < bv ? -m : av > bv ? m : 0;
         })
