@@ -1,4 +1,4 @@
-import type { app } from "../../wailsjs/go/models";
+import type { app, fits } from "../../wailsjs/go/models";
 
 export function isFits(name: string): boolean {
   const l = name.toLowerCase();
@@ -178,7 +178,7 @@ export interface MetaRow {
   val: string;
 }
 
-export function basicRows(h: app.FITSHeader | null): MetaRow[] {
+export function basicRows(h: fits.FITSHeader | null): MetaRow[] {
   if (!h) return [];
   const expStr = !h.exptime
     ? "—"
@@ -200,7 +200,7 @@ export function basicRows(h: app.FITSHeader | null): MetaRow[] {
   ];
 }
 
-export function advancedRows(h: app.FITSHeader | null): MetaRow[] {
+export function advancedRows(h: fits.FITSHeader | null): MetaRow[] {
   if (!h) return [];
   return [
     { key: "Gain", val: h.gain ? String(h.gain) : "—" },

@@ -1,4 +1,4 @@
-import type { app } from "../../wailsjs/go/models";
+import type { fits } from "../../wailsjs/go/models";
 
 export function mtfMidtone(target: number, x: number): number {
   if (x === 0) return 0;
@@ -17,7 +17,7 @@ function mtf(m: number, x: number): number {
 
 interface ChannelParams { shadows: number; midtone: number; linear: boolean; }
 
-function computeParams(stats: app.ChannelStats[], stretchLevel: number): ChannelParams[] {
+function computeParams(stats: fits.ChannelStats[], stretchLevel: number): ChannelParams[] {
   const presets = [
     { shadowsFactor: -1.25, targetBG: 0.1  },
     { shadowsFactor: -2.8,  targetBG: 0.25 },
@@ -59,7 +59,7 @@ export function renderStretched(
   width: number,
   height: number,
   channels: number,
-  stats: app.ChannelStats[],
+  stats: fits.ChannelStats[],
   stretchLevel: number,
 ): HTMLCanvasElement {
   const params = computeParams(stats, stretchLevel);
