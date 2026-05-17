@@ -30,9 +30,21 @@ check:
     go build ./...
     cd frontend && npm run check
 
-# Build a production binary (handles frontend build internally)
+# Build a production binary — Linux Debian/Ubuntu (webkit2_41)
 build:
     wails build -tags webkit2_41
+
+# Build for Linux generic (no special webkit tag)
+build-linux:
+    wails build -platform linux/amd64
+
+# Build for Windows (cross-compile via Wails)
+build-windows:
+    wails build -platform windows/amd64
+
+# Build for macOS Apple Silicon
+build-macos-arm:
+    wails build -platform darwin/arm64
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 
