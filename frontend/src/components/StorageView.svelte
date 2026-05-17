@@ -206,7 +206,7 @@
     <!-- Type summary bar -->
     {#if !drillObject && typeSummary.length > 0}
       <div class="type-bar">
-        {#each typeSummary as t}
+        {#each typeSummary as t (t.label)}
           <div class="type-chip">
             <span class="type-label">{t.label}</span>
             <span class="type-size">{fmtBytes(t.totalBytes)}</span>
@@ -219,7 +219,7 @@
     <!-- Treemap -->
     <div class="treemap-container">
       <svg width={TW} height={TH} class="treemap-svg">
-        {#each treemapNodes as rect, i}
+        {#each treemapNodes as rect, i (rect.node.label)}
           {@const label = rect.node.label}
           {@const color = nodeColor(label, i)}
           {@const isHovered = hovered === label}
@@ -315,7 +315,7 @@
     <div class="object-list">
       {#each (drillObject ? (root.children?.find((c) => c.label === drillObject)?.children ?? []) : (root.children ?? []))
         .slice()
-        .sort((a, b) => b.totalBytes - a.totalBytes) as node}
+        .sort((a, b) => b.totalBytes - a.totalBytes) as node (node.label)}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="object-row"

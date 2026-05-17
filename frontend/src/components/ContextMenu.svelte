@@ -51,7 +51,7 @@
   {#if menu.selectionCount <= 1}
     <div class="ctx-sep"></div>
     <span class="ctx-label">Set type</span>
-    {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
+    {#each Object.entries(FRAME_TYPE_META) as [type, meta] (type)}
       <button
         class="ctx-item ctx-type-item"
         class:ctx-type-current={menu.entry.frameType === type}

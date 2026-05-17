@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { SvelteSet, SvelteMap } from "svelte/reactivity";
   import {
     GetLibraryFrames,
     SetFrameType,
@@ -179,7 +180,7 @@
   );
 
   // ── Multi-select ──────────────────────────────────────────────────────────
-  let selectedPaths = $state(new Set<string>());
+  let selectedPaths = new SvelteSet<string>();
   let lastSelectedPath = "";
   let ctxPaths = $state<string[]>([]);
 
@@ -243,21 +244,20 @@
   }
 
   // ── Group collapse — empty set = all collapsed (default) ─────────────────
-  let expandedGroups = $state<Set<string>>(new Set());
+  let expandedGroups = new SvelteSet<string>();
 
   function toggleGroup(key: string) {
-    const next = new Set(expandedGroups);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    expandedGroups = next;
+    if (expandedGroups.has(key)) expandedGroups.delete(key);
+    else expandedGroups.add(key);
   }
 
   function expandAll() {
-    expandedGroups = new Set(groups.map((g) => g.key));
+    expandedGroups.clear();
+    groups.forEach((g) => expandedGroups.add(g.key));
   }
 
   function collapseAll() {
-    expandedGroups = new Set();
+    expandedGroups.clear();
   }
 
   const GROUP_BY_OPTIONS: { value: LibraryGroupBy; label: string }[] = [
@@ -275,7 +275,7 @@
     if (!rootFolder || loading) return;
     loading = true;
     error = "";
-    selectedPaths = new Set();
+    selectedPaths.clear();
     try {
       frames = (await GetLibraryFrames(rootFolder)) ?? [];
       onframesreloaded?.(frames);
@@ -350,7 +350,7 @@
   let groups = $derived<LibGroup[]>(buildGroups(sorted));
 
   function buildGroups(items: app.LibraryFrame[]): LibGroup[] {
-    const map = new Map<string, app.LibraryFrame[]>();
+    const map = new SvelteMap<string, app.LibraryFrame[]>();
     for (const f of items) {
       const key = groupKeyFor(f);
       const bucket = map.get(key);
@@ -404,7 +404,7 @@
   }
 
   function groupTypeBreakdown(frames: app.LibraryFrame[]) {
-    const counts = new Map<string, number>();
+    const counts = new SvelteMap<string, number>();
     for (const f of frames) counts.set(f.frameType, (counts.get(f.frameType) ?? 0) + 1);
     return [...counts.entries()]
       .sort((a, b) => {
@@ -458,30 +458,25 @@
       const bIdx = flat.findIndex((f) => f.nasPath === frame.nasPath);
       if (aIdx !== -1 && bIdx !== -1) {
         const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
-        const next = new Set(selectedPaths);
-        for (let i = lo; i <= hi; i++) next.add(flat[i].nasPath);
-        selectedPaths = next;
+        for (let i = lo; i <= hi; i++) selectedPaths.add(flat[i].nasPath);
       }
       return;
     }
     if (e.ctrlKey || e.metaKey) {
-      const next = new Set(selectedPaths);
-      if (next.has(frame.nasPath)) next.delete(frame.nasPath);
-      else next.add(frame.nasPath);
-      selectedPaths = next;
+      if (selectedPaths.has(frame.nasPath)) selectedPaths.delete(frame.nasPath);
+      else selectedPaths.add(frame.nasPath);
       lastSelectedPath = frame.nasPath;
       return;
     }
-    selectedPaths = new Set([frame.nasPath]);
+    selectedPaths.clear();
+    selectedPaths.add(frame.nasPath);
     lastSelectedPath = frame.nasPath;
     onfileclick(frame);
   }
 
   function handleCheckbox(frame: app.LibraryFrame) {
-    const next = new Set(selectedPaths);
-    if (next.has(frame.nasPath)) next.delete(frame.nasPath);
-    else next.add(frame.nasPath);
-    selectedPaths = next;
+    if (selectedPaths.has(frame.nasPath)) selectedPaths.delete(frame.nasPath);
+    else selectedPaths.add(frame.nasPath);
     lastSelectedPath = frame.nasPath;
   }
 
@@ -522,7 +517,7 @@
       await BatchRejectFiles(ctxPaths);
       const set = new Set(ctxPaths);
       frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: true } : f));
-      selectedPaths = new Set();
+      selectedPaths.clear();
     } else {
       await RejectFile(entry.path);
       frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: true } : f));
@@ -535,7 +530,7 @@
       await BatchUnrejectFiles(ctxPaths);
       const set = new Set(ctxPaths);
       frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: false } : f));
-      selectedPaths = new Set();
+      selectedPaths.clear();
     } else {
       await UnrejectFile(entry.path);
       frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: false } : f));
@@ -559,7 +554,7 @@
       await BatchHardDeleteFiles(paths);
       const set = new Set(paths);
       frames = frames.filter((f) => !set.has(f.nasPath));
-      selectedPaths = new Set();
+      selectedPaths.clear();
     } else {
       await HardDeleteFile(paths[0]);
       frames = frames.filter((f) => f.nasPath !== paths[0]);
@@ -640,7 +635,7 @@
     <div class="group-by">
       <span class="label">Group</span>
       <div class="segmented">
-        {#each GROUP_BY_OPTIONS as opt}
+        {#each GROUP_BY_OPTIONS as opt (opt.value)}
           <button
             class="seg-btn"
             class:active={groupBy === opt.value}
@@ -854,7 +849,7 @@
                   >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
                 >
                 <span class="group-type-breakdown">
-                  {#each groupTypeBreakdown(group.frames) as { count, meta }}
+                  {#each groupTypeBreakdown(group.frames) as { count, meta } (meta.short)}
                     <span class="group-type-badge" style="color:{meta.color};background:{meta.bg}">
                       {meta.short}
                       {count}
@@ -932,7 +927,7 @@
                         onchange={(e) =>
                           changeFrameType(frame.nasPath, (e.target as HTMLSelectElement).value, e)}
                       >
-                        {#each Object.entries(FRAME_TYPE_META) as [val, m]}
+                        {#each Object.entries(FRAME_TYPE_META) as [val, m] (val)}
                           <option value={val}>{m.short}</option>
                         {/each}
                       </select>
@@ -959,7 +954,7 @@
     id="type-filter-popup"
     style="left: {typeFilterPos.x}px; top: {typeFilterPos.y}px"
   >
-    {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
+    {#each Object.entries(FRAME_TYPE_META) as [type, meta] (type)}
       <label class="filter-popup-item">
         <input
           type="checkbox"
@@ -1100,7 +1095,7 @@
             their group median. Deselect any you want to keep.
           </p>
           <div class="suggest-list">
-            {#each suggestResults as r}
+            {#each suggestResults as r (r.frame.nasPath)}
               <label class="suggest-row" class:deselected={!suggestSelected.has(r.frame.nasPath)}>
                 <input
                   type="checkbox"

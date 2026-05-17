@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import {
     SelectSourceFolder,
     ScanImportCandidates,
@@ -19,7 +20,8 @@
   let candidates = $state<ImportCandidate[]>([]);
   let progress = $state<ImportProgress | null>(null);
   let errorMsg = $state("");
-  let collapsed = $state(new Set<string>());
+  // eslint-disable-next-line svelte/no-unnecessary-state-wrap
+  let collapsed = $state(new SvelteSet<string>());
 
   // ── Import options ────────────────────────────────────────────────────────
 
@@ -30,7 +32,8 @@
     { key: "tiff", label: "TIFF", exts: ["tif", "tiff"] },
   ];
 
-  let selectedFormats = $state(new Set<string>(["fits"]));
+  // eslint-disable-next-line svelte/no-unnecessary-state-wrap
+  let selectedFormats = $state(new SvelteSet<string>(["fits"]));
   let deleteAfterCopy = $state(false);
 
   let extensions = $derived(
@@ -38,7 +41,7 @@
   );
 
   function toggleFormat(key: string) {
-    const next = new Set(selectedFormats);
+    const next = new SvelteSet(selectedFormats);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     selectedFormats = next;
@@ -121,14 +124,14 @@
   let flatRows = $derived(flattenTree(tree, 0, collapsed));
 
   function toggleFolder(fp: string) {
-    const next = new Set(collapsed);
+    const next = new SvelteSet(collapsed);
     if (next.has(fp)) next.delete(fp);
     else next.add(fp);
     collapsed = next;
   }
 
   function collapseAll() {
-    const fps = new Set<string>();
+    const fps = new SvelteSet<string>();
     function collect(node: FolderNode) {
       for (const sub of node.subfolders) {
         fps.add(sub.folderPath);
@@ -140,7 +143,7 @@
   }
 
   function expandAll() {
-    collapsed = new Set();
+    collapsed = new SvelteSet();
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -149,7 +152,7 @@
     const path = await SelectSourceFolder();
     if (!path) return;
     sourceFolder = path;
-    collapsed = new Set();
+    collapsed = new SvelteSet();
     await scan();
   }
 
@@ -183,7 +186,7 @@
     candidates = [];
     progress = null;
     errorMsg = "";
-    collapsed = new Set();
+    collapsed = new SvelteSet();
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -227,7 +230,7 @@
       </p>
       <div class="format-row">
         <span class="format-label">Import:</span>
-        {#each FORMAT_GROUPS as g}
+        {#each FORMAT_GROUPS as g (g.key)}
           <button
             class="fmt-btn"
             class:active={selectedFormats.has(g.key)}
@@ -275,7 +278,7 @@
         </div>
         <div class="scan-options">
           <span class="format-label">Formats:</span>
-          {#each FORMAT_GROUPS as g}
+          {#each FORMAT_GROUPS as g (g.key)}
             <button
               class="fmt-btn"
               class:active={selectedFormats.has(g.key)}
@@ -309,7 +312,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each flatRows as row}
+              {#each flatRows as row (row.kind === "folder" ? row.folderPath : row.candidate.sourcePath)}
                 {#if row.kind === "folder"}
                   <tr
                     class="folder-row"

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteSet } from "svelte/reactivity";
   import type { app } from "../../wailsjs/go/models";
   import type { ColFilter, ColumnDef, FrameType } from "../lib/types";
   import { FRAME_TYPE_META, DEFAULT_LIBRARY_COLUMNS } from "../lib/types";
@@ -162,7 +163,8 @@
   );
 
   // ── Selection ─────────────────────────────────────────────────────────────
-  let selectedPaths = $state(new Set<string>());
+  // eslint-disable-next-line svelte/no-unnecessary-state-wrap
+  let selectedPaths = $state(new SvelteSet<string>());
   let lastSelectedPath = "";
   let allCheckEl = $state<HTMLInputElement | null>(null);
 
@@ -171,7 +173,7 @@
       allCheckEl.indeterminate = selectedPaths.size > 0 && selectedPaths.size < sorted.length;
   });
 
-  function pick(next: Set<string>) {
+  function pick(next: SvelteSet<string>) {
     selectedPaths = next;
     onselectionchange?.(next);
   }
@@ -182,27 +184,27 @@
       const bIdx = sorted.findIndex((f) => f.nasPath === frame.nasPath);
       if (aIdx !== -1 && bIdx !== -1) {
         const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
-        const next = new Set(selectedPaths);
+        const next = new SvelteSet<string>(selectedPaths);
         for (let i = lo; i <= hi; i++) next.add(sorted[i].nasPath);
         pick(next);
       }
       return;
     }
     if (e.ctrlKey || e.metaKey) {
-      const next = new Set(selectedPaths);
+      const next = new SvelteSet<string>(selectedPaths);
       if (next.has(frame.nasPath)) next.delete(frame.nasPath);
       else next.add(frame.nasPath);
       pick(next);
       lastSelectedPath = frame.nasPath;
       return;
     }
-    pick(new Set([frame.nasPath]));
+    pick(new SvelteSet<string>([frame.nasPath]));
     lastSelectedPath = frame.nasPath;
     onrowclick?.(frame);
   }
 
   function toggleCheckbox(frame: app.LibraryFrame) {
-    const next = new Set(selectedPaths);
+    const next = new SvelteSet<string>(selectedPaths);
     if (next.has(frame.nasPath)) next.delete(frame.nasPath);
     else next.add(frame.nasPath);
     pick(next);
@@ -212,8 +214,8 @@
   function toggleAll() {
     pick(
       selectedPaths.size === sorted.length && sorted.length > 0
-        ? new Set()
-        : new Set(sorted.map((f) => f.nasPath)),
+        ? new SvelteSet<string>()
+        : new SvelteSet<string>(sorted.map((f) => f.nasPath)),
     );
   }
 
@@ -246,9 +248,9 @@
 
   // Reset selection when frames list changes substantially
   $effect(() => {
-    frames; // track
-    selectedPaths = new Set();
-    onselectionchange?.(new Set());
+    void frames;
+    selectedPaths.clear();
+    onselectionchange?.(new SvelteSet());
   });
 </script>
 
@@ -259,7 +261,7 @@
       class="ft-btn ft-remove-btn"
       onclick={() => {
         onremove!([...selectedPaths]);
-        pick(new Set());
+        pick(new SvelteSet<string>());
       }}
     >
       Remove {selectedPaths.size} frame{selectedPaths.size !== 1 ? "s" : ""}
@@ -438,7 +440,7 @@
     id="ft-type-popup"
     style="left:{typeFilterPos.x}px;top:{typeFilterPos.y}px"
   >
-    {#each Object.entries(FRAME_TYPE_META) as [type, meta]}
+    {#each Object.entries(FRAME_TYPE_META) as [type, meta] (type)}
       <label class="ft-popup-item">
         <input
           type="checkbox"

@@ -28,7 +28,7 @@
 
   <div class="header-right">
     <div class="theme-toggle" role="group" aria-label="Theme">
-      {#each THEMES as t}
+      {#each THEMES as t (t.id)}
         <button
           class="theme-dot"
           class:active={theme === t.id}

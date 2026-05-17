@@ -95,7 +95,6 @@
 
   // ── Selected file / preview ───────────────────────────────────────────────
   let selectedEntry = $state<app.EnrichedFileEntry | null>(null);
-  let libraryPreviewPath = $state<string | null>(null);
   let librarySelectedFrame = $state<app.LibraryFrame | null>(null);
 
   // ── Stretch / section collapse (persisted) ────────────────────────────────
@@ -282,7 +281,6 @@
 
   function clearPreview() {
     selectedEntry = null;
-    libraryPreviewPath = null;
     librarySelectedFrame = null;
   }
 
@@ -327,7 +325,6 @@
   }
 
   function onLibraryFileClick(frame: app.LibraryFrame) {
-    libraryPreviewPath = frame.nasPath;
     librarySelectedFrame = frame;
     selectedEntry = {
       name: frame.fileName,
@@ -527,7 +524,6 @@
       {projectsFolder}
       {appInfo}
       {indexRunning}
-      {indexProgress}
       onselectfolder={selectFolder}
       onbuildindex={startBuildIndex}
       onsirilchange={(info) => (sirilInfo = info)}
