@@ -1,10 +1,8 @@
-package app
+package siril
 
 import (
 	"math"
 	"testing"
-
-	sirilpkg "github.com/TaruDesigns/eirin/internal/siril"
 )
 
 func TestParseDecimal(t *testing.T) {
@@ -21,7 +19,7 @@ func TestParseDecimal(t *testing.T) {
 		{"", 0, true},
 	}
 	for _, tt := range tests {
-		got, err := sirilpkg.ParseDecimal(tt.input)
+		got, err := ParseDecimal(tt.input)
 		if (err != nil) != tt.wantErr {
 			t.Errorf("ParseDecimal(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
 			continue
@@ -46,7 +44,7 @@ Statistics:
 `
 
 func TestParseSirilOutput(t *testing.T) {
-	q, err := sirilpkg.ParseSirilOutput(sirilFullOutput)
+	q, err := ParseSirilOutput(sirilFullOutput)
 	if err != nil {
 		t.Fatalf("ParseSirilOutput error: %v", err)
 	}
@@ -62,6 +60,7 @@ func TestParseSirilOutput(t *testing.T) {
 	if math.Abs(q.Background-1234.5) > 1e-6 {
 		t.Errorf("Background = %f, want 1234.5", q.Background)
 	}
+	// bgnoise should be preferred over sigma
 	if math.Abs(q.Noise-25.3) > 1e-6 {
 		t.Errorf("Noise = %f, want 25.3 (bgnoise preferred over sigma)", q.Noise)
 	}
@@ -73,7 +72,7 @@ func TestParseSirilOutput(t *testing.T) {
 
 func TestParseSirilOutputCommaDecimalSeparator(t *testing.T) {
 	output := "Found 100 Gaussian profile stars in image, channel #0 (FWHM 2,500)\nmedian: 1000,0\nbgnoise: 10,0\n"
-	q, err := sirilpkg.ParseSirilOutput(output)
+	q, err := ParseSirilOutput(output)
 	if err != nil {
 		t.Fatalf("ParseSirilOutput error: %v", err)
 	}
@@ -86,15 +85,16 @@ func TestParseSirilOutputCommaDecimalSeparator(t *testing.T) {
 }
 
 func TestParseSirilOutputNoRecognisableData(t *testing.T) {
-	_, err := sirilpkg.ParseSirilOutput("Siril 1.4.0\nloading...\n")
+	_, err := ParseSirilOutput("Siril 1.4.0\nloading...\n")
 	if err == nil {
 		t.Error("expected error for output with no recognizable data")
 	}
 }
 
 func TestParseSirilOutputFallsBackToSigma(t *testing.T) {
+	// No bgnoise line — sigma should be used as fallback
 	output := "Found 50 Gaussian profile stars in image, channel #0 (FWHM 4.0)\nmedian: 800\nsigma: 8.0\n"
-	q, err := sirilpkg.ParseSirilOutput(output)
+	q, err := ParseSirilOutput(output)
 	if err != nil {
 		t.Fatalf("ParseSirilOutput error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestParseSirilOutputFallsBackToSigma(t *testing.T) {
 
 func TestParseSirilOutputSNRZeroWhenNoiseMissing(t *testing.T) {
 	output := "Found 10 Gaussian profile stars in image, channel #0 (FWHM 2.0)\nmedian: 500\n"
-	q, err := sirilpkg.ParseSirilOutput(output)
+	q, err := ParseSirilOutput(output)
 	if err != nil {
 		t.Fatalf("ParseSirilOutput error: %v", err)
 	}
@@ -114,15 +114,19 @@ func TestParseSirilOutputSNRZeroWhenNoiseMissing(t *testing.T) {
 	}
 }
 
+// ── Plate solve parser ────────────────────────────────────────────────────────
+
 func TestParsePlateSolveOutput(t *testing.T) {
-	wcs, ok := sirilpkg.ParsePlateSolveOutput(sirilFullOutput)
+	wcs, ok := ParsePlateSolveOutput(sirilFullOutput)
 	if !ok {
 		t.Fatal("expected plate solve to succeed")
 	}
+	// RA: 06h 45m 51.505s → decimal degrees
 	wantRA := (6.0 + 45.0/60.0 + 51.505/3600.0) * 15.0
 	if math.Abs(wcs.RA-wantRA) > 1e-3 {
 		t.Errorf("RA = %f, want %f", wcs.RA, wantRA)
 	}
+	// Dec: -20° 46' 52.259"
 	wantDec := -(20.0 + 46.0/60.0 + 52.259/3600.0)
 	if math.Abs(wcs.Dec-wantDec) > 1e-3 {
 		t.Errorf("Dec = %f, want %f", wcs.Dec, wantDec)
@@ -137,7 +141,7 @@ func TestParsePlateSolveOutput(t *testing.T) {
 
 func TestParsePlateSolveOutputPositiveDec(t *testing.T) {
 	output := "alpha: 10 30 00.000, delta: 41 16 09.000\n"
-	wcs, ok := sirilpkg.ParsePlateSolveOutput(output)
+	wcs, ok := ParsePlateSolveOutput(output)
 	if !ok {
 		t.Fatal("expected plate solve to succeed")
 	}
@@ -148,23 +152,23 @@ func TestParsePlateSolveOutputPositiveDec(t *testing.T) {
 }
 
 func TestParsePlateSolveOutputMissingDec(t *testing.T) {
-	output := "alpha: 06 45 51.505\n"
-	_, ok := sirilpkg.ParsePlateSolveOutput(output)
+	output := "alpha: 06 45 51.505\n" // no delta line
+	_, ok := ParsePlateSolveOutput(output)
 	if ok {
 		t.Error("expected plate solve to fail without Dec")
 	}
 }
 
 func TestParsePlateSolveOutputMissingRA(t *testing.T) {
-	output := "delta: -20 46 52.259\n"
-	_, ok := sirilpkg.ParsePlateSolveOutput(output)
+	output := "delta: -20 46 52.259\n" // no alpha line
+	_, ok := ParsePlateSolveOutput(output)
 	if ok {
 		t.Error("expected plate solve to fail without RA")
 	}
 }
 
 func TestParsePlateSolveOutputEmpty(t *testing.T) {
-	_, ok := sirilpkg.ParsePlateSolveOutput("")
+	_, ok := ParsePlateSolveOutput("")
 	if ok {
 		t.Error("expected plate solve to fail on empty output")
 	}

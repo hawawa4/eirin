@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 )
 
 func TestDerefFloat(t *testing.T) {
@@ -29,11 +29,11 @@ func TestDerefInt64(t *testing.T) {
 func TestSetFrameTypeValidTypes(t *testing.T) {
 	a := newTestApp(t)
 	path := "/nas/root/output.fits"
-	a.prefs.UpsertFrame(path, prefs.Frame{FrameType: prefs.FrameTypeStacked})
+	a.store.UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked})
 
 	for _, ft := range []string{
-		prefs.FrameTypeLight, prefs.FrameTypeDark, prefs.FrameTypeFlat,
-		prefs.FrameTypeBias, prefs.FrameTypeStacked, prefs.FrameTypeProcessed,
+		store.FrameTypeLight, store.FrameTypeDark, store.FrameTypeFlat,
+		store.FrameTypeBias, store.FrameTypeStacked, store.FrameTypeProcessed,
 	} {
 		if err := a.SetFrameType(path, ft); err != nil {
 			t.Errorf("SetFrameType(%q): %v", ft, err)
@@ -44,15 +44,15 @@ func TestSetFrameTypeValidTypes(t *testing.T) {
 func TestSetFrameTypeInvalidIsNoop(t *testing.T) {
 	a := newTestApp(t)
 	path := "/nas/root/output.fits"
-	a.prefs.UpsertFrame(path, prefs.Frame{FrameType: prefs.FrameTypeStacked})
+	a.store.UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked})
 
 	// Invalid type is silently ignored (returns nil).
 	if err := a.SetFrameType(path, "unknown_type"); err != nil {
 		t.Errorf("SetFrameType(invalid) should return nil, got: %v", err)
 	}
 	// Frame type should be unchanged.
-	frames, _ := a.prefs.GetFrames([]string{path})
-	if frames[path].FrameType != prefs.FrameTypeStacked {
+	frames, _ := a.store.GetFrames([]string{path})
+	if frames[path].FrameType != store.FrameTypeStacked {
 		t.Errorf("FrameType changed after invalid SetFrameType: %q", frames[path].FrameType)
 	}
 }

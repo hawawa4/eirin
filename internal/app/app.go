@@ -4,14 +4,14 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
 	ctx     context.Context
-	prefs   *prefs.Store
-	indexer indexer
+	store   *store.Store
+	indexer appIndexer
 	server  *http.Server
 }
 
@@ -21,19 +21,19 @@ func NewApp() *App {
 
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
-	store, err := prefs.NewStore()
+	s, err := store.NewStore()
 	if err != nil {
-		runtime.LogErrorf(ctx, "prefs: failed to open store: %v", err)
+		runtime.LogErrorf(ctx, "store: failed to open: %v", err)
 		return
 	}
-	a.prefs = store
+	a.store = s
 	a.startServer()
 }
 
 func (a *App) Shutdown(_ context.Context) {
 	a.CancelIndex()
 	a.stopServer()
-	if a.prefs != nil {
-		_ = a.prefs.Close()
+	if a.store != nil {
+		_ = a.store.Close()
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 )
 
 // TestMain redirects any NewStore() call that might reach production code
@@ -15,7 +15,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("TestMain: could not create temp dir: " + err.Error())
 	}
-	if err := os.Setenv(prefs.EnvDBPath, filepath.Join(tmp, "prefs.db")); err != nil {
+	if err := os.Setenv(store.EnvDBPath, filepath.Join(tmp, "prefs.db")); err != nil {
 		panic("TestMain: could not set env var: " + err.Error())
 	}
 	code := m.Run()
@@ -27,10 +27,10 @@ func TestMain(m *testing.M) {
 // directory. Both the store and its database file are cleaned up after the test.
 func newTestApp(t *testing.T) *App {
 	t.Helper()
-	store, err := prefs.NewStoreAt(filepath.Join(t.TempDir(), "test.db"))
+	s, err := store.NewStoreAt(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("newTestApp: %v", err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	return &App{prefs: store}
+	t.Cleanup(func() { _ = s.Close() })
+	return &App{store: s}
 }

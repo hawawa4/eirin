@@ -3,6 +3,8 @@ package app
 import (
 	"fmt"
 	"testing"
+
+	"github.com/TaruDesigns/eirin/internal/server"
 )
 
 func TestGetAppInfoDefaults(t *testing.T) {
@@ -11,8 +13,8 @@ func TestGetAppInfoDefaults(t *testing.T) {
 
 	info := a.GetAppInfo()
 
-	if info.ServerPort != defaultServerPort {
-		t.Errorf("ServerPort = %d, want default %d", info.ServerPort, defaultServerPort)
+	if info.ServerPort != server.DefaultPort {
+		t.Errorf("ServerPort = %d, want default %d", info.ServerPort, server.DefaultPort)
 	}
 	if info.PortSource != "default" {
 		t.Errorf("PortSource = %q, want default", info.PortSource)
@@ -20,7 +22,7 @@ func TestGetAppInfoDefaults(t *testing.T) {
 	if info.DBPath == "" {
 		t.Error("DBPath should not be empty")
 	}
-	wantURL := fmt.Sprintf("http://localhost:%d", defaultServerPort)
+	wantURL := fmt.Sprintf("http://localhost:%d", server.DefaultPort)
 	if info.ServerURL != wantURL {
 		t.Errorf("ServerURL = %q, want %q", info.ServerURL, wantURL)
 	}
@@ -46,8 +48,8 @@ func TestGetAppInfoCustomPort(t *testing.T) {
 func TestGetAppInfoDBPathMatchesStore(t *testing.T) {
 	a := newTestApp(t)
 	info := a.GetAppInfo()
-	if info.DBPath != a.prefs.DBPath() {
+	if info.DBPath != a.store.DBPath() {
 		t.Errorf("AppInfo.DBPath = %q, store.DBPath() = %q — should match",
-			info.DBPath, a.prefs.DBPath())
+			info.DBPath, a.store.DBPath())
 	}
 }

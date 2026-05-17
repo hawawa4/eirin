@@ -1,6 +1,10 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/TaruDesigns/eirin/internal/server"
+)
 
 // AppInfo contains read-only runtime information surfaced in the Settings view.
 type AppInfo struct {
@@ -12,13 +16,13 @@ type AppInfo struct {
 
 // GetAppInfo returns static runtime information about the application.
 func (a *App) GetAppInfo() AppInfo {
-	port := serverPort()
+	port := server.Port()
 	source := "default"
-	if p := getEnv("EIRIN_PORT"); p != "" {
+	if p := server.GetEnv("EIRIN_PORT"); p != "" {
 		source = "EIRIN_PORT env var"
 	}
 	return AppInfo{
-		DBPath:     a.prefs.DBPath(),
+		DBPath:     a.store.DBPath(),
 		ServerPort: port,
 		ServerURL:  fmt.Sprintf("http://localhost:%d", port),
 		PortSource: source,

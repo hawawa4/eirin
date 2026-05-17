@@ -58,12 +58,12 @@ func TestHardDeleteFileAlsoRemovesDBRecord(t *testing.T) {
 	os.WriteFile(path, []byte(""), 0644)
 
 	// Index the frame so a DB record exists.
-	a.prefs.RejectFrame(path, "test") // creates a row
+	a.store.RejectFrame(path, "test") // creates a row
 
 	if err := a.HardDeleteFile(path); err != nil {
 		t.Fatalf("HardDeleteFile: %v", err)
 	}
-	frames, _ := a.prefs.GetFrames([]string{path})
+	frames, _ := a.store.GetFrames([]string{path})
 	if _, ok := frames[path]; ok {
 		t.Error("DB record should be removed after HardDeleteFile")
 	}

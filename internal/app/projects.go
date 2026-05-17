@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/prefs"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -25,7 +25,7 @@ type Project struct {
 
 // GetProjectsFolder returns the configured projects root folder.
 func (a *App) GetProjectsFolder() string {
-	return a.prefs.Load().ProjectsFolder
+	return a.store.Load().ProjectsFolder
 }
 
 // SelectProjectsFolder opens a directory picker for the projects root.
@@ -41,12 +41,12 @@ func (a *App) SelectProjectsFolder() (string, error) {
 
 // SetProjectsFolder persists the projects root folder preference.
 func (a *App) SetProjectsFolder(path string) error {
-	return a.prefs.Set(prefs.KeyProjectsFolder, path)
+	return a.store.Set(store.KeyProjectsFolder, path)
 }
 
 // ListProjects returns all projects from the database.
 func (a *App) ListProjects() ([]Project, error) {
-	rows, err := a.prefs.ListProjects()
+	rows, err := a.store.ListProjects()
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (a *App) ListProjects() ([]Project, error) {
 
 // CreateProject creates a new project: DB record + folder + lights subfolder.
 func (a *App) CreateProject(name, description string) (Project, error) {
-	pf := a.prefs.Load().ProjectsFolder
+	pf := a.store.Load().ProjectsFolder
 	if pf == "" {
 		return Project{}, fmt.Errorf("projects folder not configured — set it in Settings first")
 	}
@@ -74,7 +74,7 @@ func (a *App) CreateProject(name, description string) (Project, error) {
 	if err := os.MkdirAll(filepath.Join(folder, "lights"), 0o750); err != nil {
 		return Project{}, fmt.Errorf("creating project folder: %w", err)
 	}
-	row, err := a.prefs.CreateProject(name, description, folder)
+	row, err := a.store.CreateProject(name, description, folder)
 	if err != nil {
 		return Project{}, err
 	}
@@ -89,7 +89,7 @@ func (a *App) CreateProject(name, description string) (Project, error) {
 
 // DeleteProject removes the project from the database (does not delete files).
 func (a *App) DeleteProject(id int64) error {
-	return a.prefs.DeleteProject(id)
+	return a.store.DeleteProject(id)
 }
 
 // AddFramesToProject symlinks or copies NAS frames into <projectFolder>/lights/.
@@ -236,10 +236,10 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
 		nasPaths[i] = it.nasPath
 	}
 
-	frameMap, err := a.prefs.GetFrames(nasPaths)
+	frameMap, err := a.store.GetFrames(nasPaths)
 	if err != nil {
 		runtime.LogWarningf(a.ctx, "project frames: db lookup: %v", err)
-		frameMap = map[string]prefs.Frame{}
+		frameMap = map[string]store.Frame{}
 	}
 
 	result := make([]LibraryFrame, 0, len(items))
