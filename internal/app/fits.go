@@ -53,11 +53,11 @@ type ChannelStats struct {
 	Sigma  float64 `json:"sigma"`
 }
 
-// RawPreviewData is returned by GeneratePreviewRaw. The pixel data is a
+// RawPreviewData is returned by GeneratePreviewRawSized. The pixel data is a
 // base64-encoded little-endian float32 array in RGBA interleaved order
 // (R,G,B,1.0 per pixel, row-major, top-left origin). All channels are
-// globally normalised to [0,1] so that colour balance is preserved; the
-// frontend applies the MTF stretch in a WebGL shader using the Stats.
+// globally normalised to [0,1] so colour balance is preserved; the
+// frontend applies MTF stretch using the Stats.
 type RawPreviewData struct {
 	Data     string         `json:"data"`
 	Width    int            `json:"width"`
@@ -76,22 +76,13 @@ func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 	return generatePreview(path, 1024, stretchLevel)
 }
 
-func (a *App) GeneratePreviewSized(path string, maxSize, stretchLevel int) (string, error) {
-	return generatePreview(path, maxSize, stretchLevel)
-}
-
-// GeneratePreviewRaw returns raw float32 RGBA pixel data (base64-encoded) plus
-// per-channel statistics for WebGL-based MTF rendering on the frontend.
-// All channels are globally normalised so colour balance is preserved.
-func (a *App) GeneratePreviewRaw(path string) (RawPreviewData, error) {
-	return generatePreviewRaw(path, 768)
-}
-
-// GeneratePreviewRawSized is like GeneratePreviewRaw but lets the caller choose the
-// maximum dimension. maxSize=0 means native resolution (no downscaling).
+// GeneratePreviewRawSized returns raw float32 RGBA pixel data (base64-encoded) plus
+// per-channel statistics for CPU/GPU-based MTF rendering on the frontend.
+// All channels are globally normalised to [0,1] so colour balance is preserved.
+// maxSize=0 means native resolution (no downscaling).
 func (a *App) GeneratePreviewRawSized(path string, maxSize int) (RawPreviewData, error) {
 	if maxSize <= 0 {
-		maxSize = 1<<31 - 1 // effectively native
+		maxSize = 1<<31 - 1
 	}
 	return generatePreviewRaw(path, maxSize)
 }

@@ -18,9 +18,10 @@
   } from "../../wailsjs/go/app/App.js";
   import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import type { app } from "../../wailsjs/go/models";
-  import type { AnalysisProgress, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy, Project } from "../lib/types";
+  import type { AnalysisProgress, ColFilter, ColumnDef, CtxEntry, CtxMenuState, FrameType, LibraryGroupBy, Project } from "../lib/types";
   import { FRAME_TYPE_META } from "../lib/types";
-  import { getLibraryCellValue } from "../lib/utils";
+  import { getLibraryCellValue, getFrameTextVal, getFrameNumVal, getFrameSortVal } from "../lib/utils";
+  import { makeColumnManager } from "../lib/columnManager";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
   import BlinkModal from "./BlinkModal.svelte";
@@ -64,13 +65,6 @@
   }
 
   // ── Column filters ────────────────────────────────────────────────────────
-  interface ColFilter {
-    text?: string;
-    numOp?: "<" | ">";
-    numVal?: number | null;
-    types?: FrameType[];
-  }
-
   const TEXT_FILTER_COLS = new Set(["name", "object", "filter", "telescope", "instrument", "dateObs"]);
   const NUMERIC_FILTER_COLS = new Set(["expTime", "size", "gain", "ccdTemp", "fwhm", "starCount", "background", "noise", "snr"]);
 
@@ -133,51 +127,9 @@
     colFilters = { ...colFilters, frameType: { ...colFilters["frameType"], types: next } };
   }
 
-  function getFrameTextVal(f: app.LibraryFrame, colId: string): string {
-    switch (colId) {
-      case "name":       return f.fileName;
-      case "object":     return f.object;
-      case "filter":     return f.filter;
-      case "telescope":  return f.telescope;
-      case "instrument": return f.instrument;
-      case "dateObs":    return f.dateObs;
-      default:           return "";
-    }
-  }
-
-  function getFrameNumVal(f: app.LibraryFrame, colId: string): number | null {
-    switch (colId) {
-      case "expTime":    return f.expTime;
-      case "size":       return f.fileSize;
-      case "gain":       return f.gain;
-      case "ccdTemp":    return f.ccdTemp;
-      case "fwhm":       return f.qualityAnalyzed ? f.fwhm : null;
-      case "starCount":  return f.qualityAnalyzed ? f.starCount : null;
-      case "background": return f.qualityAnalyzed ? f.background : null;
-      case "noise":      return f.qualityAnalyzed ? f.noise : null;
-      case "snr":        return f.qualityAnalyzed ? f.snr : null;
-      default:           return null;
-    }
-  }
-
-  function sortValue(f: app.LibraryFrame, col: string): number | string {
-    switch (col) {
-      case "fwhm":       return f.qualityAnalyzed ? f.fwhm       : Infinity;
-      case "starCount":  return f.qualityAnalyzed ? -f.starCount  : Infinity; // more = better
-      case "background": return f.qualityAnalyzed ? f.background  : Infinity;
-      case "noise":      return f.qualityAnalyzed ? f.noise       : Infinity;
-      case "snr":        return f.qualityAnalyzed ? -f.snr        : Infinity; // higher = better
-      case "expTime":    return -f.expTime;
-      case "dateObs":   return f.dateObs;
-      case "gain":      return f.gain;
-      case "size":      return -f.fileSize;
-      default:          return String((f as unknown as Record<string, unknown>)[col] ?? "");
-    }
-  }
-
   // ── Column drag ───────────────────────────────────────────────────────────
-  let dragSourceId = "";
   let dragOverIndex = $state(-1);
+  const colMgr = makeColumnManager(() => columns, (i) => { dragOverIndex = i; }, () => onsavecolumns());
 
   // ── Multi-select ──────────────────────────────────────────────────────────
   let selectedPaths = $state(new Set<string>());
@@ -332,8 +284,8 @@
   let sorted = $derived(
     sortCol
       ? [...filtered].sort((a, b) => {
-          const av = sortValue(a, sortCol!);
-          const bv = sortValue(b, sortCol!);
+          const av = getFrameSortVal(a, sortCol!);
+          const bv = getFrameSortVal(b, sortCol!);
           const mul = sortDir === "asc" ? 1 : -1;
           if (av < bv) return -1 * mul;
           if (av > bv) return 1 * mul;
@@ -414,60 +366,6 @@
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       })
       .map(([type, count]) => ({ type, count, meta: frameTypeMeta(type) }));
-  }
-
-  // ── Column resize ─────────────────────────────────────────────────────────
-  function startColResize(e: MouseEvent, colId: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const col = columns.find((c) => c.id === colId)!;
-    const startWidth = col.width;
-
-    function onMove(ev: MouseEvent) {
-      col.width = Math.max(48, startWidth + ev.clientX - startX);
-    }
-    function onUp() {
-      onsavecolumns();
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  // ── Column drag-reorder ───────────────────────────────────────────────────
-  function onColDragStart(e: DragEvent, visIdx: number) {
-    dragSourceId = visibleColumns[visIdx].id;
-    e.dataTransfer!.effectAllowed = "move";
-  }
-
-  function onColDragOver(e: DragEvent, visIdx: number) {
-    e.preventDefault();
-    e.dataTransfer!.dropEffect = "move";
-    dragOverIndex = visIdx;
-  }
-
-  function onColDrop(e: DragEvent, targetVisIdx: number) {
-    e.preventDefault();
-    dragOverIndex = -1;
-    if (!dragSourceId) return;
-    const srcVisIdx = visibleColumns.findIndex((c) => c.id === dragSourceId);
-    dragSourceId = "";
-    if (srcVisIdx === -1 || srcVisIdx === targetVisIdx) return;
-    const newVis = [...visibleColumns];
-    const [moved] = newVis.splice(srcVisIdx, 1);
-    newVis.splice(targetVisIdx, 0, moved);
-    let order = 0;
-    for (const col of newVis) columns.find((c) => c.id === col.id)!.order = order++;
-    for (const col of columns.filter((c) => !c.visible))
-      columns.find((c) => c.id === col.id)!.order = order++;
-    onsavecolumns();
-  }
-
-  function onColDragEnd() {
-    dragSourceId = "";
-    dragOverIndex = -1;
   }
 
   function toggleColumn(colId: string) {
@@ -769,10 +667,10 @@
               class:sorted={sortCol === col.id}
               draggable={col.id !== "frameType" && col.id !== "name"}
               onclick={() => toggleSort(col.id)}
-              ondragstart={(e) => onColDragStart(e, i)}
-              ondragover={(e) => onColDragOver(e, i)}
-              ondrop={(e) => onColDrop(e, i)}
-              ondragend={onColDragEnd}
+              ondragstart={(e) => colMgr.onColDragStart(e, i)}
+              ondragover={(e) => colMgr.onColDragOver(e, i)}
+              ondrop={(e) => colMgr.onColDrop(e, i)}
+              ondragend={colMgr.onColDragEnd}
               ondragleave={() => {
                 if (dragOverIndex === i) dragOverIndex = -1;
               }}
@@ -786,7 +684,7 @@
               {/if}
               <span
                 class="resize-handle"
-                onmousedown={(e) => { startColResize(e, col.id); }}
+                onmousedown={(e) => colMgr.startColResize(e, col.id)}
                 role="separator"
                 aria-label="Resize column"
               ></span>
