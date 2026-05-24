@@ -12,10 +12,16 @@
 
   interface Props {
     rootPath: string;
+    serverUrl: string;
     onframeopen?: (nasPath: string) => void;
   }
 
-  let { rootPath, onframeopen }: Props = $props();
+  let { rootPath, serverUrl, onframeopen }: Props = $props();
+
+  function isRasterFile(path: string): boolean {
+    const l = path.toLowerCase();
+    return l.endsWith(".png") || l.endsWith(".tif") || l.endsWith(".tiff");
+  }
 
   // ── State ─────────────────────────────────────────────────────────────────
   let canvas: HTMLCanvasElement;
@@ -100,29 +106,49 @@
       const path = entry.nasPath;
       if (previewImgs.has(path) || loadingPaths.has(path)) continue;
       loadingPaths.add(path);
-      GeneratePreviewRawSized(path, 2048)
-        .then((result) => {
-          const bin = atob(result.data);
-          const u8 = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-          const f32 = new Float32Array(u8.buffer);
-          const stretchLevel = entry.frameType === "processed" ? 0 : 2;
-          const rendered = renderStretched(
-            f32,
-            result.width,
-            result.height,
-            result.channels,
-            result.stats,
-            stretchLevel,
-          );
-          if (rendered) previewImgs.set(path, rendered);
+
+      if (isRasterFile(path)) {
+        // PNG/TIFF: load via an Image element, paint to an offscreen canvas.
+        const imgEl = new Image();
+        imgEl.onload = () => {
+          const c = document.createElement("canvas");
+          c.width = imgEl.naturalWidth;
+          c.height = imgEl.naturalHeight;
+          c.getContext("2d")!.drawImage(imgEl, 0, 0);
+          previewImgs.set(path, c);
           loadingPaths.delete(path);
           previewVersion++;
-        })
-        .catch(() => {
+        };
+        imgEl.onerror = () => {
           loadingPaths.delete(path);
           previewVersion++;
-        });
+        };
+        imgEl.src = `${serverUrl}/api/image?path=${encodeURIComponent(path)}`;
+      } else {
+        GeneratePreviewRawSized(path, 2048)
+          .then((result) => {
+            const bin = atob(result.data);
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            const f32 = new Float32Array(u8.buffer);
+            const stretchLevel = entry.frameType === "processed" ? 0 : 2;
+            const rendered = renderStretched(
+              f32,
+              result.width,
+              result.height,
+              result.channels,
+              result.stats,
+              stretchLevel,
+            );
+            if (rendered) previewImgs.set(path, rendered);
+            loadingPaths.delete(path);
+            previewVersion++;
+          })
+          .catch(() => {
+            loadingPaths.delete(path);
+            previewVersion++;
+          });
+      }
     }
   });
 

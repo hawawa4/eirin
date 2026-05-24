@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -42,24 +43,31 @@ func (a *App) BuildIndex(rootPath string) {
 
 		a.emitIndexProgress(indexProgressEvent{Phase: "scanning", Current: "Scanning directories…"})
 
-		// ── Phase 1: collect all FITS paths under rootPath ──────────────────
-		var fitsPaths []string
+		// ── Phase 1: collect all indexable paths under rootPath ─────────────
+		// fitsPaths need header parsing; rasterPaths are indexed as-is.
+		var fitsPaths, rasterPaths []string
 		_ = filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || ctx.Err() != nil {
 				return nil
 			}
-			if !d.IsDir() && indexer.IsFitsFile(d.Name()) {
+			if d.IsDir() {
+				return nil
+			}
+			switch {
+			case indexer.IsFitsFile(d.Name()):
 				fitsPaths = append(fitsPaths, path)
+			case indexer.IsRasterFile(d.Name()):
+				rasterPaths = append(rasterPaths, path)
 			}
 			return nil
 		})
 
 		if ctx.Err() != nil {
-			a.emitIndexProgress(indexProgressEvent{Phase: "cancelled", Total: len(fitsPaths)})
+			a.emitIndexProgress(indexProgressEvent{Phase: "cancelled", Total: len(fitsPaths) + len(rasterPaths)})
 			return
 		}
 
-		total := len(fitsPaths)
+		total := len(fitsPaths) + len(rasterPaths)
 		a.emitIndexProgress(indexProgressEvent{Phase: "indexing", Total: total, Current: "Checking cache…"})
 
 		if total == 0 {
@@ -68,22 +76,27 @@ func (a *App) BuildIndex(rootPath string) {
 		}
 
 		// ── Phase 2: find which paths are NOT yet indexed ────────────────────
-		// A frame with CachedAt==0 exists only due to a prior reject action;
-		// its FITS header still needs to be read.
-		indexed0, err := a.store.GetFrames(fitsPaths)
+		allPaths := append(fitsPaths, rasterPaths...)
+		indexed0, err := a.store.GetFrames(allPaths)
 		if err != nil {
 			runtime.LogErrorf(a.ctx, "index: get frames: %v", err)
 			indexed0 = map[string]store.Frame{}
 		}
 
-		toIndex := make([]string, 0, len(fitsPaths))
+		toIndexFits := make([]string, 0, len(fitsPaths))
 		for _, p := range fitsPaths {
 			if f, ok := indexed0[p]; !ok || f.CachedAt == 0 {
-				toIndex = append(toIndex, p)
+				toIndexFits = append(toIndexFits, p)
+			}
+		}
+		toIndexRaster := make([]string, 0, len(rasterPaths))
+		for _, p := range rasterPaths {
+			if f, ok := indexed0[p]; !ok || f.CachedAt == 0 {
+				toIndexRaster = append(toIndexRaster, p)
 			}
 		}
 
-		alreadyCached := total - len(toIndex)
+		alreadyCached := total - len(toIndexFits) - len(toIndexRaster)
 		a.emitIndexProgress(indexProgressEvent{
 			Phase:   "indexing",
 			Total:   total,
@@ -110,7 +123,7 @@ func (a *App) BuildIndex(rootPath string) {
 			batch = make(map[string]store.Frame, batchSize)
 		}
 
-		for _, p := range toIndex {
+		for _, p := range toIndexFits {
 			if ctx.Err() != nil {
 				break
 			}
@@ -140,6 +153,41 @@ func (a *App) BuildIndex(rootPath string) {
 				batch[p] = f
 				newlyIndexed++
 			}
+			done++
+
+			if len(batch) >= batchSize {
+				flushBatch()
+			}
+
+			if time.Since(lastEmit) >= 80*time.Millisecond {
+				a.emitIndexProgress(indexProgressEvent{
+					Phase:   "indexing",
+					Total:   total,
+					Done:    done,
+					Indexed: newlyIndexed,
+					Errors:  errs,
+					Current: filepath.Base(p),
+				})
+				lastEmit = time.Now()
+			}
+		}
+
+		for _, p := range toIndexRaster {
+			if ctx.Err() != nil {
+				break
+			}
+			info, statErr := os.Stat(p)
+			var fileSize int64
+			if statErr == nil {
+				fileSize = info.Size()
+			}
+			batch[p] = store.Frame{
+				FileSize:  fileSize,
+				LastSeen:  time.Now().Unix(),
+				FrameType: store.FrameTypeProcessed,
+				Object:    filepath.Base(filepath.Dir(p)),
+			}
+			newlyIndexed++
 			done++
 
 			if len(batch) >= batchSize {

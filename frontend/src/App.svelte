@@ -447,6 +447,7 @@
 
         <PreviewPane
           entry={selectedEntry}
+          serverUrl={appInfo.serverUrl}
           bind:stretchEnabled
           bind:stretchLevel
           bind:basicCollapsed
@@ -504,6 +505,7 @@
         <PreviewPane
           entry={selectedEntry}
           qualityFrame={librarySelectedFrame}
+          serverUrl={appInfo.serverUrl}
           bind:stretchEnabled
           bind:stretchLevel
           bind:basicCollapsed
@@ -538,6 +540,7 @@
     <div class="content-area" style="display: {appMode === 'atlas' ? 'flex' : 'none'};">
       <SkyAtlas
         rootPath={rootFolder}
+        serverUrl={appInfo.serverUrl}
         onframeopen={(nasPath) => {
           libraryInitialFilter = nasPath.split("/").pop();
           appMode = "library";
