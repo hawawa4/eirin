@@ -11,6 +11,7 @@
 
   interface Props {
     entry: app.EnrichedFileEntry;
+    serverUrl: string;
     stretchEnabled: boolean;
     stretchLevel: number;
     basicCollapsed: boolean;
@@ -21,6 +22,7 @@
 
   let {
     entry,
+    serverUrl,
     stretchEnabled = $bindable(),
     stretchLevel = $bindable(),
     basicCollapsed = $bindable(),
@@ -28,6 +30,13 @@
     qualityFrame = null,
     onclose,
   }: Props = $props();
+
+  function isRasterFile(path: string): boolean {
+    const l = path.toLowerCase();
+    return l.endsWith(".png") || l.endsWith(".tif") || l.endsWith(".tiff");
+  }
+
+  let isRaster = $derived(isRasterFile(entry.path));
 
   let isProcessed = $derived(qualityFrame?.frameType === "processed");
 
@@ -374,6 +383,14 @@ void main() {
     resetView();
 
     const id = ++previewReqId;
+
+    if (isRaster) {
+      // Raster files (PNG/TIFF) are served directly — no FITS pipeline needed.
+      previewLoading = false;
+      hasImage = true;
+      return;
+    }
+
     const se = untrack(() => stretchEnabled);
     const sl = untrack(() => stretchLevel);
 
@@ -592,7 +609,7 @@ void main() {
         >Fit</button
       >
 
-      {#if !isProcessed}
+      {#if !isProcessed && !isRaster}
         <div class="stretch-group">
           <button
             class="tool-btn"
@@ -623,7 +640,7 @@ void main() {
         </div>
       {/if}
 
-      {#if rawInfo}
+      {#if rawInfo && !isRaster}
         {@const isColor = rawInfo.channels === 3}
         <div
           class="channel-group"
@@ -657,7 +674,7 @@ void main() {
         </div>
       {/if}
 
-      {#if rawInfo}
+      {#if rawInfo && !isRaster}
         <button
           class="tool-btn"
           class:active={showHistogram}
@@ -682,21 +699,31 @@ void main() {
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="image-viewport"
-    class:panning={isPanning}
+    class:panning={isPanning && !isRaster}
     bind:this={viewportEl}
-    onwheel={onWheel}
-    onmousedown={onPanStart}
-    onmousemove={onPanMove}
-    onmouseup={onPanEnd}
-    onmouseleave={onPanEnd}
-    ondblclick={resetView}
+    onwheel={isRaster ? undefined : onWheel}
+    onmousedown={isRaster ? undefined : onPanStart}
+    onmousemove={isRaster ? undefined : onPanMove}
+    onmouseup={isRaster ? undefined : onPanEnd}
+    onmouseleave={isRaster ? undefined : onPanEnd}
+    ondblclick={isRaster ? undefined : resetView}
   >
-    <canvas
-      use:initDisplay
-      class="display-canvas"
-      class:visible={hasImage && !previewLoading}
-      draggable="false"
-    ></canvas>
+    {#if isRaster}
+      <img
+        src="{serverUrl}/api/image?path={encodeURIComponent(entry.path)}"
+        alt={entry.name}
+        class="raster-img"
+        class:visible={hasImage}
+        draggable="false"
+      />
+    {:else}
+      <canvas
+        use:initDisplay
+        class="display-canvas"
+        class:visible={hasImage && !previewLoading}
+        draggable="false"
+      ></canvas>
+    {/if}
 
     <!-- Annotation overlay — absolute, viewport-space coordinates computed by imgToViewport() -->
     {#if showAnnotations && rawInfo && viewportW > 0}
@@ -1022,6 +1049,17 @@ void main() {
     visibility: hidden;
   }
   .display-canvas.visible {
+    visibility: visible;
+  }
+
+  .raster-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    user-select: none;
+    visibility: hidden;
+  }
+  .raster-img.visible {
     visibility: visible;
   }
 

@@ -147,31 +147,43 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 	})
 }
 
-// indexImportedFile reads the FITS header of a freshly-copied file and inserts
-// it into the database, so it shows up in the library without a separate Build Index run.
+// indexImportedFile inserts a freshly-copied file into the database so it
+// shows up in the library without a separate Build Index run.
+// FITS files are parsed for header metadata; PNG/TIFF are stored directly as
+// processed frames with no header data.
 func (a *App) indexImportedFile(c ImportCandidate) {
-	if !indexer.IsFitsFile(c.DestPath) {
-		return
-	}
-	hdr, err := fits.ReadFITSHeader(c.DestPath)
-	if err != nil {
-		runtime.LogWarningf(a.ctx, "import: index %s: %v", c.RelativePath, err)
-		return
-	}
-	frame := store.Frame{
-		FileSize:   c.FileSize,
-		LastSeen:   time.Now().Unix(),
-		Object:     hdr.Object,
-		Filter:     hdr.Filter,
-		ExpTime:    hdr.ExpTime,
-		DateObs:    hdr.DateObs,
-		Gain:       hdr.Gain,
-		CCDTemp:    hdr.CCDTemp,
-		Telescope:  hdr.Telescope,
-		Instrument: hdr.Instrument,
-		FrameType:  store.ClassifyFrameType(c.DestPath),
-	}
-	if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
-		runtime.LogWarningf(a.ctx, "import: upsert %s: %v", c.DestPath, err)
+	switch {
+	case indexer.IsFitsFile(c.DestPath):
+		hdr, err := fits.ReadFITSHeader(c.DestPath)
+		if err != nil {
+			runtime.LogWarningf(a.ctx, "import: index %s: %v", c.RelativePath, err)
+			return
+		}
+		frame := store.Frame{
+			FileSize:   c.FileSize,
+			LastSeen:   time.Now().Unix(),
+			Object:     hdr.Object,
+			Filter:     hdr.Filter,
+			ExpTime:    hdr.ExpTime,
+			DateObs:    hdr.DateObs,
+			Gain:       hdr.Gain,
+			CCDTemp:    hdr.CCDTemp,
+			Telescope:  hdr.Telescope,
+			Instrument: hdr.Instrument,
+			FrameType:  store.ClassifyFrameType(c.DestPath),
+		}
+		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
+			runtime.LogWarningf(a.ctx, "import: upsert %s: %v", c.DestPath, err)
+		}
+	case indexer.IsRasterFile(c.DestPath):
+		frame := store.Frame{
+			FileSize:  c.FileSize,
+			LastSeen:  time.Now().Unix(),
+			FrameType: store.FrameTypeProcessed,
+			Object:    filepath.Base(filepath.Dir(c.DestPath)),
+		}
+		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
+			runtime.LogWarningf(a.ctx, "import: upsert %s: %v", c.DestPath, err)
+		}
 	}
 }

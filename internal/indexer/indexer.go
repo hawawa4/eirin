@@ -17,3 +17,13 @@ func IsFitsFile(name string) bool {
 	l := strings.ToLower(name)
 	return strings.HasSuffix(l, ".fits") || strings.HasSuffix(l, ".fit")
 }
+
+// IsRasterFile reports whether the given filename is a plain raster image
+// (PNG or TIFF) that should be indexed as a processed frame without parsing
+// a FITS header.
+func IsRasterFile(name string) bool {
+	l := strings.ToLower(name)
+	return strings.HasSuffix(l, ".png") ||
+		strings.HasSuffix(l, ".tif") ||
+		strings.HasSuffix(l, ".tiff")
+}
