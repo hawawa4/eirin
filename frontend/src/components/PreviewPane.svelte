@@ -3,6 +3,7 @@
   import type { app, fits, catalog } from "../../wailsjs/go/models";
   import {
     GeneratePreviewRawSized,
+    LoadRasterImage,
     ReadFITSHeader,
     GetAnnotations,
   } from "../../wailsjs/go/app/App.js";
@@ -11,7 +12,6 @@
 
   interface Props {
     entry: app.EnrichedFileEntry;
-    serverUrl: string;
     stretchEnabled: boolean;
     stretchLevel: number;
     basicCollapsed: boolean;
@@ -22,7 +22,6 @@
 
   let {
     entry,
-    serverUrl,
     stretchEnabled = $bindable(),
     stretchLevel = $bindable(),
     basicCollapsed = $bindable(),
@@ -81,6 +80,7 @@
   let fitsHeader = $state<fits.FITSHeader | null>(null);
   let previewReqId = 0;
   let hasImage = $state(false);
+  let rasterDataUrl = $state("");
 
   // ── Zoom / pan ────────────────────────────────────────────────────────────
   let zoom = $state(1);
@@ -377,6 +377,7 @@ void main() {
     fitsHeader = null;
     rawInfo = null;
     hasImage = false;
+    rasterDataUrl = "";
     histBins = null;
     annotations = [];
     showAnnotations = false;
@@ -385,9 +386,16 @@ void main() {
     const id = ++previewReqId;
 
     if (isRaster) {
-      // Raster files (PNG/TIFF) are served directly — no FITS pipeline needed.
-      previewLoading = false;
-      hasImage = true;
+      LoadRasterImage(e.path).then((dataUrl: string) => {
+        if (id !== previewReqId) return;
+        rasterDataUrl = dataUrl;
+        hasImage = true;
+        previewLoading = false;
+      }).catch((err: unknown) => {
+        if (id !== previewReqId) return;
+        previewError = err instanceof Error ? err.message : "Failed to load image";
+        previewLoading = false;
+      });
       return;
     }
 
@@ -710,7 +718,7 @@ void main() {
   >
     {#if isRaster}
       <img
-        src="{serverUrl}/api/image?path={encodeURIComponent(entry.path)}"
+        src={rasterDataUrl}
         alt={entry.name}
         class="raster-img"
         class:visible={hasImage}

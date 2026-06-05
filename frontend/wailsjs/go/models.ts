@@ -532,6 +532,7 @@ export namespace importer {
 	    relativePath: string;
 	    destPath: string;
 	    fileSize: number;
+	    fileHash?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Candidate(source);
@@ -543,6 +544,7 @@ export namespace importer {
 	        this.relativePath = source["relativePath"];
 	        this.destPath = source["destPath"];
 	        this.fileSize = source["fileSize"];
+	        this.fileHash = source["fileHash"];
 	    }
 	}
 

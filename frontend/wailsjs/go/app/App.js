@@ -134,6 +134,10 @@ export function LoadPrefs() {
   return window['go']['app']['App']['LoadPrefs']();
 }
 
+export function LoadRasterImage(arg1) {
+  return window['go']['app']['App']['LoadRasterImage'](arg1);
+}
+
 export function OpenProjectInSiril(arg1) {
   return window['go']['app']['App']['OpenProjectInSiril'](arg1);
 }

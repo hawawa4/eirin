@@ -28,6 +28,7 @@ type Frame struct {
 	FileSize int64
 	LastSeen int64 // unix timestamp
 	CachedAt int64 // unix timestamp; 0 = not yet indexed
+	FileHash string // SHA-256 of first 1 MiB; empty if not yet computed
 
 	// FITS header
 	Object     string
@@ -101,11 +102,13 @@ func (s *Store) UpsertFrame(path string, f Frame) error {
 		Columns("nas_path", "file_size", "last_seen", "cached_at",
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs",
 			"telescope", "instrument", "frame_type",
-			"ra", "dec", "pixel_scale", "rotation").
+			"ra", "dec", "pixel_scale", "rotation",
+			"file_hash").
 		Values(path, f.FileSize, f.LastSeen, time.Now().Unix(),
 			f.Object, f.Filter, f.ExpTime, f.Gain, f.CCDTemp, f.DateObs,
 			f.Telescope, f.Instrument, f.FrameType,
-			f.RA, f.Dec, f.PixelScale, f.Rotation).
+			f.RA, f.Dec, f.PixelScale, f.Rotation,
+			f.FileHash).
 		Suffix(`ON CONFLICT(nas_path) DO UPDATE SET
 			file_size=excluded.file_size, last_seen=excluded.last_seen,
 			cached_at=excluded.cached_at,
@@ -116,7 +119,8 @@ func (s *Store) UpsertFrame(path string, f Frame) error {
 			ra=CASE WHEN frames.wcs_solved THEN frames.ra ELSE excluded.ra END,
 			dec=CASE WHEN frames.wcs_solved THEN frames.dec ELSE excluded.dec END,
 			pixel_scale=CASE WHEN frames.wcs_solved THEN frames.pixel_scale ELSE excluded.pixel_scale END,
-			rotation=CASE WHEN frames.wcs_solved THEN frames.rotation ELSE excluded.rotation END`).
+			rotation=CASE WHEN frames.wcs_solved THEN frames.rotation ELSE excluded.rotation END,
+			file_hash=CASE WHEN excluded.file_hash != '' THEN excluded.file_hash ELSE frames.file_hash END`).
 		ToSql()
 	if err != nil {
 		return err
@@ -237,6 +241,13 @@ func (s *Store) GetAllFramesUnder(rootPath string) ([]Frame, error) {
 	return frames, rows.Err()
 }
 
+// SetFrameHash stores the pre-image hash for a frame that was indexed before
+// hashing was introduced. Only updates rows where file_hash is currently empty.
+func (s *Store) SetFrameHash(path, hash string) error {
+	_, err := s.db.Exec(`UPDATE frames SET file_hash=? WHERE nas_path=? AND (file_hash IS NULL OR file_hash='')`, hash, path)
+	return err
+}
+
 // SetFrameType updates the frame_type for the given path. This allows the user
 // to manually override the auto-detected type (e.g. to mark a file as "processed").
 func (s *Store) SetFrameType(path, frameType string) error {
@@ -300,7 +311,7 @@ func (s *Store) GetAllRejectedUnder(rootPath string) ([]string, error) {
 }
 
 // GetAllFrameBasenames returns a set of all file basenames currently in the
-// frames table. Used by the importer to identify files already in the library.
+// frames table. Used by the importer scan to cheaply filter obvious non-candidates.
 func (s *Store) GetAllFrameBasenames() (map[string]bool, error) {
 	rows, err := s.db.Query(`SELECT nas_path FROM frames`)
 	if err != nil {
@@ -314,6 +325,25 @@ func (s *Store) GetAllFrameBasenames() (map[string]bool, error) {
 			return nil, err
 		}
 		result[filepath.Base(p)] = true
+	}
+	return result, rows.Err()
+}
+
+// GetAllFrameHashes returns a set of all non-empty file_hash values currently
+// in the frames table. Used by the importer to detect true duplicates by content.
+func (s *Store) GetAllFrameHashes() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT file_hash FROM frames WHERE file_hash IS NOT NULL AND file_hash != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]bool)
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			return nil, err
+		}
+		result[h] = true
 	}
 	return result, rows.Err()
 }
@@ -489,6 +519,27 @@ func (s *Store) GetAtlasIndexFrames(rootPath string) ([]Frame, error) {
 		frames = append(frames, f)
 	}
 	return frames, rows.Err()
+}
+
+// GetObjectForDirectory returns the object name from any indexed light frame
+// whose path starts with dirPath. This is used to infer the object for raster
+// files (PNG/TIFF) that share the same parent directory as their source lights.
+// Returns ("", nil) when no match is found.
+func (s *Store) GetObjectForDirectory(dirPath string) (string, error) {
+	prefix := dirPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	var obj string
+	err := s.db.QueryRow(`
+		SELECT object FROM frames
+		WHERE nas_path LIKE ? AND cached_at > 0 AND object != ''
+		LIMIT 1
+	`, prefix+"%").Scan(&obj)
+	if err != nil {
+		return "", nil // no match is not an error
+	}
+	return obj, nil
 }
 
 // GetDistinctObjects returns the sorted list of distinct non-empty object values

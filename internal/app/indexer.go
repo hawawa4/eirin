@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/TaruDesigns/eirin/internal/fits"
+	"github.com/TaruDesigns/eirin/internal/importer"
 	"github.com/TaruDesigns/eirin/internal/indexer"
 	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -95,6 +96,13 @@ func (a *App) BuildIndex(rootPath string) {
 				toIndexRaster = append(toIndexRaster, p)
 			}
 		}
+		// Paths already indexed but missing a hash (existing DB rows before this feature).
+		toHashOnly := make([]string, 0)
+		for _, p := range allPaths {
+			if f, ok := indexed0[p]; ok && f.CachedAt > 0 && f.FileHash == "" {
+				toHashOnly = append(toHashOnly, p)
+			}
+		}
 
 		alreadyCached := total - len(toIndexFits) - len(toIndexRaster)
 		a.emitIndexProgress(indexProgressEvent{
@@ -150,6 +158,9 @@ func (a *App) BuildIndex(rootPath string) {
 					f.PixelScale = &ps
 					f.Rotation = &rot
 				}
+				if hash, hashErr := importer.HashFilePrefix(p); hashErr == nil {
+					f.FileHash = hash
+				}
 				batch[p] = f
 				newlyIndexed++
 			}
@@ -181,12 +192,16 @@ func (a *App) BuildIndex(rootPath string) {
 			if statErr == nil {
 				fileSize = info.Size()
 			}
-			batch[p] = store.Frame{
+			f := store.Frame{
 				FileSize:  fileSize,
 				LastSeen:  time.Now().Unix(),
 				FrameType: store.FrameTypeProcessed,
-				Object:    filepath.Base(filepath.Dir(p)),
+				Object:    a.inferObjectForRaster(p),
 			}
+			if hash, hashErr := importer.HashFilePrefix(p); hashErr == nil {
+				f.FileHash = hash
+			}
+			batch[p] = f
 			newlyIndexed++
 			done++
 
@@ -208,6 +223,21 @@ func (a *App) BuildIndex(rootPath string) {
 		}
 
 		flushBatch()
+
+		// ── Phase 4: back-fill hashes for already-indexed rows that lack one ──
+		for _, p := range toHashOnly {
+			if ctx.Err() != nil {
+				break
+			}
+			hash, err := importer.HashFilePrefix(p)
+			if err != nil {
+				runtime.LogWarningf(a.ctx, "index: hash %s: %v", p, err)
+				continue
+			}
+			if err := a.store.SetFrameHash(p, hash); err != nil {
+				runtime.LogWarningf(a.ctx, "index: set hash %s: %v", p, err)
+			}
+		}
 
 		phase := "done"
 		if ctx.Err() != nil {
