@@ -7,16 +7,16 @@
     GetAtlasFrameSize,
     GetCatalog,
     GeneratePreviewRawSized,
+    LoadRasterImage,
   } from "../../wailsjs/go/app/App.js";
   import { renderStretched } from "../lib/stretchPreview";
 
   interface Props {
     rootPath: string;
-    serverUrl: string;
     onframeopen?: (nasPath: string) => void;
   }
 
-  let { rootPath, serverUrl, onframeopen }: Props = $props();
+  let { rootPath, onframeopen }: Props = $props();
 
   function isRasterFile(path: string): boolean {
     const l = path.toLowerCase();
@@ -108,22 +108,29 @@
       loadingPaths.add(path);
 
       if (isRasterFile(path)) {
-        // PNG/TIFF: load via an Image element, paint to an offscreen canvas.
-        const imgEl = new Image();
-        imgEl.onload = () => {
-          const c = document.createElement("canvas");
-          c.width = imgEl.naturalWidth;
-          c.height = imgEl.naturalHeight;
-          c.getContext("2d")!.drawImage(imgEl, 0, 0);
-          previewImgs.set(path, c);
-          loadingPaths.delete(path);
-          previewVersion++;
-        };
-        imgEl.onerror = () => {
-          loadingPaths.delete(path);
-          previewVersion++;
-        };
-        imgEl.src = `${serverUrl}/api/image?path=${encodeURIComponent(path)}`;
+        // PNG/TIFF: load via Go's LoadRasterImage (data URL), paint to offscreen canvas.
+        LoadRasterImage(path)
+          .then((dataUrl: string) => {
+            const imgEl = new Image();
+            imgEl.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = imgEl.naturalWidth;
+              c.height = imgEl.naturalHeight;
+              c.getContext("2d")!.drawImage(imgEl, 0, 0);
+              previewImgs.set(path, c);
+              loadingPaths.delete(path);
+              previewVersion++;
+            };
+            imgEl.onerror = () => {
+              loadingPaths.delete(path);
+              previewVersion++;
+            };
+            imgEl.src = dataUrl;
+          })
+          .catch(() => {
+            loadingPaths.delete(path);
+            previewVersion++;
+          });
       } else {
         GeneratePreviewRawSized(path, 2048)
           .then((result) => {

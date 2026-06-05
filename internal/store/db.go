@@ -64,8 +64,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate creates the schema. Old tables are dropped on startup since data
-// migration is not required during development.
+// migrate creates the schema and applies incremental migrations.
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return err
@@ -114,7 +113,8 @@ func migrate(db *sql.DB) error {
 			rejected         INTEGER NOT NULL DEFAULT 0,
 			rejection_reason TEXT,
 			tags             TEXT,
-			notes            TEXT
+			notes            TEXT,
+			file_hash        TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_frames_object     ON frames(object);
 		CREATE INDEX IF NOT EXISTS idx_frames_filter     ON frames(filter);
@@ -122,6 +122,7 @@ func migrate(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_frames_obj_filt   ON frames(object, filter);
 		CREATE INDEX IF NOT EXISTS idx_frames_rejected   ON frames(rejected);
 		CREATE INDEX IF NOT EXISTS idx_frames_frame_type ON frames(frame_type);
+		CREATE INDEX IF NOT EXISTS idx_frames_file_hash  ON frames(file_hash);
 		CREATE TABLE IF NOT EXISTS projects (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
 			name        TEXT    NOT NULL,
@@ -130,5 +131,23 @@ func migrate(db *sql.DB) error {
 			created_at  TEXT    NOT NULL
 		);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// Incremental migrations for existing databases.
+	if _, err := db.Exec(`ALTER TABLE frames ADD COLUMN file_hash TEXT`); err != nil {
+		// Ignore "duplicate column" errors — the column already exists.
+		if !isDuplicateColumnErr(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func isDuplicateColumnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return len(msg) >= 22 && msg[:22] == "duplicate column name:"
 }

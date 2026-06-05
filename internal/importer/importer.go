@@ -1,11 +1,29 @@
 package importer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+const hashPrefixBytes = 1 << 20 // 1 MiB
+
+// HashFilePrefix returns a hex-encoded SHA-256 of the first 1 MiB of the file.
+func HashFilePrefix(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, io.LimitReader(f, hashPrefixBytes)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 // Candidate is a file in the source folder not yet in the library.
 type Candidate struct {
@@ -13,6 +31,7 @@ type Candidate struct {
 	RelativePath string `json:"relativePath"` // full path relative to source root (for tree display)
 	DestPath     string `json:"destPath"`     // flattened: nasRoot/immediateParentDir/filename
 	FileSize     int64  `json:"fileSize"`
+	FileHash     string `json:"fileHash,omitempty"` // SHA-256 of first 1 MiB; set during import
 }
 
 // Progress is emitted during an import run.

@@ -73,6 +73,8 @@ export function ListProjects():Promise<Array<app.Project>>;
 
 export function LoadPrefs():Promise<store.Prefs>;
 
+export function LoadRasterImage(arg1:string):Promise<string>;
+
 export function OpenProjectInSiril(arg1:string):Promise<void>;
 
 export function OpenWithSiril(arg1:string):Promise<void>;
