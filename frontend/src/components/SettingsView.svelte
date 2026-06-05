@@ -6,6 +6,7 @@
     SetSirilPath,
     SelectProjectsFolder,
     SetProjectsFolder,
+    BackupDatabase,
   } from "../../wailsjs/go/app/App.js";
   import type { AppInfo, SirilInfo } from "../lib/types";
 
@@ -38,6 +39,24 @@
     if (!path) return;
     await SetProjectsFolder(path);
     onprojectsfolderset(path);
+  }
+
+  // ── Database backup ───────────────────────────────────────────────────────
+  let backingUp = $state(false);
+  let backupResult = $state<{ path: string; error: string } | null>(null);
+
+  async function doBackup() {
+    backingUp = true;
+    backupResult = null;
+    try {
+      const path = await BackupDatabase();
+      backupResult = { path, error: "" };
+    } catch (e) {
+      backupResult = { path: "", error: String(e) };
+    } finally {
+      backingUp = false;
+      setTimeout(() => (backupResult = null), 4000);
+    }
   }
 
   // ── Clipboard copy ────────────────────────────────────────────────────────
@@ -222,6 +241,20 @@
           title="Copy path">{copied === "db" ? "✓" : "⎘"}</button
         >
       </div>
+      <div class="info-row">
+        <span class="info-label">Backup</span>
+        <button class="btn-ghost" onclick={doBackup} disabled={backingUp}>
+          {backingUp ? "Backing up…" : "Back up now"}
+        </button>
+        {#if backupResult}
+          {#if backupResult.error}
+            <span class="backup-error">{backupResult.error}</span>
+          {:else}
+            <span class="backup-ok">Saved to {backupResult.path}</span>
+          {/if}
+        {/if}
+      </div>
+      <p class="action-hint">A timestamped copy is also made automatically every 30 minutes.</p>
     </section>
 
     <!-- ── API Server ────────────────────────────────────────────────────── -->
@@ -363,6 +396,16 @@
     color: var(--text-secondary);
     margin: 0;
     line-height: 1.4;
+  }
+
+  .backup-ok {
+    font-size: 0.78rem;
+    color: var(--success, #4ade80);
+    word-break: break-all;
+  }
+  .backup-error {
+    font-size: 0.78rem;
+    color: var(--danger);
   }
 
   .action-hint code {

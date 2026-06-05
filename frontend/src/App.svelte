@@ -55,7 +55,7 @@
   const PREF_THEME = "theme";
 
   // ── App mode ──────────────────────────────────────────────────────────────
-  let appMode = $state<AppMode>("browser");
+  let appMode = $state<AppMode>("library");
 
   // ── Theme ─────────────────────────────────────────────────────────────────
   let theme = $state<Theme>("blue");
