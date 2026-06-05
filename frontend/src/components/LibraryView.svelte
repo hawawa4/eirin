@@ -715,7 +715,9 @@
 
 <!-- ── Table ──────────────────────────────────────────────────────────────── -->
 {#if loading}
-  <div class="status-row">Loading library…</div>
+  <div class="status-row">
+    <span class="spinner" aria-label="Loading library"></span>
+  </div>
 {:else if error}
   <div class="status-row error">{error}</div>
 {:else}
@@ -1367,6 +1369,18 @@
   }
   .status-row.error {
     color: var(--danger);
+  }
+  .spinner {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   /* ── Table ───────────────────────────────────────────────────────────────── */

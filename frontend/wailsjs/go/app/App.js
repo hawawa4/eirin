@@ -10,6 +10,10 @@ export function AnalyzeFrames(arg1) {
   return window['go']['app']['App']['AnalyzeFrames'](arg1);
 }
 
+export function BackupDatabase() {
+  return window['go']['app']['App']['BackupDatabase']();
+}
+
 export function BatchHardDeleteFiles(arg1) {
   return window['go']['app']['App']['BatchHardDeleteFiles'](arg1);
 }

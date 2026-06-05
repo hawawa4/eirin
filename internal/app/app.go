@@ -28,6 +28,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.store = s
 	a.startServer()
+	a.startAutoBackup()
 }
 
 func (a *App) Shutdown(_ context.Context) {

@@ -11,6 +11,8 @@ export function AddFramesToProject(arg1:string,arg2:Array<string>,arg3:string):P
 
 export function AnalyzeFrames(arg1:Array<string>):Promise<void>;
 
+export function BackupDatabase():Promise<string>;
+
 export function BatchHardDeleteFiles(arg1:Array<string>):Promise<void>;
 
 export function BatchRejectFiles(arg1:Array<string>):Promise<void>;
