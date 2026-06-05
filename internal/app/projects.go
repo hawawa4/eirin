@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TaruDesigns/eirin/internal/siril"
 	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -121,8 +122,8 @@ func (a *App) AddFramesToProject(projectFolder string, nasPaths []string, mode s
 // OpenProjectInSiril launches Siril with the project folder as working directory.
 func (a *App) OpenProjectInSiril(projectFolder string) error {
 	exe := a.sirilExecutable()
-	cmd := exec.Command(exe)
-	cmd.Dir = projectFolder
+	cmd := exec.Command(exe, "-d", projectFolder)
+	cmd.Env = siril.GUIEnv()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
