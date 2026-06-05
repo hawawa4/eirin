@@ -1,4 +1,4 @@
-import type { app } from "../../wailsjs/go/models";
+import type * as app from "$models/app";
 
 export interface ColumnDef {
   id: string;

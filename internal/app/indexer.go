@@ -8,11 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/TaruDesigns/eirin/internal/importer"
 	"github.com/TaruDesigns/eirin/internal/indexer"
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type indexProgressEvent = indexer.ProgressEvent
@@ -31,7 +33,7 @@ func (a *App) BuildIndex(rootPath string) {
 	if a.indexer.cancel != nil {
 		a.indexer.cancel()
 	}
-	ctx, cancel := context.WithCancel(a.ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	a.indexer.cancel = cancel
 	a.indexer.mu.Unlock()
 
@@ -80,7 +82,7 @@ func (a *App) BuildIndex(rootPath string) {
 		allPaths := append(fitsPaths, rasterPaths...)
 		indexed0, err := a.store.GetFrames(allPaths)
 		if err != nil {
-			runtime.LogErrorf(a.ctx, "index: get frames: %v", err)
+			slog.Error("index: get frames", "err", err)
 			indexed0 = map[string]store.Frame{}
 		}
 
@@ -126,7 +128,7 @@ func (a *App) BuildIndex(rootPath string) {
 				return
 			}
 			if err := a.store.BatchUpsertFrames(batch); err != nil {
-				runtime.LogErrorf(a.ctx, "index: batch upsert: %v", err)
+				slog.Error("index: batch upsert", "err", err)
 			}
 			batch = make(map[string]store.Frame, batchSize)
 		}
@@ -231,11 +233,11 @@ func (a *App) BuildIndex(rootPath string) {
 			}
 			hash, err := importer.HashFilePrefix(p)
 			if err != nil {
-				runtime.LogWarningf(a.ctx, "index: hash %s: %v", p, err)
+				slog.Warn("index: hash", "path", p, "err", err)
 				continue
 			}
 			if err := a.store.SetFrameHash(p, hash); err != nil {
-				runtime.LogWarningf(a.ctx, "index: set hash %s: %v", p, err)
+				slog.Warn("index: set hash", "path", p, "err", err)
 			}
 		}
 
@@ -264,5 +266,5 @@ func (a *App) CancelIndex() {
 }
 
 func (a *App) emitIndexProgress(evt indexProgressEvent) {
-	runtime.EventsEmit(a.ctx, "index:progress", evt)
+	a.wails.Event.EmitEvent(&application.CustomEvent{Name: "index:progress", Data: evt})
 }

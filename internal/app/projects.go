@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/siril"
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Project is the frontend-facing project type.
@@ -31,9 +32,11 @@ func (a *App) GetProjectsFolder() string {
 
 // SelectProjectsFolder opens a directory picker for the projects root.
 func (a *App) SelectProjectsFolder() (string, error) {
-	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Projects Root Folder",
-	})
+	path, err := a.wails.Dialog.OpenFile().
+		SetTitle("Select Projects Root Folder").
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		PromptForSingleSelection()
 	if err != nil {
 		return "", err
 	}
@@ -210,7 +213,7 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
 	entries, err := os.ReadDir(lightsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			runtime.LogWarningf(a.ctx, "project frames: readdir %s: %v", lightsDir, err)
+			slog.Warn("project frames: readdir", "dir", lightsDir, "err", err)
 		}
 		return []LibraryFrame{}
 	}
@@ -239,7 +242,7 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
 
 	frameMap, err := a.store.GetFrames(nasPaths)
 	if err != nil {
-		runtime.LogWarningf(a.ctx, "project frames: db lookup: %v", err)
+		slog.Warn("project frames: db lookup", "err", err)
 		frameMap = map[string]store.Frame{}
 	}
 
@@ -262,7 +265,7 @@ func (a *App) RemoveFramesFromProject(projectFolder string, nasPaths []string) e
 	for _, p := range nasPaths {
 		target := filepath.Join(lightsDir, filepath.Base(p))
 		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
-			runtime.LogWarningf(a.ctx, "remove from project: %s: %v", filepath.Base(p), err)
+			slog.Warn("remove from project", "file", filepath.Base(p), "err", err)
 			failed++
 		}
 	}

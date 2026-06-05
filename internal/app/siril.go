@@ -6,7 +6,6 @@ import (
 
 	"github.com/TaruDesigns/eirin/internal/siril"
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // SirilInfo describes the detected (or user-configured) Siril installation.
@@ -21,9 +20,9 @@ func (a *App) CheckSiril() SirilInfo {
 
 // SelectSirilExecutable opens a file-picker so the user can locate the siril binary.
 func (a *App) SelectSirilExecutable() (string, error) {
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Siril Executable",
-	})
+	path, err := a.wails.Dialog.OpenFile().
+		SetTitle("Select Siril Executable").
+		PromptForSingleSelection()
 	if err != nil {
 		return "", err
 	}

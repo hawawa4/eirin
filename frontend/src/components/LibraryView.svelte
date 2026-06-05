@@ -16,9 +16,9 @@
     CreateProject,
     AddFramesToProject,
     SuggestRejects,
-  } from "../../wailsjs/go/app/App.js";
-  import { EventsOn } from "../../wailsjs/runtime/runtime.js";
-  import type { app } from "../../wailsjs/go/models";
+  } from "$app";
+  import { Events } from "@wailsio/runtime";
+  import type * as app from "$models/app";
   import type {
     AnalysisProgress,
     ColFilter,
@@ -217,10 +217,11 @@
   let analysisProgress = $state<AnalysisProgress | null>(null);
 
   $effect(() => {
-    const unsubProgress = EventsOn("analysis:progress", (data: AnalysisProgress) => {
+    const unsubProgress = Events.On("analysis:progress", (event) => {
+      const data = event.data as AnalysisProgress;
       analysisProgress = data;
     });
-    const unsubUpdated = EventsOn("library:updated", () => {
+    const unsubUpdated = Events.On("library:updated", () => {
       reload();
     });
     return () => {
@@ -584,7 +585,7 @@
 
   // ── Smart reject suggestions ──────────────────────────────────────────────
   let suggestLoading = $state(false);
-  let suggestResults = $state<import("../../wailsjs/go/models").app.SuggestResult[]>([]);
+  let suggestResults = $state<app.SuggestResult[]>([]);
   let suggestSelected = $state(new Set<string>());
   let showSuggest = $state(false);
 

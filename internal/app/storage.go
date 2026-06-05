@@ -1,8 +1,9 @@
 package app
 
 import (
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // StorageNode is one node in the storage treemap hierarchy.
@@ -23,7 +24,7 @@ type storageLeaf struct {
 func (a *App) GetStorageStats(rootPath string) StorageNode {
 	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "storage: get frames: %v", err)
+		slog.Error("storage: get frames", "err", err)
 		return StorageNode{Label: rootPath}
 	}
 
@@ -83,7 +84,7 @@ func (a *App) GetStorageStats(rootPath string) StorageNode {
 func (a *App) GetFrameTypeSummary(rootPath string) []StorageNode {
 	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "storage: frame type summary: %v", err)
+		slog.Error("storage: frame type summary", "err", err)
 		return nil
 	}
 

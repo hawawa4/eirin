@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/TaruDesigns/eirin/internal/importer"
 	"github.com/TaruDesigns/eirin/internal/indexer"
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ImportCandidate is a file in the source folder not yet in the library.
@@ -24,9 +25,11 @@ type ImportProgress = importer.Progress
 // SelectSourceFolder opens an OS directory dialog for the user to pick the
 // folder they want to import files from.
 func (a *App) SelectSourceFolder() (string, error) {
-	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Source Folder to Import From",
-	})
+	path, err := a.wails.Dialog.OpenFile().
+		SetTitle("Select Source Folder to Import From").
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		PromptForSingleSelection()
 	if err != nil {
 		return "", err
 	}
@@ -102,13 +105,17 @@ func (a *App) StartImport(sourceFolder string, extensions []string, deleteAfterC
 	return nil
 }
 
+func (a *App) emitImportProgress(p ImportProgress) {
+	a.wails.Event.EmitEvent(&application.CustomEvent{Name: "import:progress", Data: p})
+}
+
 func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 	total := len(candidates)
 	copied, skipped := 0, 0
 
 	knownHashes, err := a.store.GetAllFrameHashes()
 	if err != nil {
-		runtime.EventsEmit(a.ctx, "import:progress", ImportProgress{
+		a.emitImportProgress(ImportProgress{
 			Phase: "error",
 			Total: total,
 			Error: fmt.Sprintf("querying hashes: %v", err),
@@ -117,7 +124,7 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 	}
 
 	for i, c := range candidates {
-		runtime.EventsEmit(a.ctx, "import:progress", ImportProgress{
+		a.emitImportProgress(ImportProgress{
 			Phase:       "copying",
 			Current:     i,
 			Total:       total,
@@ -128,7 +135,7 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 
 		hash, hashErr := importer.HashFilePrefix(c.SourcePath)
 		if hashErr != nil {
-			runtime.EventsEmit(a.ctx, "import:progress", ImportProgress{
+			a.emitImportProgress(ImportProgress{
 				Phase:   "error",
 				Current: i,
 				Total:   total,
@@ -142,7 +149,7 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 			skipped++
 			if deleteAfterCopy {
 				if rmErr := os.Remove(c.SourcePath); rmErr != nil {
-					runtime.LogWarningf(a.ctx, "import: delete source %s: %v", c.RelativePath, rmErr)
+					slog.Warn("import: delete source", "path", c.RelativePath, "err", rmErr)
 				}
 			}
 			continue
@@ -150,7 +157,7 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 
 		wasSkipped, copyErr := importer.CopyFileIfNotExists(c.SourcePath, c.DestPath)
 		if copyErr != nil {
-			runtime.EventsEmit(a.ctx, "import:progress", ImportProgress{
+			a.emitImportProgress(ImportProgress{
 				Phase:   "error",
 				Current: i,
 				Total:   total,
@@ -168,13 +175,13 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 			a.indexImportedFile(c)
 			if deleteAfterCopy {
 				if rmErr := os.Remove(c.SourcePath); rmErr != nil {
-					runtime.LogWarningf(a.ctx, "import: delete source %s: %v", c.RelativePath, rmErr)
+					slog.Warn("import: delete source", "path", c.RelativePath, "err", rmErr)
 				}
 			}
 		}
 	}
 
-	runtime.EventsEmit(a.ctx, "import:progress", ImportProgress{
+	a.emitImportProgress(ImportProgress{
 		Phase:   "done",
 		Current: total,
 		Total:   total,
@@ -203,7 +210,7 @@ func (a *App) indexImportedFile(c ImportCandidate) {
 	case indexer.IsFitsFile(c.DestPath):
 		hdr, err := fits.ReadFITSHeader(c.DestPath)
 		if err != nil {
-			runtime.LogWarningf(a.ctx, "import: index %s: %v", c.RelativePath, err)
+			slog.Warn("import: index", "path", c.RelativePath, "err", err)
 			return
 		}
 		frame := store.Frame{
@@ -221,7 +228,7 @@ func (a *App) indexImportedFile(c ImportCandidate) {
 			FrameType:  store.ClassifyFrameType(c.DestPath),
 		}
 		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
-			runtime.LogWarningf(a.ctx, "import: upsert %s: %v", c.DestPath, err)
+			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
 	case indexer.IsRasterFile(c.DestPath):
 		frame := store.Frame{
@@ -232,11 +239,11 @@ func (a *App) indexImportedFile(c ImportCandidate) {
 			Object:    a.inferObjectForRaster(c.DestPath),
 		}
 		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
-			runtime.LogWarningf(a.ctx, "import: upsert %s: %v", c.DestPath, err)
+			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
 		go func() {
 			if err := a.AnalyzeFrames([]string{c.DestPath}); err != nil {
-				runtime.LogWarningf(a.ctx, "import: analyze %s: %v", c.RelativePath, err)
+				slog.Warn("import: analyze", "path", c.RelativePath, "err", err)
 			}
 		}()
 	}

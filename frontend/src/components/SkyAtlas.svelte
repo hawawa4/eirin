@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
-  import type { app } from "../../wailsjs/go/models";
+  import type * as app from "$models/app";
   import {
     GetAtlasIndex,
     GetAtlasFrameSize,
     GetCatalog,
     GeneratePreviewRawSized,
     LoadRasterImage,
-  } from "../../wailsjs/go/app/App.js";
+  } from "$app";
   import { renderStretched } from "../lib/stretchPreview";
 
   interface Props {

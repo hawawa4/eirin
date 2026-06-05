@@ -3,11 +3,10 @@ package app
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // BackupDatabase copies the SQLite database to the same directory with a
@@ -37,9 +36,9 @@ func (a *App) startAutoBackup() {
 		defer ticker.Stop()
 		for range ticker.C {
 			if _, err := a.BackupDatabase(); err != nil {
-				runtime.LogWarningf(a.ctx, "auto-backup: %v", err)
+				slog.Warn("auto-backup", "err", err)
 			} else {
-				runtime.LogInfof(a.ctx, "auto-backup: database backed up")
+				slog.Info("auto-backup: database backed up")
 			}
 		}
 	}()
