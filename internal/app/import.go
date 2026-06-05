@@ -188,24 +188,26 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 		Copied:  copied,
 		Skipped: skipped,
 	})
-}
 
-// inferObjectForRaster resolves the object name for a raster file by querying
-// the DB for any indexed frame (typically a light) under the same directory.
-// Falls back to the directory name when nothing is indexed there yet.
-func (a *App) inferObjectForRaster(path string) string {
-	dir := filepath.Dir(path)
-	if obj, err := a.store.GetObjectForDirectory(dir); err == nil && obj != "" {
-		return obj
+	// Trigger a full index run so the library view refreshes without the user
+	// having to press Build Index manually.
+	if copied > 0 {
+		nasRoot := a.store.Load().RootFolder
+		if nasRoot != "" {
+			a.BuildIndex(nasRoot)
+		}
 	}
-	return filepath.Base(dir)
 }
 
 // indexImportedFile inserts a freshly-copied file into the database so it
 // shows up in the library without a separate Build Index run.
-// FITS files are parsed for header metadata; PNG/TIFF are stored directly as
-// processed frames with no header data.
+// FITS files are parsed for header metadata; empty fields are filled from
+// existing light frames in the same directory (e.g. Seestar files lack telescope).
+// PNG/TIFF are stored as processed frames with metadata inferred from the directory.
 func (a *App) indexImportedFile(c ImportCandidate) {
+	dir := filepath.Dir(c.DestPath)
+	dirMeta := a.store.GetDirMeta(dir)
+
 	switch {
 	case indexer.IsFitsFile(c.DestPath):
 		hdr, err := fits.ReadFITSHeader(c.DestPath)
@@ -213,30 +215,63 @@ func (a *App) indexImportedFile(c ImportCandidate) {
 			slog.Warn("import: index", "path", c.RelativePath, "err", err)
 			return
 		}
+		// Fill empty header fields from existing lights in the same directory.
+		obj := hdr.Object
+		if obj == "" {
+			obj = dirMeta.Object
+		}
+		if obj == "" {
+			obj = filepath.Base(dir)
+		}
+		telescope := hdr.Telescope
+		if telescope == "" {
+			telescope = dirMeta.Telescope
+		}
+		instrument := hdr.Instrument
+		if instrument == "" {
+			instrument = dirMeta.Instrument
+		}
+		filter := hdr.Filter
+		if filter == "" {
+			filter = dirMeta.Filter
+		}
 		frame := store.Frame{
 			FileSize:   c.FileSize,
 			LastSeen:   time.Now().Unix(),
 			FileHash:   c.FileHash,
-			Object:     hdr.Object,
-			Filter:     hdr.Filter,
+			Object:     obj,
+			Filter:     filter,
 			ExpTime:    hdr.ExpTime,
 			DateObs:    hdr.DateObs,
 			Gain:       hdr.Gain,
 			CCDTemp:    hdr.CCDTemp,
-			Telescope:  hdr.Telescope,
-			Instrument: hdr.Instrument,
+			Telescope:  telescope,
+			Instrument: instrument,
 			FrameType:  store.ClassifyFrameType(c.DestPath),
+		}
+		if hdr.RA != 0 && hdr.PixelScale > 0 {
+			ra, dec, ps, rot := hdr.RA, hdr.Dec, hdr.PixelScale, hdr.Rotation
+			frame.RA = &ra
+			frame.Dec = &dec
+			frame.PixelScale = &ps
+			frame.Rotation = &rot
 		}
 		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
 			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
 	case indexer.IsRasterFile(c.DestPath):
+		obj := dirMeta.Object
+		if obj == "" {
+			obj = filepath.Base(dir)
+		}
 		frame := store.Frame{
-			FileSize:  c.FileSize,
-			LastSeen:  time.Now().Unix(),
-			FileHash:  c.FileHash,
-			FrameType: store.FrameTypeProcessed,
-			Object:    a.inferObjectForRaster(c.DestPath),
+			FileSize:   c.FileSize,
+			LastSeen:   time.Now().Unix(),
+			FileHash:   c.FileHash,
+			FrameType:  store.FrameTypeProcessed,
+			Object:     obj,
+			Telescope:  dirMeta.Telescope,
+			Instrument: dirMeta.Instrument,
 		}
 		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
 			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
