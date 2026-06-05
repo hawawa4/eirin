@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -52,7 +53,7 @@ func NewStoreAt(path string) (*Store, error) {
 
 	if err := migrate(db); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to open: %w", err)
 	}
 
 	qb := sq.StatementBuilder.PlaceholderFormat(sq.Question)
@@ -64,19 +65,55 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate creates the schema and applies incremental migrations.
+// migrate runs all pending migrations against db.
+// Migrations are numbered sequentially; each is applied exactly once and the
+// version is recorded in the schema_migrations table.
 func migrate(db *sql.DB) error {
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
 		return err
 	}
-	// DROP TABLE IF EXISTS fits_cache;
-	// DROP TABLE IF EXISTS rejected_files;
-	// DROP TABLE IF EXISTS frames;
-	_, err := db.Exec(`
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version   INTEGER PRIMARY KEY NOT NULL,
+			applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)
+	`); err != nil {
+		return err
+	}
+
+	for _, m := range migrations {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=?`, m.version).Scan(&count); err != nil {
+			return fmt.Errorf("migration %d: check: %w", m.version, err)
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := db.Exec(m.sql); err != nil {
+			return fmt.Errorf("migration %d: %w", m.version, err)
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, m.version); err != nil {
+			return fmt.Errorf("migration %d: record: %w", m.version, err)
+		}
+	}
+	return nil
+}
+
+type migration struct {
+	version int
+	sql     string
+}
+
+// migrations is the ordered list of schema changes. Never edit an existing
+// entry — add a new one at the end for every schema change.
+var migrations = []migration{
+	{1, `
 		CREATE TABLE IF NOT EXISTS preferences (
 			key   TEXT PRIMARY KEY NOT NULL,
 			value TEXT NOT NULL
-		);
+		)
+	`},
+	{2, `
 		CREATE TABLE IF NOT EXISTS frames (
 			nas_path    TEXT PRIMARY KEY NOT NULL,
 			file_size   INTEGER,
@@ -113,41 +150,25 @@ func migrate(db *sql.DB) error {
 			rejected         INTEGER NOT NULL DEFAULT 0,
 			rejection_reason TEXT,
 			tags             TEXT,
-			notes            TEXT,
-			file_hash        TEXT
-		);
-		CREATE INDEX IF NOT EXISTS idx_frames_object     ON frames(object);
-		CREATE INDEX IF NOT EXISTS idx_frames_filter     ON frames(filter);
-		CREATE INDEX IF NOT EXISTS idx_frames_date_obs   ON frames(date_obs);
-		CREATE INDEX IF NOT EXISTS idx_frames_obj_filt   ON frames(object, filter);
-		CREATE INDEX IF NOT EXISTS idx_frames_rejected   ON frames(rejected);
-		CREATE INDEX IF NOT EXISTS idx_frames_frame_type ON frames(frame_type);
-		CREATE INDEX IF NOT EXISTS idx_frames_file_hash  ON frames(file_hash);
+			notes            TEXT
+		)
+	`},
+	{3, `CREATE INDEX IF NOT EXISTS idx_frames_object     ON frames(object)`},
+	{4, `CREATE INDEX IF NOT EXISTS idx_frames_filter     ON frames(filter)`},
+	{5, `CREATE INDEX IF NOT EXISTS idx_frames_date_obs   ON frames(date_obs)`},
+	{6, `CREATE INDEX IF NOT EXISTS idx_frames_obj_filt   ON frames(object, filter)`},
+	{7, `CREATE INDEX IF NOT EXISTS idx_frames_rejected   ON frames(rejected)`},
+	{8, `CREATE INDEX IF NOT EXISTS idx_frames_frame_type ON frames(frame_type)`},
+	{9, `
 		CREATE TABLE IF NOT EXISTS projects (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
 			name        TEXT    NOT NULL,
 			description TEXT    NOT NULL DEFAULT '',
 			folder      TEXT    NOT NULL UNIQUE,
 			created_at  TEXT    NOT NULL
-		);
-	`)
-	if err != nil {
-		return err
-	}
-	// Incremental migrations for existing databases.
-	if _, err := db.Exec(`ALTER TABLE frames ADD COLUMN file_hash TEXT`); err != nil {
-		// Ignore "duplicate column" errors — the column already exists.
-		if !isDuplicateColumnErr(err) {
-			return err
-		}
-	}
-	return nil
-}
-
-func isDuplicateColumnErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return len(msg) >= 22 && msg[:22] == "duplicate column name:"
+		)
+	`},
+	// migration 10: add file_hash for content-based duplicate detection
+	{10, `ALTER TABLE frames ADD COLUMN file_hash TEXT`},
+	{11, `CREATE INDEX IF NOT EXISTS idx_frames_file_hash ON frames(file_hash)`},
 }
