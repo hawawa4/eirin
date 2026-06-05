@@ -7,7 +7,7 @@
     SelectProjectsFolder,
     SetProjectsFolder,
     BackupDatabase,
-  } from "../../wailsjs/go/app/App.js";
+  } from "$app";
   import type { AppInfo, SirilInfo } from "../lib/types";
 
   interface Props {

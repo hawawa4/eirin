@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type FileEntry struct {
@@ -35,9 +36,11 @@ type EnrichedFileEntry struct {
 }
 
 func (a *App) SelectRootFolder() string {
-	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Astrophotography Root Folder",
-	})
+	path, err := a.wails.Dialog.OpenFile().
+		SetTitle("Select Astrophotography Root Folder").
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		PromptForSingleSelection()
 	if err != nil {
 		return ""
 	}
@@ -74,7 +77,7 @@ func (a *App) ListDirectoryEnriched(path string) ([]EnrichedFileEntry, error) {
 
 	frames, err := a.store.GetFrames(allPaths)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "frames: get: %v", err)
+		slog.Error("frames: get", "err", err)
 		frames = map[string]store.Frame{}
 	}
 

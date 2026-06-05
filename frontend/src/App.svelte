@@ -14,9 +14,9 @@
     CheckSiril,
     OpenWithSiril,
     GetProjectsFolder,
-  } from "../wailsjs/go/app/App.js";
-  import { EventsOn } from "../wailsjs/runtime/runtime.js";
-  import type { app } from "../wailsjs/go/models";
+  } from "$app";
+  import { Events } from "@wailsio/runtime";
+  import type * as app from "$models/app";
   import {
     DEFAULT_COLUMNS,
     DEFAULT_LIBRARY_COLUMNS,
@@ -176,7 +176,8 @@
     }
     prefsLoaded = true;
 
-    EventsOn("index:progress", (data: IndexProgress) => {
+    Events.On("index:progress", (event) => {
+      const data = event.data as IndexProgress;
       indexProgress = data;
       if (data.phase === "done" || data.phase === "cancelled") {
         if (currentPath) setTimeout(() => loadDirectory(currentPath), 400);

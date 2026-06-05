@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/TaruDesigns/eirin/internal/server"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) startServer() {
@@ -26,7 +26,7 @@ func (a *App) startServer() {
 
 	go func() {
 		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			runtime.LogErrorf(a.ctx, "server: %v", err)
+			slog.Error("server", "err", err)
 		}
 	}()
 }

@@ -9,7 +9,7 @@ default:
 
 # Live-reload dev mode: Wails rebuilds Go on source change, Vite handles Svelte HMR
 dev:
-    wails dev -tags webkit2_41 # Ubuntu/Debian uses this version
+    wails3 dev -config ./build/config.yml
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
@@ -30,21 +30,25 @@ check:
     go build ./...
     cd frontend && npm run check
 
-# Build a production binary — Linux Debian/Ubuntu (webkit2_41)
+# Build a production binary — Linux
 build:
-    wails build -tags webkit2_41
+    wails3 build
 
-# Build for Linux generic (no special webkit tag)
+# Build for Linux (explicit)
 build-linux:
-    wails build -platform linux/amd64
+    wails3 build -platform linux/amd64
 
 # Build for Windows (cross-compile via Wails)
 build-windows:
-    wails build -platform windows/amd64
+    wails3 build -platform windows/amd64
 
 # Build for macOS Apple Silicon
 build-macos-arm:
-    wails build -platform darwin/arm64
+    wails3 build -platform darwin/arm64
+
+# Build headless server binary (no GUI, for Docker)
+build-server:
+    go build -tags server -ldflags="-s -w" -o eirin-server .
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 
@@ -80,4 +84,4 @@ install-backend:
 
 # Remove all build artifacts
 clean:
-    rm -rf frontend/dist build/bin dist
+    rm -rf frontend/dist build/bin dist eirin-server

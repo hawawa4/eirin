@@ -5,8 +5,8 @@
     SelectSourceFolder,
     ScanImportCandidates,
     StartImport,
-  } from "../../wailsjs/go/app/App.js";
-  import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime.js";
+  } from "$app";
+  import { Events } from "@wailsio/runtime";
   import type { ImportCandidate, ImportProgress, ImportState } from "../lib/types";
 
   interface Props {
@@ -204,7 +204,8 @@
   );
 
   onMount(() => {
-    EventsOn("import:progress", (data: ImportProgress) => {
+    Events.On("import:progress", (event) => {
+      const data = event.data as ImportProgress;
       progress = data;
       if (data.phase === "done") phase = "done";
       else if (data.phase === "error") {
@@ -215,7 +216,7 @@
   });
 
   onDestroy(() => {
-    EventsOff("import:progress");
+    Events.Off("import:progress");
   });
 </script>
 

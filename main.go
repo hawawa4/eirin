@@ -2,11 +2,10 @@ package main
 
 import (
 	"embed"
+	"log"
 
 	"github.com/TaruDesigns/eirin/internal/app"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 //go:embed all:frontend/dist
@@ -15,19 +14,26 @@ var assets embed.FS
 func main() {
 	a := app.NewApp()
 
-	err := wails.Run(&options.App{
-		Title:  "Eirin",
-		Width:  1600,
-		Height: 900,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+	wailsApp := application.New(application.Options{
+		Name:        "Eirin",
+		Description: "Astrophotography library manager",
+		Services: []application.Service{
+			application.NewService(a),
 		},
-		BackgroundColour: &options.RGBA{R: 15, G: 17, B: 26, A: 1},
-		OnStartup:        a.Startup,
-		OnShutdown:       a.Shutdown,
-		Bind:             []interface{}{a},
+		Assets: application.AssetOptions{
+			Handler: application.BundledAssetFileServer(assets),
+		},
 	})
-	if err != nil {
-		println("Error:", err.Error())
+
+	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Eirin",
+		Width:            1600,
+		Height:           900,
+		BackgroundColour: application.NewRGBA(15, 17, 26, 255),
+		URL:              "/",
+	})
+
+	if err := wailsApp.Run(); err != nil {
+		log.Fatal(err)
 	}
 }
