@@ -194,11 +194,18 @@ func (a *App) BuildIndex(rootPath string) {
 			if statErr == nil {
 				fileSize = info.Size()
 			}
+			dm := a.store.GetDirMeta(filepath.Dir(p))
+			obj := dm.Object
+			if obj == "" {
+				obj = filepath.Base(filepath.Dir(p))
+			}
 			f := store.Frame{
-				FileSize:  fileSize,
-				LastSeen:  time.Now().Unix(),
-				FrameType: store.FrameTypeProcessed,
-				Object:    a.inferObjectForRaster(p),
+				FileSize:   fileSize,
+				LastSeen:   time.Now().Unix(),
+				FrameType:  store.FrameTypeProcessed,
+				Object:     obj,
+				Telescope:  dm.Telescope,
+				Instrument: dm.Instrument,
 			}
 			if hash, hashErr := importer.HashFilePrefix(p); hashErr == nil {
 				f.FileHash = hash
