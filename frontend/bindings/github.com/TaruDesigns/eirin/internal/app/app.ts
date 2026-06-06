@@ -286,6 +286,8 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
 /**
  * ImportOutputFiles copies project output files to destFolder on the NAS,
  * then indexes each copied file so it appears in the library immediately.
+ * Metadata (object, telescope, instrument) is inherited from the first light
+ * symlink found in the project's lights/ folder.
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<void> {
     return $Call.ByID(1641822381, filePaths, destFolder);
