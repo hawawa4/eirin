@@ -189,13 +189,8 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 		Skipped: skipped,
 	})
 
-	// Trigger a full index run so the library view refreshes without the user
-	// having to press Build Index manually.
 	if copied > 0 {
-		nasRoot := a.store.Load().RootFolder
-		if nasRoot != "" {
-			a.BuildIndex(nasRoot)
-		}
+		a.wails.Event.EmitEvent(&application.CustomEvent{Name: "library:updated"})
 	}
 }
 
@@ -205,8 +200,11 @@ func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
 // existing light frames in the same directory (e.g. Seestar files lack telescope).
 // PNG/TIFF are stored as processed frames with metadata inferred from the directory.
 func (a *App) indexImportedFile(c ImportCandidate) {
+	a.indexImportedFileWithMeta(c, a.store.GetDirMeta(filepath.Dir(c.DestPath)))
+}
+
+func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta) {
 	dir := filepath.Dir(c.DestPath)
-	dirMeta := a.store.GetDirMeta(dir)
 
 	switch {
 	case indexer.IsFitsFile(c.DestPath):

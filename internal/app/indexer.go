@@ -259,6 +259,9 @@ func (a *App) BuildIndex(rootPath string) {
 			Indexed: newlyIndexed,
 			Errors:  errs,
 		})
+		if phase == "done" && newlyIndexed > 0 {
+			a.wails.Event.EmitEvent(&application.CustomEvent{Name: "library:updated"})
+		}
 	}()
 }
 

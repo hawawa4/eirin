@@ -28,3 +28,10 @@ frontend/dist/
 Thumbs.db
 
 ./eirin
+
+
+.task/*
+eirin
+.task/checksum/build-frontend--PRODUCTION--
+.task/checksum/generate-bindings--BUILD_FLAGS--buildvcs-false--gcflags-all---l--
+bin/eirin
