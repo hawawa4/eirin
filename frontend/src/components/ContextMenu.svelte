@@ -10,6 +10,8 @@
     onharddelete: (entry: CtxEntry) => void;
     onopensiril: (entry: CtxEntry) => void;
     onchangetype: (entry: CtxEntry, newType: string) => void;
+    onrename?: (entry: CtxEntry) => void;
+    oneditmeta?: (entry: CtxEntry) => void;
     oncreateproject?: () => void;
   }
 
@@ -21,6 +23,8 @@
     onharddelete,
     onopensiril,
     onchangetype,
+    onrename,
+    oneditmeta,
     oncreateproject,
   }: Props = $props();
 
@@ -65,6 +69,31 @@
         {#if menu.entry.frameType === type}<span class="ctx-type-check">✓</span>{/if}
       </button>
     {/each}
+  {/if}
+  {#if menu.selectionCount <= 1 && (onrename || oneditmeta)}
+    <div class="ctx-sep"></div>
+    {#if onrename}
+      <button
+        class="ctx-item"
+        onclick={() => {
+          onrename!(menu.entry);
+          onclose();
+        }}
+      >
+        Rename…
+      </button>
+    {/if}
+    {#if oneditmeta}
+      <button
+        class="ctx-item"
+        onclick={() => {
+          oneditmeta!(menu.entry);
+          onclose();
+        }}
+      >
+        Edit Metadata…
+      </button>
+    {/if}
   {/if}
   <div class="ctx-sep"></div>
   {#if menu.entry.isRejected}

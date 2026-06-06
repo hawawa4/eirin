@@ -16,6 +16,8 @@
     CreateProject,
     AddFramesToProject,
     SuggestRejects,
+    RenameFrame,
+    UpdateFrameMeta,
   } from "$app";
   import { Events } from "@wailsio/runtime";
   import type * as app from "$models/app";
@@ -187,6 +189,18 @@
   // ── Context menu / delete modal ───────────────────────────────────────────
   let ctxMenu = $state<CtxMenuState | null>(null);
   let confirmDel = $state<{ paths: string[]; name: string } | null>(null);
+
+  // ── Rename modal ──────────────────────────────────────────────────────────
+  let renameModal = $state<{ entry: CtxEntry } | null>(null);
+  let renameValue = $state("");
+  let renameError = $state("");
+  let renameWorking = $state(false);
+
+  // ── Edit metadata modal ───────────────────────────────────────────────────
+  interface MetaEdit { path: string; object: string; telescope: string; filter: string; dateObs: string; }
+  let metaModal = $state<MetaEdit | null>(null);
+  let metaWorking = $state(false);
+  let metaError = $state("");
 
   // ── Create project modal ──────────────────────────────────────────────────
   let cpModal = $state<{ paths: string[] } | null>(null);
@@ -578,6 +592,77 @@
     } else {
       await HardDeleteFile(paths[0]);
       frames = frames.filter((f) => f.nasPath !== paths[0]);
+    }
+  }
+
+  // ── Rename ────────────────────────────────────────────────────────────────
+  function onCtxRename(entry: CtxEntry) {
+    renameValue = entry.name;
+    renameError = "";
+    renameWorking = false;
+    renameModal = { entry };
+  }
+
+  async function doRename() {
+    if (!renameModal || !renameValue.trim()) return;
+    renameWorking = true;
+    renameError = "";
+    try {
+      const newPath = await RenameFrame(renameModal.entry.path, renameValue.trim());
+      const oldPath = renameModal.entry.path;
+      frames = frames.map((f) =>
+        f.nasPath === oldPath ? { ...f, nasPath: newPath, fileName: renameValue.trim() } : f,
+      );
+      renameModal = null;
+    } catch (e) {
+      renameError = String(e);
+    } finally {
+      renameWorking = false;
+    }
+  }
+
+  // ── Edit metadata ─────────────────────────────────────────────────────────
+  function onCtxEditMeta(entry: CtxEntry) {
+    const frame = frames.find((f) => f.nasPath === entry.path);
+    metaModal = {
+      path: entry.path,
+      object: frame?.object ?? "",
+      telescope: frame?.telescope ?? "",
+      filter: frame?.filter ?? "",
+      dateObs: frame?.dateObs ?? "",
+    };
+    metaError = "";
+    metaWorking = false;
+  }
+
+  async function doSaveMeta() {
+    if (!metaModal) return;
+    metaWorking = true;
+    metaError = "";
+    try {
+      await UpdateFrameMeta(metaModal.path, {
+        Object: metaModal.object,
+        Telescope: metaModal.telescope,
+        Filter: metaModal.filter,
+        DateObs: metaModal.dateObs,
+      });
+      const { path, object, telescope, filter, dateObs } = metaModal;
+      frames = frames.map((f) =>
+        f.nasPath === path
+          ? {
+              ...f,
+              object: object || f.object,
+              telescope: telescope || f.telescope,
+              filter: filter || f.filter,
+              dateObs: dateObs || f.dateObs,
+            }
+          : f,
+      );
+      metaModal = null;
+    } catch (e) {
+      metaError = String(e);
+    } finally {
+      metaWorking = false;
     }
   }
 
@@ -1011,6 +1096,8 @@
     onharddelete={onCtxHardDelete}
     onopensiril={onCtxOpenWithSiril}
     onchangetype={onCtxChangeType}
+    onrename={onCtxRename}
+    oneditmeta={onCtxEditMeta}
     oncreateproject={oncreateproject
       ? () => {
           ctxMenu = null;
@@ -1080,6 +1167,86 @@
             cpModal = null;
           }}>Cancel</button
         >
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if renameModal}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="modal-backdrop"
+    onclick={() => (renameModal = null)}
+    onkeydown={(e) => e.key === "Escape" && (renameModal = null)}
+    role="presentation"
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <h3 class="modal-title">Rename File</h3>
+      <p class="modal-desc">Enter a new filename (same directory).</p>
+      <input
+        class="modal-input"
+        type="text"
+        bind:value={renameValue}
+        onkeydown={(e) => e.key === "Enter" && doRename()}
+        spellcheck="false"
+        autofocus
+      />
+      {#if renameError}
+        <p class="modal-error">{renameError}</p>
+      {/if}
+      <div class="modal-actions">
+        <button class="btn-primary" onclick={doRename} disabled={renameWorking || !renameValue.trim()}>
+          {renameWorking ? "Renaming…" : "Rename"}
+        </button>
+        <button class="btn-ghost" onclick={() => (renameModal = null)} disabled={renameWorking}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if metaModal}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="modal-backdrop"
+    onclick={() => (metaModal = null)}
+    onkeydown={(e) => e.key === "Escape" && (metaModal = null)}
+    role="presentation"
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <h3 class="modal-title">Edit Metadata</h3>
+      <p class="modal-desc">Override DB metadata. Empty fields are left unchanged.</p>
+      <div class="meta-fields">
+        <label class="meta-label">
+          Object
+          <input class="modal-input" type="text" bind:value={metaModal.object} spellcheck="false" />
+        </label>
+        <label class="meta-label">
+          Telescope
+          <input class="modal-input" type="text" bind:value={metaModal.telescope} spellcheck="false" />
+        </label>
+        <label class="meta-label">
+          Filter
+          <input class="modal-input" type="text" bind:value={metaModal.filter} spellcheck="false" />
+        </label>
+        <label class="meta-label">
+          Date (ISO)
+          <input class="modal-input" type="text" bind:value={metaModal.dateObs} placeholder="2024-01-15T22:30:00" spellcheck="false" />
+        </label>
+      </div>
+      {#if metaError}
+        <p class="modal-error">{metaError}</p>
+      {/if}
+      <div class="modal-actions">
+        <button class="btn-primary" onclick={doSaveMeta} disabled={metaWorking}>
+          {metaWorking ? "Saving…" : "Save"}
+        </button>
+        <button class="btn-ghost" onclick={() => (metaModal = null)} disabled={metaWorking}>
+          Cancel
+        </button>
       </div>
     </div>
   </div>
@@ -1177,6 +1344,90 @@
 {/if}
 
 <style>
+  /* ── Modals ──────────────────────────────────────────────────────────────── */
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  .modal-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-accent);
+    border-radius: 8px;
+    padding: 24px;
+    min-width: 340px;
+    max-width: 480px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+  }
+
+  .modal-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .modal-desc {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .modal-input {
+    width: 100%;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 6px 10px;
+    box-sizing: border-box;
+    outline: none;
+  }
+
+  .modal-input:focus {
+    border-color: var(--accent);
+  }
+
+  .modal-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--danger);
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+
+  .meta-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .meta-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+  }
+
   /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 
   .toolbar {

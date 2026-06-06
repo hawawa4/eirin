@@ -6,6 +6,43 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * FrameMeta holds user-editable metadata fields that can be overridden in the DB
+ * without touching the underlying FITS file.
+ */
+export class FrameMeta {
+    "Object": string;
+    "Telescope": string;
+    "Filter": string;
+    "DateObs": string;
+
+    /** Creates a new FrameMeta instance. */
+    constructor($$source: Partial<FrameMeta> = {}) {
+        if (!("Object" in $$source)) {
+            this["Object"] = "";
+        }
+        if (!("Telescope" in $$source)) {
+            this["Telescope"] = "";
+        }
+        if (!("Filter" in $$source)) {
+            this["Filter"] = "";
+        }
+        if (!("DateObs" in $$source)) {
+            this["DateObs"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FrameMeta instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FrameMeta {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FrameMeta($$parsedSource as Partial<FrameMeta>);
+    }
+}
+
+/**
  * Prefs is the typed snapshot of all user preferences, serialised to/from the
  * database as plain strings.
  */

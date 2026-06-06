@@ -3,6 +3,9 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+
+	"github.com/TaruDesigns/eirin/internal/store"
 )
 
 // RejectFile marks a file as soft-deleted. It remains on disk but is hidden
@@ -47,6 +50,31 @@ func (a *App) BatchUnrejectFiles(paths []string) error {
 		return nil
 	}
 	return a.store.BatchUnrejectFrames(paths)
+}
+
+// RenameFrame renames a file on disk and updates the DB key accordingly.
+// The new name must be in the same directory as the old path.
+func (a *App) RenameFrame(oldPath, newName string) (string, error) {
+	dir := filepath.Dir(oldPath)
+	newPath := filepath.Join(dir, newName)
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return "", fmt.Errorf("rename file: %w", err)
+	}
+	if a.store != nil {
+		if err := a.store.RenameFrame(oldPath, newPath); err != nil {
+			return newPath, fmt.Errorf("rename db record: %w", err)
+		}
+	}
+	return newPath, nil
+}
+
+// UpdateFrameMeta writes user-supplied metadata overrides into the DB.
+// Empty fields are ignored — they leave the existing value unchanged.
+func (a *App) UpdateFrameMeta(path string, meta store.FrameMeta) error {
+	if a.store == nil {
+		return nil
+	}
+	return a.store.UpdateFrameMeta(path, meta)
 }
 
 // BatchHardDeleteFiles permanently removes multiple files from disk and their frame records.

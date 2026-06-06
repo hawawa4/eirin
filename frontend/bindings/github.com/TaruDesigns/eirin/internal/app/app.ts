@@ -374,6 +374,14 @@ export function RemoveFramesFromProject(projectFolder: string, nasPaths: string[
 }
 
 /**
+ * RenameFrame renames a file on disk and updates the DB key accordingly.
+ * The new name must be in the same directory as the old path.
+ */
+export function RenameFrame(oldPath: string, newName: string): $CancellablePromise<string> {
+    return $Call.ByID(3392480449, oldPath, newName);
+}
+
+/**
  * ScanImportCandidates walks sourceFolder and returns files whose basename does
  * not already appear in the frames database. extensions limits which file types
  * are included (e.g. ["fit","fits","png"]); an empty slice includes everything.
@@ -471,6 +479,14 @@ export function SuggestRejects(rootPath: string, threshold: number): $Cancellabl
  */
 export function UnrejectFile(path: string): $CancellablePromise<void> {
     return $Call.ByID(2416326180, path);
+}
+
+/**
+ * UpdateFrameMeta writes user-supplied metadata overrides into the DB.
+ * Empty fields are ignored — they leave the existing value unchanged.
+ */
+export function UpdateFrameMeta(path: string, meta: store$0.FrameMeta): $CancellablePromise<void> {
+    return $Call.ByID(530878317, path, meta);
 }
 
 // Private type creation functions

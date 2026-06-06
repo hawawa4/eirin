@@ -476,6 +476,46 @@ func (s *Store) BatchDeleteFrames(paths []string) error {
 	return tx.Commit()
 }
 
+// FrameMeta holds user-editable metadata fields that can be overridden in the DB
+// without touching the underlying FITS file.
+type FrameMeta struct {
+	Object    string
+	Telescope string
+	Filter    string
+	DateObs   string
+}
+
+// UpdateFrameMeta writes user-supplied metadata into the DB. Only non-empty
+// fields are applied; empty strings leave the existing value unchanged.
+func (s *Store) UpdateFrameMeta(path string, m FrameMeta) error {
+	q := s.qb.Update("frames").Where(sq.Eq{"nas_path": path})
+	if m.Object != "" {
+		q = q.Set("object", m.Object)
+	}
+	if m.Telescope != "" {
+		q = q.Set("telescope", m.Telescope)
+	}
+	if m.Filter != "" {
+		q = q.Set("filter", m.Filter)
+	}
+	if m.DateObs != "" {
+		q = q.Set("date_obs", m.DateObs)
+	}
+	query, args, err := q.ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(query, args...)
+	return err
+}
+
+// RenameFrame renames the DB key for a frame from oldPath to newPath.
+// The physical file must already have been moved by the caller before this is invoked.
+func (s *Store) RenameFrame(oldPath, newPath string) error {
+	_, err := s.db.Exec(`UPDATE frames SET nas_path=? WHERE nas_path=?`, newPath, oldPath)
+	return err
+}
+
 // GetAtlasIndexFrames returns all indexed stacked and processed frames under
 // rootPath. No FITS files are read; WCS comes from the DB (populated by the
 // indexer and plate-solver). Frames without WCS are included with nil RA/Dec
