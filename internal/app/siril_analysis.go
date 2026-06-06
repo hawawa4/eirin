@@ -71,10 +71,19 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 			if f.RA != nil && f.Dec != nil {
 				hintRA = *f.RA
 				hintDec = *f.Dec
-			} else if f.Object != "" {
-				if ra, dec, found := catalog.LookupByName(f.Object); found {
-					hintRA = ra
-					hintDec = dec
+			} else {
+				// Try object name first, then the filename itself — filenames like
+				// "M_86_1584x..." contain the object name as the first token.
+				candidates := []string{f.Object, filepath.Base(path)}
+				for _, c := range candidates {
+					if c == "" {
+						continue
+					}
+					if ra, dec, found := catalog.LookupByName(c); found {
+						hintRA = ra
+						hintDec = dec
+						break
+					}
 				}
 			}
 		}
