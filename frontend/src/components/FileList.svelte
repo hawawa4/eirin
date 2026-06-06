@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { app } from "../../wailsjs/go/models";
+  import type * as app from "$models/app";
   import type { ColumnDef, FileGroup, ViewMode } from "../lib/types";
   import { isFits, getCellValue } from "../lib/utils";
   import { makeColumnManager } from "../lib/columnManager";

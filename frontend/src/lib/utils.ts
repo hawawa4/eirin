@@ -1,4 +1,5 @@
-import type { app, fits } from "../../wailsjs/go/models";
+import type * as app from "$models/app";
+import type * as fits from "$models/fits";
 
 export function isFits(name: string): boolean {
   const l = name.toLowerCase();

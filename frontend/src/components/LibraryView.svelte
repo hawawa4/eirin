@@ -16,9 +16,9 @@
     CreateProject,
     AddFramesToProject,
     SuggestRejects,
-  } from "../../wailsjs/go/app/App.js";
-  import { EventsOn } from "../../wailsjs/runtime/runtime.js";
-  import type { app } from "../../wailsjs/go/models";
+  } from "$app";
+  import { Events } from "@wailsio/runtime";
+  import type * as app from "$models/app";
   import type {
     AnalysisProgress,
     ColFilter,
@@ -195,13 +195,30 @@
   let cpError = $state("");
   let cpCreating = $state(false);
 
+  const PROJECT_FRAME_TYPES = new Set(["light", "dark", "bias"]);
+
+  let cpEligibleCount = $derived(
+    cpModal
+      ? cpModal.paths.filter((p) => {
+          const f = frames.find((fr) => fr.nasPath === p);
+          return f ? PROJECT_FRAME_TYPES.has(f.frameType) : false;
+        }).length
+      : 0,
+  );
+
   async function doCreateProject() {
     if (!cpName.trim() || !cpModal) return;
     cpCreating = true;
     cpError = "";
     try {
+      const eligible = cpModal.paths.filter((p) => {
+        const f = frames.find((fr) => fr.nasPath === p);
+        return f ? PROJECT_FRAME_TYPES.has(f.frameType) : false;
+      });
       const project = await CreateProject(cpName.trim(), "");
-      await AddFramesToProject(project.folder, cpModal.paths, cpMode);
+      if (eligible.length > 0) {
+        await AddFramesToProject(project.folder, eligible, cpMode);
+      }
       cpModal = null;
       cpName = "";
       oncreateproject?.(project);
@@ -217,10 +234,11 @@
   let analysisProgress = $state<AnalysisProgress | null>(null);
 
   $effect(() => {
-    const unsubProgress = EventsOn("analysis:progress", (data: AnalysisProgress) => {
+    const unsubProgress = Events.On("analysis:progress", (event) => {
+      const data = event.data as AnalysisProgress;
       analysisProgress = data;
     });
-    const unsubUpdated = EventsOn("library:updated", () => {
+    const unsubUpdated = Events.On("library:updated", () => {
       reload();
     });
     return () => {
@@ -584,7 +602,7 @@
 
   // ── Smart reject suggestions ──────────────────────────────────────────────
   let suggestLoading = $state(false);
-  let suggestResults = $state<import("../../wailsjs/go/models").app.SuggestResult[]>([]);
+  let suggestResults = $state<app.SuggestResult[]>([]);
   let suggestSelected = $state(new Set<string>());
   let showSuggest = $state(false);
 
@@ -1011,7 +1029,10 @@
     >
       <p class="cp-title">Create project</p>
       <p class="cp-sub">
-        {cpModal.paths.length} frame{cpModal.paths.length !== 1 ? "s" : ""} will be added
+        {cpEligibleCount} frame{cpEligibleCount !== 1 ? "s" : ""} will be added (lights, darks &amp; bias only)
+        {#if cpModal.paths.length > cpEligibleCount}
+          <span class="cp-skipped">· {cpModal.paths.length - cpEligibleCount} other type{cpModal.paths.length - cpEligibleCount !== 1 ? "s" : ""} skipped</span>
+        {/if}
       </p>
       <input
         class="cp-input"
@@ -1902,6 +1923,10 @@
   .cp-mode-opt input {
     accent-color: var(--accent);
     cursor: pointer;
+  }
+  .cp-skipped {
+    color: var(--text-secondary);
+    font-style: italic;
   }
   .cp-error {
     font-size: 0.75rem;

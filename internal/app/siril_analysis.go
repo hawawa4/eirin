@@ -3,12 +3,13 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 
 	sirilpkg "github.com/TaruDesigns/eirin/internal/siril"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // AnalysisProgress is emitted as "analysis:progress" during frame analysis.
@@ -66,26 +67,26 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 			fmt.Fprintf(df, "\n--- %s ---\n%s\n", filepath.Base(path), string(rawOutput))
 			df.Close()
 		}
-		runtime.LogInfof(a.ctx, "siril [%s]:\n%s", filepath.Base(path), string(rawOutput))
+		slog.Info("siril output", "file", filepath.Base(path), "output", string(rawOutput))
 
 		if err != nil {
-			runtime.LogWarningf(a.ctx, "analysis: %v", err)
+			slog.Warn("analysis", "err", err)
 			errCount++
 		} else {
 			if uerr := a.store.UpdateFrameQuality(path, quality); uerr != nil {
-				runtime.LogWarningf(a.ctx, "analysis: db quality update: %v", uerr)
+				slog.Warn("analysis: db quality update", "err", uerr)
 				errCount++
 			}
 			if wcsSolved {
 				if uerr := a.store.UpdateWCS(path, wcs); uerr != nil {
-					runtime.LogWarningf(a.ctx, "analysis: db wcs update: %v", uerr)
+					slog.Warn("analysis: db wcs update", "err", uerr)
 				}
 			}
 		}
 	}
 
 	a.emitAnalysisProgress("done", total, total, "", errCount)
-	runtime.EventsEmit(a.ctx, "library:updated")
+	a.wails.Event.EmitEvent(&application.CustomEvent{Name: "library:updated"})
 	return nil
 }
 
@@ -99,11 +100,11 @@ func (a *App) CancelAnalysis() {
 }
 
 func (a *App) emitAnalysisProgress(phase string, total, done int, current string, errors int) {
-	runtime.EventsEmit(a.ctx, "analysis:progress", AnalysisProgress{
+	a.wails.Event.EmitEvent(&application.CustomEvent{Name: "analysis:progress", Data: AnalysisProgress{
 		Phase:   phase,
 		Total:   total,
 		Done:    done,
 		Current: current,
 		Errors:  errors,
-	})
+	}})
 }

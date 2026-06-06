@@ -13,8 +13,8 @@
     RemoveFramesFromProject,
     GetProjectOutputFiles,
     ImportOutputFiles,
-  } from "../../wailsjs/go/app/App.js";
-  import type { app } from "../../wailsjs/go/models";
+  } from "$app";
+  import type * as app from "$models/app";
   import type { Project, ProjectOutputFile } from "../lib/types";
   import FrameTable from "./FrameTable.svelte";
 

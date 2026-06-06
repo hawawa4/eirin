@@ -3,9 +3,10 @@ package app
 import (
 	"path/filepath"
 
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/catalog"
 	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // AtlasIndexEntry holds the DB-resident data for a single stacked/processed
@@ -55,7 +56,7 @@ func (a *App) GetCatalog() []CatalogObject {
 func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 	frames, err := a.store.GetAtlasIndexFrames(rootPath)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "atlas: get index: %v", err)
+		slog.Error("atlas: get index", "err", err)
 		return nil
 	}
 

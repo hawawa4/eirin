@@ -1,8 +1,9 @@
 package app
 
 import (
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // LoadPrefs returns all persisted preferences, with defaults for missing keys.
@@ -20,6 +21,6 @@ func (a *App) SetPref(key, value string) {
 		return
 	}
 	if err := a.store.Set(key, value); err != nil {
-		runtime.LogErrorf(a.ctx, "prefs: set %q=%q: %v", key, value, err)
+		slog.Error("prefs: set", "key", key, "value", value, "err", err)
 	}
 }

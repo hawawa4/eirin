@@ -10,8 +10,8 @@ func TestNewApp(t *testing.T) {
 	if a.store != nil {
 		t.Error("prefs should be nil before Startup")
 	}
-	if a.ctx != nil {
-		t.Error("ctx should be nil before Startup")
+	if a.wails != nil {
+		t.Error("wails should be nil before ServiceStartup")
 	}
 	if a.server != nil {
 		t.Error("server should be nil before Startup")

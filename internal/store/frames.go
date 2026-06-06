@@ -542,6 +542,32 @@ func (s *Store) GetObjectForDirectory(dirPath string) (string, error) {
 	return obj, nil
 }
 
+// DirMeta holds inherited metadata from existing light frames in a directory.
+type DirMeta struct {
+	Object     string
+	Telescope  string
+	Instrument string
+	Filter     string
+}
+
+// GetDirMeta returns shared metadata from any indexed light frame under dirPath.
+// Fields are only populated when the DB has at least one indexed light there.
+// Returns zero-value DirMeta (all empty) when no match is found — never an error.
+func (s *Store) GetDirMeta(dirPath string) DirMeta {
+	prefix := dirPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	var m DirMeta
+	_ = s.db.QueryRow(`
+		SELECT COALESCE(object,''), COALESCE(telescope,''), COALESCE(instrument,''), COALESCE(filter,'')
+		FROM frames
+		WHERE nas_path LIKE ? AND cached_at > 0 AND frame_type = 'light'
+		LIMIT 1
+	`, prefix+"%").Scan(&m.Object, &m.Telescope, &m.Instrument, &m.Filter)
+	return m
+}
+
 // GetDistinctObjects returns the sorted list of distinct non-empty object values
 // for frames of the given frameType under rootPath.
 func (s *Store) GetDistinctObjects(rootPath, frameType string) ([]string, error) {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
-  import type { app } from "../../wailsjs/go/models";
+  import type * as app from "$models/app";
   import type { ColFilter, ColumnDef, FrameType } from "../lib/types";
   import { FRAME_TYPE_META, DEFAULT_LIBRARY_COLUMNS } from "../lib/types";
   import {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import type { app } from "../../wailsjs/go/models";
-  import { GeneratePreview } from "../../wailsjs/go/app/App.js";
+  import type * as app from "$models/app";
+  import { GeneratePreview } from "$app";
 
   interface Props {
     frames: app.LibraryFrame[];

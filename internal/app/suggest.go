@@ -4,8 +4,9 @@ import (
 	"math"
 	"sort"
 
+	"log/slog"
+
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // SuggestResult is a frame flagged as a statistical outlier within its group.
@@ -26,7 +27,7 @@ func (a *App) SuggestRejects(rootPath string, threshold float64) []SuggestResult
 
 	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "suggest: get frames: %v", err)
+		slog.Error("suggest: get frames", "err", err)
 		return nil
 	}
 

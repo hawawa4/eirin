@@ -1,4 +1,4 @@
-import type { fits } from "../../wailsjs/go/models";
+import type * as fits from "$models/fits";
 
 export function mtfMidtone(target: number, x: number): number {
   if (x === 0) return 0;

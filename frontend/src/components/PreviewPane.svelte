@@ -1,12 +1,14 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { app, fits, catalog } from "../../wailsjs/go/models";
+  import type * as app from "$models/app";
+  import type * as fits from "$models/fits";
+  import type * as catalog from "$models/catalog";
   import {
     GeneratePreviewRawSized,
     LoadRasterImage,
     ReadFITSHeader,
     GetAnnotations,
-  } from "../../wailsjs/go/app/App.js";
+  } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
   import { mtfMidtone } from "../lib/stretchPreview";
 

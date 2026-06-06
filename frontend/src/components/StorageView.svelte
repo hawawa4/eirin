@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { app } from "../../wailsjs/go/models";
-  import { GetStorageStats, GetFrameTypeSummary } from "../../wailsjs/go/app/App.js";
+  import type * as app from "$models/app";
+  import { GetStorageStats, GetFrameTypeSummary } from "$app";
 
   interface Props {
     rootPath: string;
