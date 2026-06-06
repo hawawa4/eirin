@@ -52,6 +52,10 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 	total := len(nasPaths)
 	errCount := 0
 
+	// Pre-fetch DB records so we can pass stored RA/Dec as a plate-solve hint.
+	// This is essential for raster files (PNG/TIFF) which have no embedded WCS.
+	frameMap, _ := a.store.GetFrames(nasPaths)
+
 	for i, path := range nasPaths {
 		select {
 		case <-ctx.Done():
@@ -61,7 +65,14 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 		}
 		a.emitAnalysisProgress("analyzing", total, i, filepath.Base(path), errCount)
 
-		quality, wcs, wcsSolved, rawOutput, err := sirilpkg.AnalyzeSingleFrame(ctx, exe, path)
+		var hintRA, hintDec float64
+		if f, ok := frameMap[path]; ok {
+			if f.RA != nil && f.Dec != nil {
+				hintRA = *f.RA
+				hintDec = *f.Dec
+			}
+		}
+		quality, wcs, wcsSolved, rawOutput, err := sirilpkg.AnalyzeSingleFrame(ctx, exe, path, hintRA, hintDec)
 
 		if df, ferr := os.OpenFile(debugPath, os.O_APPEND|os.O_WRONLY, 0644); ferr == nil {
 			fmt.Fprintf(df, "\n--- %s ---\n%s\n", filepath.Base(path), string(rawOutput))

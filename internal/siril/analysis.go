@@ -23,11 +23,18 @@ type AnalysisProgress struct {
 	Errors  int    `json:"errors"`
 }
 
-// AnalyzeSingleFrame runs findstar + platesolve + statistics for one frame.
+// AnalyzeSingleFrame runs findstar + platesolve for one frame.
+// hintRA/hintDec are decimal-degree center coordinates passed to platesolve as a search hint.
+// Pass hintRA=0 and hintDec=0 for a blind solve (works for FITS with embedded WCS keywords;
+// may fail for raster files that have no embedded coordinates).
 // Returns quality metrics, WCS coordinates (if plate solve succeeded), raw output, and any error.
-func AnalyzeSingleFrame(ctx context.Context, exe, nasPath string) (store.FrameQuality, store.WCSResult, bool, []byte, error) {
+func AnalyzeSingleFrame(ctx context.Context, exe, nasPath string, hintRA, hintDec float64) (store.FrameQuality, store.WCSResult, bool, []byte, error) {
 	escaped := strings.ReplaceAll(nasPath, `"`, `\"`)
-	script := "requires 1.0.0\nload \"" + escaped + "\"\nfindstar\nplatesolve\n"
+	platesolveCmd := "platesolve"
+	if hintRA != 0 || hintDec != 0 {
+		platesolveCmd = fmt.Sprintf("platesolve %.6f %.6f", hintRA, hintDec)
+	}
+	script := "requires 1.0.0\nload \"" + escaped + "\"\nfindstar\n" + platesolveCmd + "\n"
 
 	tmp, err := os.CreateTemp("", "eirin-siril-*.ssf")
 	if err != nil {

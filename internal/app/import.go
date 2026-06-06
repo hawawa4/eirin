@@ -274,10 +274,6 @@ func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta
 		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
 			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
-		go func() {
-			if err := a.AnalyzeFrames([]string{c.DestPath}); err != nil {
-				slog.Warn("import: analyze", "path", c.RelativePath, "err", err)
-			}
-		}()
+		// Siril cannot load PNG/TIFF for plate-solving, so no analysis is spawned here.
 	}
 }

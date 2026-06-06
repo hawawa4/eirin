@@ -159,9 +159,9 @@ export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
 }
 
 /**
- * GetAtlasFrameSize reads only the pixel dimensions from a single FITS header.
- * Called lazily by the frontend when a frame is visible and the user is zoomed
- * in enough that the footprint rectangle is worth drawing.
+ * GetAtlasFrameSize reads pixel dimensions for any supported file type.
+ * For FITS files the header is parsed; for PNG/TIFF the image config is decoded
+ * (much cheaper — no full pixel decode). Called lazily by the frontend.
  */
 export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
     return $Call.ByID(2946490455, nasPath).then(($result: any) => {
@@ -330,9 +330,9 @@ export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
 
 /**
  * LoadRasterImage reads a PNG or TIFF file from disk and returns it as a
- * base64-encoded data URL (e.g. "data:image/png;base64,..."). The file must
- * be under the configured NAS root. This avoids any dependency on the local
- * HTTP server's URL being available in the frontend.
+ * base64-encoded PNG data URL. TIFFs are decoded server-side and re-encoded
+ * as PNG because browsers cannot render TIFF data URLs (including float32 TIFFs
+ * produced by Siril). The file must be under the configured NAS root.
  */
 export function LoadRasterImage(path: string): $CancellablePromise<string> {
     return $Call.ByID(1706285520, path);

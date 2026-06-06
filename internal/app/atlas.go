@@ -1,12 +1,17 @@
 package app
 
 import (
+	"fmt"
+	"image"
+	"os"
 	"path/filepath"
 
 	"log/slog"
 
 	"github.com/TaruDesigns/eirin/internal/catalog"
 	"github.com/TaruDesigns/eirin/internal/fits"
+	"github.com/TaruDesigns/eirin/internal/indexer"
+	_ "golang.org/x/image/tiff" // register TIFF decoder
 )
 
 // AtlasIndexEntry holds the DB-resident data for a single stacked/processed
@@ -83,10 +88,22 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 	return out
 }
 
-// GetAtlasFrameSize reads only the pixel dimensions from a single FITS header.
-// Called lazily by the frontend when a frame is visible and the user is zoomed
-// in enough that the footprint rectangle is worth drawing.
+// GetAtlasFrameSize reads pixel dimensions for any supported file type.
+// For FITS files the header is parsed; for PNG/TIFF the image config is decoded
+// (much cheaper — no full pixel decode). Called lazily by the frontend.
 func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
+	if indexer.IsRasterFile(nasPath) {
+		f, err := os.Open(nasPath)
+		if err != nil {
+			return AtlasFrameSize{}, err
+		}
+		defer f.Close()
+		cfg, _, err := image.DecodeConfig(f)
+		if err != nil {
+			return AtlasFrameSize{}, fmt.Errorf("decode config: %w", err)
+		}
+		return AtlasFrameSize{Width: cfg.Width, Height: cfg.Height}, nil
+	}
 	hdr, err := fits.ReadFITSHeader(nasPath)
 	if err != nil {
 		return AtlasFrameSize{}, err

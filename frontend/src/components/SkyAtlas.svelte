@@ -86,6 +86,40 @@
   let lazyTimer: ReturnType<typeof setTimeout> | null = null;
   const LAZY_PPD = 8;
 
+  // ── Object browser ────────────────────────────────────────────────────────
+  let objectBrowserOpen = $state(true);
+  let objectSearch = $state("");
+
+  interface ObjectGroup {
+    name: string;
+    ra: number;
+    dec: number;
+    count: number;
+  }
+
+  let objectGroups = $derived.by(() => {
+    const map = new Map<string, ObjectGroup>();
+    for (const e of visibleIndex) {
+      const key = e.object || e.name;
+      if (!map.has(key)) {
+        map.set(key, { name: key, ra: e.ra, dec: e.dec, count: 1 });
+      } else {
+        map.get(key)!.count++;
+      }
+    }
+    const q = objectSearch.trim().toLowerCase();
+    const all = [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return q ? all.filter((g) => g.name.toLowerCase().includes(q)) : all;
+  });
+
+  function flyTo(ra: number, dec: number) {
+    viewRA = ra;
+    viewDec = dec;
+    // Zoom in to a reasonable level if the user is way too far out or too zoomed in
+    if (pixPerDeg < 1) pixPerDeg = 4;
+    if (pixPerDeg > 200) pixPerDeg = 40;
+  }
+
   // ── Preview loading effect ────────────────────────────────────────────────
 
   $effect(() => {
@@ -763,6 +797,41 @@
     <span>{visibleIndex.length} frame{visibleIndex.length !== 1 ? "s" : ""}</span>
   </div>
 
+  <!-- Object browser -->
+  {#if !loading && !loadError && index.length > 0}
+    <div class="obj-browser" class:obj-browser--collapsed={!objectBrowserOpen}>
+      <button
+        class="obj-browser-header"
+        onclick={() => (objectBrowserOpen = !objectBrowserOpen)}
+        title={objectBrowserOpen ? "Collapse object list" : "Expand object list"}
+      >
+        <span class="obj-browser-title">Objects</span>
+        <span class="obj-browser-count">{objectGroups.length}</span>
+        <span class="obj-browser-chevron">{objectBrowserOpen ? "▲" : "▼"}</span>
+      </button>
+      {#if objectBrowserOpen}
+        <div class="obj-browser-body">
+          <input class="obj-search" type="text" placeholder="Search…" bind:value={objectSearch} />
+          <ul class="obj-list">
+            {#each objectGroups as g (g.name)}
+              <li>
+                <button class="obj-item" onclick={() => flyTo(g.ra, g.dec)} title="Pan to {g.name}">
+                  <span class="obj-item-name">{g.name}</span>
+                  {#if g.count > 1}
+                    <span class="obj-item-count">{g.count}</span>
+                  {/if}
+                </button>
+              </li>
+            {/each}
+            {#if objectGroups.length === 0}
+              <li class="obj-empty">No matches</li>
+            {/if}
+          </ul>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
   <!-- Frame type toggle -->
   <div class="atlas-toggle">
     <button class="toggle-btn" class:active={!showStacked} onclick={() => (showStacked = false)}
@@ -1201,6 +1270,128 @@
   .ap-open-btn:hover {
     background: color-mix(in srgb, var(--accent-dim) 55%, transparent);
     border-color: var(--accent);
+  }
+
+  /* Object browser panel */
+  .obj-browser {
+    position: absolute;
+    top: 36px; /* sits below the HUD */
+    left: 10px;
+    width: 200px;
+    background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+    border: 1px solid var(--border-accent);
+    border-radius: 6px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: calc(100% - 80px);
+  }
+  .obj-browser--collapsed {
+    max-height: none;
+  }
+  .obj-browser-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    color: var(--text-primary);
+    font-size: 0.76rem;
+    font-weight: 600;
+    transition: background 0.12s;
+  }
+  .obj-browser-header:hover {
+    background: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  }
+  .obj-browser-title {
+    flex: 1;
+    text-align: left;
+  }
+  .obj-browser-count {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    font-family: "Consolas", monospace;
+    background: color-mix(in srgb, var(--accent-dim) 30%, transparent);
+    border-radius: 8px;
+    padding: 0 5px;
+  }
+  .obj-browser-chevron {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+  }
+  .obj-browser-body {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
+    min-height: 0;
+  }
+  .obj-search {
+    margin: 6px 8px 4px;
+    padding: 4px 8px;
+    font-size: 0.73rem;
+    background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    outline: none;
+    flex-shrink: 0;
+  }
+  .obj-search:focus {
+    border-color: var(--border-accent);
+  }
+  .obj-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 4px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .obj-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 4px 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+  .obj-item:hover {
+    background: color-mix(in srgb, var(--accent-dim) 20%, transparent);
+  }
+  .obj-item-name {
+    flex: 1;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .obj-item-count {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    font-family: "Consolas", monospace;
+    background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 5px;
+    flex-shrink: 0;
+  }
+  .obj-empty {
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    font-style: italic;
   }
 
   .atlas-help {
