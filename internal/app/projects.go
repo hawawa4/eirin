@@ -12,8 +12,10 @@ import (
 
 	"log/slog"
 
+	"github.com/TaruDesigns/eirin/internal/importer"
 	"github.com/TaruDesigns/eirin/internal/siril"
 	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Project is the frontend-facing project type.
@@ -172,16 +174,65 @@ func (a *App) GetProjectOutputFiles(projectFolder string) ([]ProjectOutputFile, 
 	return files, nil
 }
 
-// ImportOutputFiles copies project output files to destFolder on the NAS.
+// ImportOutputFiles copies project output files to destFolder on the NAS,
+// then indexes each copied file so it appears in the library immediately.
+// Metadata (object, telescope, instrument) is inherited from the first light
+// symlink found in the project's lights/ folder.
 func (a *App) ImportOutputFiles(filePaths []string, destFolder string) error {
 	if err := os.MkdirAll(destFolder, 0o750); err != nil {
 		return fmt.Errorf("creating destination: %w", err)
 	}
+
+	// Derive project folder from the first source file path and read light metadata.
+	meta := store.DirMeta{}
+	if len(filePaths) > 0 {
+		projectFolder := filepath.Dir(filePaths[0])
+		lightsDir := filepath.Join(projectFolder, "lights")
+		if entries, err := os.ReadDir(lightsDir); err == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					continue
+				}
+				linkPath := filepath.Join(lightsDir, e.Name())
+				nasPath, err := filepath.EvalSymlinks(linkPath)
+				if err != nil {
+					nasPath = linkPath
+				}
+				frames, err := a.store.GetFrames([]string{nasPath})
+				if err == nil {
+					if f, ok := frames[nasPath]; ok {
+						meta = store.DirMeta{
+							Object:     f.Object,
+							Telescope:  f.Telescope,
+							Instrument: f.Instrument,
+							Filter:     f.Filter,
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	copied := 0
 	for _, src := range filePaths {
 		dst := filepath.Join(destFolder, filepath.Base(src))
 		if err := copyFileProject(src, dst); err != nil {
 			return fmt.Errorf("copying %s: %w", filepath.Base(src), err)
 		}
+		info, err := os.Stat(src)
+		if err == nil {
+			a.indexImportedFileWithMeta(importer.Candidate{
+				SourcePath:   src,
+				RelativePath: filepath.Base(src),
+				DestPath:     dst,
+				FileSize:     info.Size(),
+			}, meta)
+		}
+		copied++
+	}
+	if copied > 0 {
+		a.wails.Event.EmitEvent(&application.CustomEvent{Name: "library:updated"})
 	}
 	return nil
 }
