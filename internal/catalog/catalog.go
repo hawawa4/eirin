@@ -45,6 +45,27 @@ func AllEntries() []Entry {
 	return out
 }
 
+// LookupByName returns the RA/Dec (decimal degrees) for a catalog object whose
+// name contains the query (case-insensitive). Returns (0,0,false) if not found.
+func LookupByName(query string) (ra, dec float64, ok bool) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return 0, 0, false
+	}
+	for _, e := range loadCatalog() {
+		if strings.ToLower(e.Name) == q {
+			return e.RA, e.Dec, true
+		}
+	}
+	// Fallback: substring match
+	for _, e := range loadCatalog() {
+		if strings.Contains(strings.ToLower(e.Name), q) {
+			return e.RA, e.Dec, true
+		}
+	}
+	return 0, 0, false
+}
+
 var (
 	catalogOnce    sync.Once
 	catalogEntries []catalogEntry

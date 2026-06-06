@@ -219,7 +219,7 @@
   }
 
   // ── Index ─────────────────────────────────────────────────────────────────
-  async function startBuildIndex() {
+  async function startBuildIndex(force = false) {
     if (!rootFolder || indexRunning) return;
     indexProgress = {
       phase: "scanning",
@@ -229,7 +229,7 @@
       errors: 0,
       current: "Starting…",
     };
-    await BuildIndex(rootFolder);
+    await BuildIndex(rootFolder, force);
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -527,6 +527,7 @@
       {indexRunning}
       onselectfolder={selectFolder}
       onbuildindex={startBuildIndex}
+      onrebuildindex={() => startBuildIndex(true)}
       onsirilchange={(info) => (sirilInfo = info)}
       onprojectsfolderset={(path) => {
         projectsFolder = path;

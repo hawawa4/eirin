@@ -247,8 +247,10 @@
     };
   });
 
-  async function analyzeGroup(group: LibGroup) {
-    const paths = group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
+  async function analyzeGroup(group: LibGroup, force = false) {
+    const paths = force
+      ? group.frames.map((f) => f.nasPath)
+      : group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
     if (!paths.length) return;
     analyzingGroup = group.key;
     analysisProgress = null;
@@ -880,7 +882,7 @@
                   <span class="quality-dot" title="Quality data available">✦</span>
                 {/if}
                 <span class="group-spacer"></span>
-                {#if sirilAvailable && group.frames.some((f) => !f.qualityAnalyzed)}
+                {#if sirilAvailable && group.frames.length > 0}
                   {#if analyzingGroup === group.key}
                     <span class="analysis-status">
                       ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ??
@@ -896,14 +898,25 @@
                       title="Cancel analysis">✕</button
                     >
                   {:else}
+                    {#if group.frames.some((f) => !f.qualityAnalyzed)}
+                      <button
+                        class="btn-analyze"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          analyzeGroup(group);
+                        }}
+                        disabled={analyzingGroup !== null}
+                        title="Analyze unanalyzed frames with Siril (findstar + platesolve)">✦ Analyze</button
+                      >
+                    {/if}
                     <button
-                      class="btn-analyze"
+                      class="btn-analyze btn-reanalyze"
                       onclick={(e) => {
                         e.stopPropagation();
-                        analyzeGroup(group);
+                        analyzeGroup(group, true);
                       }}
                       disabled={analyzingGroup !== null}
-                      title="Analyze light frames with Siril (findstar)">✦ Analyze</button
+                      title="Re-run analysis on all frames, including already-analyzed ones">↺ Reanalyze</button
                     >
                   {/if}
                 {/if}
@@ -1572,6 +1585,18 @@
   .btn-analyze:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .btn-reanalyze {
+    border-color: var(--border-accent);
+    color: var(--text-secondary);
+    opacity: 0.75;
+  }
+  .btn-reanalyze:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--text-primary);
+    border-color: var(--accent);
+    opacity: 1;
   }
 
   .analysis-status {

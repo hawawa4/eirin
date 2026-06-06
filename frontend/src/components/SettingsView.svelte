@@ -17,6 +17,7 @@
     indexRunning: boolean;
     onselectfolder: () => void;
     onbuildindex: () => void;
+    onrebuildindex: () => void;
     onsirilchange: (info: SirilInfo) => void;
     onprojectsfolderset: (path: string) => void;
   }
@@ -29,6 +30,7 @@
 
     onselectfolder,
     onbuildindex,
+    onrebuildindex,
     onsirilchange,
     onprojectsfolderset,
   }: Props = $props();
@@ -135,12 +137,17 @@
 
       {#if rootFolder}
         <div class="action-row">
-          <button class="btn-primary" onclick={onbuildindex} disabled={indexRunning}>
-            {indexRunning ? "Indexing…" : "Build Index"}
-          </button>
+          <div class="btn-group">
+            <button class="btn-primary" onclick={onbuildindex} disabled={indexRunning}>
+              {indexRunning ? "Indexing…" : "Build Index"}
+            </button>
+            <button class="btn-secondary" onclick={onrebuildindex} disabled={indexRunning} title="Re-read all files, even already-indexed ones">
+              Force Reindex
+            </button>
+          </div>
           <p class="action-hint">
             Scans all subfolders and reads FITS headers for any files not yet in the database.
-            Re-run to pick up new files.
+            Re-run to pick up new files. Use <strong>Force Reindex</strong> to re-read every file from scratch.
           </p>
         </div>
       {/if}
@@ -389,6 +396,12 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .btn-group {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
   }
 
   .action-hint {

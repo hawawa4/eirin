@@ -26,9 +26,9 @@ type appIndexer struct {
 
 // BuildIndex traverses every subdirectory under rootPath, reads FITS headers
 // for files not yet in the cache, and stores them. Progress is reported via
-// "index:progress" Wails events. Calling BuildIndex again only processes
-// files added since the last run.
-func (a *App) BuildIndex(rootPath string) {
+// "index:progress" Wails events. When force is true, already-indexed files are
+// re-read and overwritten (WCS plate-solve results are preserved).
+func (a *App) BuildIndex(rootPath string, force bool) {
 	a.indexer.mu.Lock()
 	if a.indexer.cancel != nil {
 		a.indexer.cancel()
@@ -88,13 +88,13 @@ func (a *App) BuildIndex(rootPath string) {
 
 		toIndexFits := make([]string, 0, len(fitsPaths))
 		for _, p := range fitsPaths {
-			if f, ok := indexed0[p]; !ok || f.CachedAt == 0 {
+			if f, ok := indexed0[p]; force || !ok || f.CachedAt == 0 {
 				toIndexFits = append(toIndexFits, p)
 			}
 		}
 		toIndexRaster := make([]string, 0, len(rasterPaths))
 		for _, p := range rasterPaths {
-			if f, ok := indexed0[p]; !ok || f.CachedAt == 0 {
+			if f, ok := indexed0[p]; force || !ok || f.CachedAt == 0 {
 				toIndexRaster = append(toIndexRaster, p)
 			}
 		}

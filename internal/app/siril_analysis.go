@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/TaruDesigns/eirin/internal/catalog"
 	sirilpkg "github.com/TaruDesigns/eirin/internal/siril"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -70,6 +71,11 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 			if f.RA != nil && f.Dec != nil {
 				hintRA = *f.RA
 				hintDec = *f.Dec
+			} else if f.Object != "" {
+				if ra, dec, found := catalog.LookupByName(f.Object); found {
+					hintRA = ra
+					hintDec = dec
+				}
 			}
 		}
 		quality, wcs, wcsSolved, rawOutput, err := sirilpkg.AnalyzeSingleFrame(ctx, exe, path, hintRA, hintDec)
@@ -78,7 +84,7 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 			fmt.Fprintf(df, "\n--- %s ---\n%s\n", filepath.Base(path), string(rawOutput))
 			df.Close()
 		}
-		slog.Info("siril output", "file", filepath.Base(path), "output", string(rawOutput))
+		slog.Info("siril output\n" + string(rawOutput))
 
 		if err != nil {
 			slog.Warn("analysis", "err", err)

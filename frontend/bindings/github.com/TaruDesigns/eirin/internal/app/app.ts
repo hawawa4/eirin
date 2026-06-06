@@ -73,11 +73,11 @@ export function BatchUnrejectFiles(paths: string[]): $CancellablePromise<void> {
 /**
  * BuildIndex traverses every subdirectory under rootPath, reads FITS headers
  * for files not yet in the cache, and stores them. Progress is reported via
- * "index:progress" Wails events. Calling BuildIndex again only processes
- * files added since the last run.
+ * "index:progress" Wails events. When force is true, already-indexed files are
+ * re-read and overwritten (WCS plate-solve results are preserved).
  */
-export function BuildIndex(rootPath: string): $CancellablePromise<void> {
-    return $Call.ByID(2469627606, rootPath);
+export function BuildIndex(rootPath: string, force: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2469627606, rootPath, force);
 }
 
 /**
@@ -329,10 +329,8 @@ export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
 }
 
 /**
- * LoadRasterImage reads a PNG or TIFF file from disk and returns it as a
- * base64-encoded PNG data URL. TIFFs are decoded server-side and re-encoded
- * as PNG because browsers cannot render TIFF data URLs (including float32 TIFFs
- * produced by Siril). The file must be under the configured NAS root.
+ * LoadRasterImage reads a PNG file from disk and returns it as a base64-encoded
+ * PNG data URL. The file must be under the configured NAS root.
  */
 export function LoadRasterImage(path: string): $CancellablePromise<string> {
     return $Call.ByID(1706285520, path);

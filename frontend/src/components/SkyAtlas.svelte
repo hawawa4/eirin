@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
+  import { Events } from "@wailsio/runtime";
   import type * as app from "$models/app";
   import {
     GetAtlasIndex,
@@ -19,8 +20,7 @@
   let { rootPath, onframeopen }: Props = $props();
 
   function isRasterFile(path: string): boolean {
-    const l = path.toLowerCase();
-    return l.endsWith(".png") || l.endsWith(".tif") || l.endsWith(".tiff");
+    return path.toLowerCase().endsWith(".png");
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -737,9 +737,16 @@
         loading = false;
       });
 
+    const unsubUpdated = Events.On("library:updated", () => {
+      GetAtlasIndex(rootPath).then((r: app.AtlasIndexEntry[]) => {
+        index = r ?? [];
+      });
+    });
+
     return () => {
       ro.disconnect();
       if (lazyTimer) clearTimeout(lazyTimer);
+      unsubUpdated();
     };
   });
 </script>

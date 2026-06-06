@@ -1,18 +1,14 @@
 package app
 
 import (
-	"bytes"
 	"encoding/base64"
 	"fmt"
-	"image"
-	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/TaruDesigns/eirin/internal/indexer"
-	_ "golang.org/x/image/tiff" // register TIFF decoder so image.Decode handles TIFFs
 )
 
 func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {
@@ -35,10 +31,8 @@ func (a *App) GeneratePreviewRawSized(path string, maxSize int) (fits.RawPreview
 	return fits.GeneratePreviewRaw(path, maxSize)
 }
 
-// LoadRasterImage reads a PNG or TIFF file from disk and returns it as a
-// base64-encoded PNG data URL. TIFFs are decoded server-side and re-encoded
-// as PNG because browsers cannot render TIFF data URLs (including float32 TIFFs
-// produced by Siril). The file must be under the configured NAS root.
+// LoadRasterImage reads a PNG file from disk and returns it as a base64-encoded
+// PNG data URL. The file must be under the configured NAS root.
 func (a *App) LoadRasterImage(path string) (string, error) {
 	if !indexer.IsRasterFile(path) {
 		return "", fmt.Errorf("not a supported raster file: %s", filepath.Base(path))
@@ -52,30 +46,9 @@ func (a *App) LoadRasterImage(path string) (string, error) {
 		return "", fmt.Errorf("path outside NAS root")
 	}
 
-	ext := strings.ToLower(filepath.Ext(absPath))
-	switch ext {
-	case ".tif", ".tiff":
-		// Decode TIFF and re-encode as PNG so the browser can display it.
-		raw, err := os.ReadFile(absPath)
-		if err != nil {
-			return "", fmt.Errorf("read file: %w", err)
-		}
-		img, _, err := image.Decode(bytes.NewReader(raw))
-		if err != nil {
-			return "", fmt.Errorf("decode tiff: %w", err)
-		}
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
-			return "", fmt.Errorf("encode png: %w", err)
-		}
-		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
-
-	default:
-		// PNG: send raw bytes directly.
-		data, err := os.ReadFile(absPath)
-		if err != nil {
-			return "", fmt.Errorf("read file: %w", err)
-		}
-		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data), nil
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
 	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data), nil
 }

@@ -33,8 +33,7 @@
   }: Props = $props();
 
   function isRasterFile(path: string): boolean {
-    const l = path.toLowerCase();
-    return l.endsWith(".png") || l.endsWith(".tif") || l.endsWith(".tiff");
+    return path.toLowerCase().endsWith(".png");
   }
 
   let isRaster = $derived(isRasterFile(entry.path));
@@ -816,7 +815,7 @@ void main() {
     {/if}
   </div>
 
-  {#if fitsHeader}
+  {#if fitsHeader || (isRaster && qualityFrame)}
     <div class="preview-meta">
       <div class="meta-section">
         <button class="meta-section-hdr" onclick={() => (basicCollapsed = !basicCollapsed)}>
@@ -824,12 +823,37 @@ void main() {
           <span class="meta-caret">{basicCollapsed ? "›" : "⌄"}</span>
         </button>
         {#if !basicCollapsed}
-          {#each basicRows(fitsHeader) as row (row.key)}
+          {#if fitsHeader}
+            {#each basicRows(fitsHeader) as row (row.key)}
+              <div class="meta-row">
+                <span class="meta-key">{row.key}</span>
+                <span class="meta-val">{row.val}</span>
+              </div>
+            {/each}
+          {:else if qualityFrame}
+            {#if qualityFrame.object}
+              <div class="meta-row">
+                <span class="meta-key">Object</span>
+                <span class="meta-val">{qualityFrame.object}</span>
+              </div>
+            {/if}
             <div class="meta-row">
-              <span class="meta-key">{row.key}</span>
-              <span class="meta-val">{row.val}</span>
+              <span class="meta-key">Type</span>
+              <span class="meta-val">{qualityFrame.frameType}</span>
             </div>
-          {/each}
+            {#if qualityFrame.telescope}
+              <div class="meta-row">
+                <span class="meta-key">Telescope</span>
+                <span class="meta-val">{qualityFrame.telescope}</span>
+              </div>
+            {/if}
+            {#if qualityFrame.instrument}
+              <div class="meta-row">
+                <span class="meta-key">Camera</span>
+                <span class="meta-val">{qualityFrame.instrument}</span>
+              </div>
+            {/if}
+          {/if}
         {/if}
       </div>
       {#if qualityFrame || fitsHeader?.ra}
@@ -886,20 +910,22 @@ void main() {
           {/if}
         </div>
       {/if}
-      <div class="meta-section">
-        <button class="meta-section-hdr" onclick={() => (advancedCollapsed = !advancedCollapsed)}>
-          <span>Advanced</span>
-          <span class="meta-caret">{advancedCollapsed ? "›" : "⌄"}</span>
-        </button>
-        {#if !advancedCollapsed}
-          {#each advancedRows(fitsHeader) as row (row.key)}
-            <div class="meta-row">
-              <span class="meta-key">{row.key}</span>
-              <span class="meta-val">{row.val}</span>
-            </div>
-          {/each}
-        {/if}
-      </div>
+      {#if fitsHeader}
+        <div class="meta-section">
+          <button class="meta-section-hdr" onclick={() => (advancedCollapsed = !advancedCollapsed)}>
+            <span>Advanced</span>
+            <span class="meta-caret">{advancedCollapsed ? "›" : "⌄"}</span>
+          </button>
+          {#if !advancedCollapsed}
+            {#each advancedRows(fitsHeader) as row (row.key)}
+              <div class="meta-row">
+                <span class="meta-key">{row.key}</span>
+                <span class="meta-val">{row.val}</span>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {/if}
       {#if qualityFrame}
         <div class="meta-section">
           <button class="meta-section-hdr" onclick={() => (statsCollapsed = !statsCollapsed)}>

@@ -11,7 +11,6 @@ import (
 	"github.com/TaruDesigns/eirin/internal/catalog"
 	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/TaruDesigns/eirin/internal/indexer"
-	_ "golang.org/x/image/tiff" // register TIFF decoder
 )
 
 // AtlasIndexEntry holds the DB-resident data for a single stacked/processed

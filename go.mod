@@ -6,7 +6,6 @@ require (
 	codeberg.org/astrogo/fitsio v0.4.0
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.98
-	golang.org/x/image v0.41.0
 	modernc.org/sqlite v1.50.0
 )
 
