@@ -431,7 +431,15 @@
     );
   }
 
-  const TYPE_ORDER = ["light", "stacked", "processed", "flat", "dark", "bias"];
+  const TYPE_ORDER = ["light", "stacked", "processed", "image", "flat", "dark", "bias"];
+
+  function selectAll() {
+    for (const f of sorted) selectedPaths.add(f.nasPath);
+  }
+
+  function clearSelection() {
+    selectedPaths.clear();
+  }
 
   function unanalyzedPaths(group: LibGroup): string[] {
     return group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
@@ -775,6 +783,20 @@
       title="Clear all column filters"
     >
       ✕ filters
+    </button>
+  {/if}
+  {#if selectedPaths.size > 0}
+    <button class="tool-btn" onclick={clearSelection} title="Clear selection">
+      ✕ {selectedPaths.size} selected
+    </button>
+  {:else}
+    <button
+      class="tool-btn"
+      onclick={selectAll}
+      disabled={sorted.length === 0}
+      title="Select all {sorted.length} visible frames"
+    >
+      Select all
     </button>
   {/if}
   <button
