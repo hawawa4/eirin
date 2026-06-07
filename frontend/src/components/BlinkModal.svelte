@@ -16,29 +16,81 @@
   let currentIndex = $state(0);
   let intervalMs = $state(500);
   let playing = $state(false);
-  let previews = $state<(string | null)[]>([]);
-  let loadingCount = $state(0);
   let stretchLevel = $state(2);
   let confirmDelete = $state(false);
 
+  // Cache: nasPath → data-URL. Only a sliding window of entries is kept.
+  const cache = new Map<string, string>();
+  // Tracks in-flight fetches so we don't double-fetch.
+  const fetching = new Set<string>();
+
+  // How many frames to preload ahead and behind the current index.
+  const AHEAD = 2;
+  const BEHIND = 1;
+  const WINDOW = AHEAD + BEHIND + 1;
+
   let timerId: ReturnType<typeof setInterval> | null = null;
 
-  // Preload all preview images on mount
+  // Derive the URL for the current frame from the cache (reactive via version bump).
+  let cacheVersion = $state(0);
+  const currentPreview = $derived(
+    (() => {
+      void cacheVersion; // depend on version so this re-evaluates after fetches
+      return cache.get(frames[currentIndex]?.nasPath ?? "") ?? null;
+    })(),
+  );
+  const currentLoading = $derived(
+    (() => {
+      void cacheVersion;
+      const path = frames[currentIndex]?.nasPath ?? "";
+      return !cache.has(path) && fetching.has(path);
+    })(),
+  );
+
+  // Whenever currentIndex or stretchLevel changes, refresh the sliding window.
   $effect(() => {
-    loadingCount = frames.length;
-    previews = frames.map(() => null);
-    frames.forEach((f, i) => {
-      GeneratePreview(f.nasPath, stretchLevel)
-        .then((url) => {
-          previews = previews.map((p, j) => (j === i ? url : p));
-          loadingCount--;
-        })
-        .catch(() => {
-          previews = previews.map((p, j) => (j === i ? "" : p));
-          loadingCount--;
-        });
-    });
+    void currentIndex;
+    void stretchLevel;
+    updateWindow();
   });
+
+  function updateWindow() {
+    const n = frames.length;
+    if (n === 0) return;
+
+    // Compute the set of indices we want loaded.
+    const wanted = new Set<number>();
+    for (let d = -BEHIND; d <= AHEAD; d++) {
+      wanted.add(((currentIndex + d) % n + n) % n);
+    }
+
+    // Evict entries outside the window.
+    for (const [path] of cache) {
+      const idx = frames.findIndex((f) => f.nasPath === path);
+      if (idx === -1 || !wanted.has(idx)) {
+        cache.delete(path);
+      }
+    }
+
+    // Fetch missing entries.
+    for (const idx of wanted) {
+      const path = frames[idx].nasPath;
+      if (!cache.has(path) && !fetching.has(path)) {
+        fetching.add(path);
+        GeneratePreview(path, stretchLevel)
+          .then((url) => {
+            cache.set(path, url);
+            fetching.delete(path);
+            cacheVersion++;
+          })
+          .catch(() => {
+            cache.set(path, ""); // empty = failed, don't retry
+            fetching.delete(path);
+            cacheVersion++;
+          });
+      }
+    }
+  }
 
   function startBlink() {
     if (timerId) return;
@@ -74,17 +126,22 @@
     }
   }
 
+  function advanceAfterAction() {
+    if (frames.length <= 1) {
+      onclose();
+    } else if (currentIndex < frames.length - 1) {
+      currentIndex++;
+    } else {
+      currentIndex = 0;
+    }
+  }
+
   function doReject() {
     const frame = frames[currentIndex];
     if (!frame || !onreject) return;
     stopBlink();
     onreject(frame.nasPath);
-    // advance to next frame if possible
-    if (frames.length > 1) {
-      currentIndex = Math.min(currentIndex, frames.length - 2);
-    } else {
-      onclose();
-    }
+    advanceAfterAction();
   }
 
   function doHardDelete() {
@@ -93,8 +150,7 @@
     stopBlink();
     confirmDelete = false;
     onharddelete(frame.nasPath, frame.fileName);
-    if (frames.length <= 1) onclose();
-    else currentIndex = Math.min(currentIndex, frames.length - 2);
+    advanceAfterAction();
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -113,7 +169,6 @@
   onDestroy(() => stopBlink());
 
   const current = $derived(frames[currentIndex]);
-  const currentPreview = $derived(previews[currentIndex]);
 </script>
 
 <div
@@ -131,10 +186,8 @@
     </div>
 
     <div class="blink-viewport">
-      {#if loadingCount > 0 && !currentPreview}
-        <div class="blink-loading">
-          Loading previews… ({frames.length - loadingCount}/{frames.length})
-        </div>
+      {#if currentLoading}
+        <div class="blink-loading">Loading…</div>
       {:else if currentPreview}
         <img
           src={currentPreview}
@@ -148,6 +201,14 @@
       <div class="blink-badge">{currentIndex + 1} / {frames.length}</div>
       {#if current?.isRejected}
         <div class="blink-rejected-badge">REJECTED</div>
+      {/if}
+      <!-- Preload indicator: how many of the window are ready -->
+      {#if frames.length > WINDOW}
+        {@const ready = [currentIndex, ...Array.from({length: AHEAD}, (_, i) => ((currentIndex + i + 1) % frames.length))].filter(i => cache.has(frames[i]?.nasPath ?? "")).length}
+        {@const total = Math.min(WINDOW, frames.length)}
+        {#if ready < total}
+          <div class="blink-preload-badge">⟳ {ready}/{total}</div>
+        {/if}
       {/if}
     </div>
 
@@ -175,35 +236,6 @@
         {playing ? "⏸" : "▶"}
       </button>
       <button class="blink-btn" onclick={() => step(1)} title="Next (→)">▶</button>
-
-      <div class="blink-speed">
-        <span class="blink-speed-label">Speed</span>
-        <input
-          type="range"
-          min="100"
-          max="2000"
-          step="100"
-          value={intervalMs}
-          oninput={onSpeedChange}
-          class="blink-slider"
-        />
-        <span class="blink-speed-val">{intervalMs}ms</span>
-      </div>
-
-      <div class="blink-dots">
-        {#each frames as frame, i (frame.nasPath)}
-          <button
-            class="blink-dot"
-            class:active={i === currentIndex}
-            class:rejected={frames[i]?.isRejected}
-            onclick={() => {
-              stopBlink();
-              currentIndex = i;
-            }}
-            title={frames[i]?.fileName ?? ""}
-          ></button>
-        {/each}
-      </div>
 
       {#if onreject || onharddelete}
         <div class="blink-actions">
@@ -238,6 +270,38 @@
           {/if}
         </div>
       {/if}
+
+      <div class="blink-speed">
+        <span class="blink-speed-label">Speed</span>
+        <input
+          type="range"
+          min="100"
+          max="2000"
+          step="100"
+          value={intervalMs}
+          oninput={onSpeedChange}
+          class="blink-slider"
+        />
+        <span class="blink-speed-val">{intervalMs}ms</span>
+      </div>
+
+      <div class="blink-dots">
+        {#each [-2, -1, 0, 1, 2] as offset (offset)}
+          {@const idx = ((currentIndex + offset) % frames.length + frames.length) % frames.length}
+          {@const frame = frames[idx]}
+          {#if frame}
+            <button
+              class="blink-dot"
+              class:active={offset === 0}
+              class:rejected={frame.isRejected}
+              class:cached={cache.has(frame.nasPath)}
+              onclick={() => { stopBlink(); currentIndex = idx; }}
+              title={frame.fileName}
+            ></button>
+          {/if}
+        {/each}
+      </div>
+
     </div>
   </div>
 </div>
@@ -328,6 +392,17 @@
     padding: 2px 7px;
     border-radius: 3px;
     font-variant-numeric: tabular-nums;
+  }
+
+  .blink-preload-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    border-radius: 3px;
   }
 
   .blink-rejected-badge {
@@ -462,6 +537,12 @@
   }
   .blink-dot.rejected {
     background: var(--danger);
+  }
+  .blink-dot.cached {
+    opacity: 1;
+  }
+  .blink-dot:not(.cached):not(.active) {
+    opacity: 0.4;
   }
   .blink-dot:hover {
     background: var(--text-secondary);
