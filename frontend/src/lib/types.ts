@@ -67,7 +67,7 @@ export type AppMode =
 
 export type Theme = "blue" | "red" | "grey";
 
-export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "processed";
+export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "processed" | "image";
 
 export interface ColFilter {
   text?: string;
@@ -135,6 +135,7 @@ export const FRAME_TYPE_META: Record<
   bias: { label: "Bias", short: "BIAS", color: "#a78bfa", bg: "#2d1f4a" },
   stacked: { label: "Stacked", short: "STACK", color: "#34d399", bg: "#0d3a2a" },
   processed: { label: "Processed", short: "PROC", color: "#f59e0b", bg: "#3d2d00" },
+  image: { label: "Image", short: "IMG", color: "#e879f9", bg: "#3b1a4a" },
 };
 
 export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [

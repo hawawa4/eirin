@@ -9,7 +9,9 @@ import (
 	"sync"
 
 	"github.com/TaruDesigns/eirin/internal/catalog"
+	"github.com/TaruDesigns/eirin/internal/indexer"
 	sirilpkg "github.com/TaruDesigns/eirin/internal/siril"
+	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -87,6 +89,13 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 				}
 			}
 		}
+		// Raster files may have been indexed before FrameTypeImage existed; correct it now.
+		if indexer.IsRasterFile(path) {
+			if uerr := a.store.SetFrameType(path, store.FrameTypeImage); uerr != nil {
+				slog.Warn("analysis: set frame type image", "err", uerr)
+			}
+		}
+
 		quality, wcs, wcsSolved, rawOutput, err := sirilpkg.AnalyzeSingleFrame(ctx, exe, path, hintRA, hintDec)
 
 		if df, ferr := os.OpenFile(debugPath, os.O_APPEND|os.O_WRONLY, 0644); ferr == nil {

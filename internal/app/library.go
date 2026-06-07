@@ -158,6 +158,7 @@ func (a *App) SetFrameType(nasPath string, frameType string) error {
 		store.FrameTypeBias:      true,
 		store.FrameTypeStacked:   true,
 		store.FrameTypeProcessed: true,
+		store.FrameTypeImage:     true,
 	}
 	if !validTypes[frameType] {
 		return nil

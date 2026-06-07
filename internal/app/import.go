@@ -266,7 +266,7 @@ func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta
 			FileSize:   c.FileSize,
 			LastSeen:   time.Now().Unix(),
 			FileHash:   c.FileHash,
-			FrameType:  store.FrameTypeProcessed,
+			FrameType:  store.FrameTypeImage,
 			Object:     obj,
 			Telescope:  dirMeta.Telescope,
 			Instrument: dirMeta.Instrument,

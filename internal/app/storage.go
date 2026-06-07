@@ -90,7 +90,7 @@ func (a *App) GetFrameTypeSummary(rootPath string) []StorageNode {
 
 	typeOrder := []string{
 		store.FrameTypeLight, store.FrameTypeDark, store.FrameTypeFlat,
-		store.FrameTypeBias, store.FrameTypeStacked, store.FrameTypeProcessed,
+		store.FrameTypeBias, store.FrameTypeStacked, store.FrameTypeProcessed, store.FrameTypeImage,
 	}
 	byType := map[string]*storageLeaf{}
 	for _, t := range typeOrder {

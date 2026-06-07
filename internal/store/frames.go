@@ -17,6 +17,7 @@ const (
 	FrameTypeBias      = "bias"
 	FrameTypeStacked   = "stacked"
 	FrameTypeProcessed = "processed"
+	FrameTypeImage     = "image" // raster non-FITS files (PNG, JPEG, …)
 )
 
 // Frame holds all data stored about a single file in the frames table.
@@ -538,7 +539,11 @@ func (s *Store) GetAtlasIndexFrames(rootPath string) ([]Frame, error) {
 		Where(sq.And{
 			sq.Like{"nas_path": prefix + "%"},
 			sq.Gt{"cached_at": 0},
-			sq.Or{sq.Eq{"frame_type": FrameTypeStacked}, sq.Eq{"frame_type": FrameTypeProcessed}},
+			sq.Or{
+				sq.Eq{"frame_type": FrameTypeStacked},
+				sq.Eq{"frame_type": FrameTypeProcessed},
+				sq.Eq{"frame_type": FrameTypeImage},
+			},
 		}).
 		OrderBy("object", "date_obs").
 		ToSql()
