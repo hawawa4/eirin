@@ -42,7 +42,9 @@
   // Frame type filter
   let showStacked = $state(false);
   let visibleIndex = $derived(
-    showStacked ? index : index.filter((e) => e.frameType === "processed"),
+    showStacked
+      ? index
+      : index.filter((e) => e.frameType === "processed" || e.frameType === "image"),
   );
 
   // Size cache: nasPath → pixel dimensions (sizesVersion drives redraws)
@@ -172,7 +174,8 @@
             const u8 = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
             const f32 = new Float32Array(u8.buffer);
-            const stretchLevel = entry.frameType === "processed" ? 0 : 2;
+            const stretchLevel =
+              entry.frameType === "processed" || entry.frameType === "image" ? 0 : 2;
             const rendered = renderStretched(
               f32,
               result.width,
@@ -842,7 +845,7 @@
   <!-- Frame type toggle -->
   <div class="atlas-toggle">
     <button class="toggle-btn" class:active={!showStacked} onclick={() => (showStacked = false)}
-      >Processed</button
+      >Processed / Image</button
     >
     <button class="toggle-btn" class:active={showStacked} onclick={() => (showStacked = true)}
       >All</button
