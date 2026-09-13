@@ -47,6 +47,9 @@
       : index.filter((e) => e.frameType === "processed" || e.frameType === "image"),
   );
 
+  // Label visibility (grid coord labels, catalog names, frame names)
+  let showLabels = $state(true);
+
   // Size cache: nasPath → pixel dimensions (sizesVersion drives redraws)
   const sizes = new SvelteMap<string, { width: number; height: number }>();
   let sizesVersion = $state(0);
@@ -113,6 +116,33 @@
     const all = [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
     return q ? all.filter((g) => g.name.toLowerCase().includes(q)) : all;
   });
+
+  // Fixed background dust — decorative only, static per-canvas-size, regenerated on resize.
+  let dust: { x: number; y: number; r: number; a: number }[] = [];
+  let dustW = 0;
+  let dustH = 0;
+  function ensureDust() {
+    if (dustW === canvasW && dustH === canvasH && dust.length) return;
+    dustW = canvasW;
+    dustH = canvasH;
+    const count = Math.min(400, Math.round((canvasW * canvasH) / 2200));
+    const arr = [];
+    // Simple deterministic PRNG so the field doesn't jump around on every resize tick.
+    let seed = 1337;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    for (let i = 0; i < count; i++) {
+      arr.push({
+        x: rand() * canvasW,
+        y: rand() * canvasH,
+        r: rand() * 1.1 + 0.2,
+        a: rand() * 0.5 + 0.15,
+      });
+    }
+    dust = arr;
+  }
 
   function flyTo(ra: number, dec: number) {
     viewRA = ra;
@@ -289,29 +319,126 @@
   function redraw() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
-    ctx.fillStyle = "#050610";
-    ctx.fillRect(0, 0, canvasW, canvasH);
+    placedLabels.length = 0;
+    drawBackground(ctx);
     drawGrid(ctx);
-    drawCatalog(ctx);
+    // Frame labels are drawn before catalog labels so they win collisions —
+    // the user's own data takes priority over background star/DSO names.
     drawFrames(ctx);
+    drawCatalog(ctx);
     drawCompass(ctx);
   }
 
-  function labelBg(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
+  // ── Label collision avoidance ─────────────────────────────────────────────
+  // Labels are placed on a first-come, first-served basis each frame: earlier
+  // calls (higher-priority content) claim screen space, later calls skip if
+  // they'd overlap. Cleared at the top of every redraw().
+  const LABEL_FONT = "600 12px system-ui, sans-serif";
+  const LABEL_FONT_SMALL = "600 11px system-ui, sans-serif";
+  const LABEL_FONT_EMPHASIS = "700 13px system-ui, sans-serif";
+  let placedLabels: { x: number; y: number; w: number; h: number }[] = [];
+
+  function labelOverlaps(x: number, y: number, w: number, h: number): boolean {
+    const pad = 2;
+    for (const r of placedLabels) {
+      if (x - pad < r.x + r.w && x + w + pad > r.x && y - pad < r.y + r.h && y + h + pad > r.y) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Draws `text` anchored at (x, y) unless it would collide with a
+  // higher-priority label already placed this frame. Returns whether it drew.
+  function placeLabel(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    opts: {
+      font?: string;
+      color: string;
+      align?: CanvasTextAlign;
+      bg?: boolean;
+      force?: boolean;
+    },
+  ): boolean {
+    const font = opts.font ?? LABEL_FONT;
+    ctx.font = font;
+    const align = opts.align ?? "left";
     const tw = ctx.measureText(text).width;
-    const saved = ctx.fillStyle;
-    ctx.fillStyle = "rgba(5,6,16,0.78)";
-    ctx.fillRect(x - 2, y - 11, tw + 4, 14);
-    ctx.fillStyle = saved;
+    // Bounding box in left-aligned terms regardless of actual alignment
+    const boxX = align === "center" ? x - tw / 2 : align === "right" ? x - tw : x;
+    const boxY = y - 12;
+    const boxW = tw;
+    const boxH = 15;
+
+    if (!opts.force && labelOverlaps(boxX, boxY, boxW, boxH)) return false;
+    placedLabels.push({ x: boxX, y: boxY, w: boxW, h: boxH });
+
+    ctx.textAlign = align;
+    if (opts.bg) {
+      const saved = ctx.fillStyle;
+      ctx.fillStyle = "rgba(6,8,18,0.8)";
+      roundRect(ctx, boxX - 3, boxY, boxW + 6, boxH, 3);
+      ctx.fill();
+      ctx.fillStyle = saved;
+    }
+    ctx.fillStyle = opts.color;
     ctx.fillText(text, x, y);
+    ctx.textAlign = "left";
+    return true;
+  }
+
+  function drawBackground(ctx: CanvasRenderingContext2D) {
+    const grad = ctx.createRadialGradient(
+      canvasW / 2,
+      canvasH * 0.4,
+      0,
+      canvasW / 2,
+      canvasH * 0.4,
+      Math.max(canvasW, canvasH) * 0.75,
+    );
+    grad.addColorStop(0, "#0c1024");
+    grad.addColorStop(0.55, "#070912");
+    grad.addColorStop(1, "#04050a");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    ensureDust();
+    ctx.save();
+    for (const d of dust) {
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(210,220,255,${d.a})`;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   function drawGrid(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.strokeStyle = "rgba(80,100,140,0.50)";
+    ctx.strokeStyle = "rgba(90,115,165,0.32)";
     ctx.lineWidth = 1.0;
-    ctx.setLineDash([4, 6]);
-    ctx.font = "11px monospace";
+    ctx.setLineDash([1, 5]);
+    ctx.lineCap = "round";
 
     const decStep = pixPerDeg >= 30 ? 5 : 10;
     const raStep = pixPerDeg >= 50 ? 5 : 15;
@@ -337,6 +464,8 @@
         )
       )
         continue;
+      const isEquator = dec === 0;
+      ctx.strokeStyle = isEquator ? "rgba(130,155,210,0.45)" : "rgba(90,115,165,0.30)";
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -358,6 +487,8 @@
         )
       )
         continue;
+      const isZero = ra === 0;
+      ctx.strokeStyle = isZero ? "rgba(130,155,210,0.45)" : "rgba(90,115,165,0.30)";
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -366,21 +497,29 @@
 
     ctx.setLineDash([]);
 
-    // RA labels (blue-ish) at current Dec centre
-    ctx.fillStyle = "rgba(155,180,230,0.95)";
-    for (let ra = 0; ra < 360; ra += raStep) {
-      const lp = project(ra, viewDec);
-      if (lp && lp[0] >= 20 && lp[0] <= canvasW - 20 && lp[1] >= 14 && lp[1] <= canvasH - 4) {
-        labelBg(ctx, `${ra}°`, lp[0] + 2, lp[1] - 2);
+    if (showLabels) {
+      // RA labels (blue-ish) at current Dec centre — lowest priority, drawn last
+      for (let ra = 0; ra < 360; ra += raStep) {
+        const lp = project(ra, viewDec);
+        if (lp && lp[0] >= 20 && lp[0] <= canvasW - 20 && lp[1] >= 14 && lp[1] <= canvasH - 4) {
+          placeLabel(ctx, `${ra}°`, lp[0] + 4, lp[1] - 2, {
+            font: LABEL_FONT_SMALL,
+            color: "rgba(165,190,235,0.95)",
+            bg: true,
+          });
+        }
       }
-    }
 
-    // Dec labels (teal-ish) at current RA centre
-    ctx.fillStyle = "rgba(110,215,190,0.95)";
-    for (let dec = -80; dec <= 80; dec += decStep) {
-      const lp = project(viewRA, dec);
-      if (lp && lp[1] >= 14 && lp[1] <= canvasH - 4 && lp[0] >= 4 && lp[0] <= canvasW - 4) {
-        labelBg(ctx, (dec >= 0 ? "+" : "") + dec + "°", lp[0] + 4, lp[1] - 2);
+      // Dec labels (teal-ish) at current RA centre
+      for (let dec = -80; dec <= 80; dec += decStep) {
+        const lp = project(viewRA, dec);
+        if (lp && lp[1] >= 14 && lp[1] <= canvasH - 4 && lp[0] >= 4 && lp[0] <= canvasW - 4) {
+          placeLabel(ctx, (dec >= 0 ? "+" : "") + dec + "°", lp[0] + 6, lp[1] - 2, {
+            font: LABEL_FONT_SMALL,
+            color: "rgba(125,220,195,0.95)",
+            bg: true,
+          });
+        }
       }
     }
 
@@ -397,29 +536,48 @@
 
       if (obj.type === "star") {
         const r = Math.max(0.8, Math.min(3.5, (4 - obj.mag) * 0.6));
+        // Soft glow behind brighter stars for a bit of depth
+        if (obj.mag < 3.5) {
+          const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+          glow.addColorStop(0, "rgba(200,215,255,0.35)");
+          glow.addColorStop(1, "rgba(200,215,255,0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(220,230,255,0.85)";
+        ctx.fillStyle = "rgba(230,238,255,0.92)";
         ctx.fill();
-        if (obj.mag < 2.5 || pixPerDeg > 60) {
-          ctx.fillStyle = "rgba(180,200,255,0.7)";
-          ctx.font = "9px monospace";
-          ctx.fillText(obj.name, x + r + 2, y + 3);
+        if (showLabels && (obj.mag < 2.5 || pixPerDeg > 60)) {
+          placeLabel(ctx, obj.name, x + r + 4, y + 4, {
+            font: LABEL_FONT_SMALL,
+            color: "rgba(200,215,255,0.9)",
+            bg: true,
+          });
         }
       } else {
         const size = pixPerDeg > 20 ? 5 : 3;
-        ctx.strokeStyle = "rgba(255,210,80,0.6)";
-        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = "rgba(255,195,90,0.7)";
+        ctx.lineWidth = 0.9;
         ctx.beginPath();
         ctx.moveTo(x - size, y);
         ctx.lineTo(x + size, y);
         ctx.moveTo(x, y - size);
         ctx.lineTo(x, y + size);
         ctx.stroke();
-        if (pixPerDeg > 8) {
-          ctx.fillStyle = "rgba(255,210,80,0.7)";
-          ctx.font = "9px monospace";
-          ctx.fillText(obj.name, x + size + 2, y + 3);
+        ctx.beginPath();
+        ctx.arc(x, y, size * 1.6, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,195,90,0.25)";
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+        if (showLabels && pixPerDeg > 8) {
+          placeLabel(ctx, obj.name, x + size + 4, y + 4, {
+            font: LABEL_FONT_SMALL,
+            color: "rgba(255,215,130,0.9)",
+            bg: true,
+          });
         }
       }
     }
@@ -493,11 +651,11 @@
         ctx.fill();
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = "rgba(255,220,100,0.8)";
-        ctx.font = "10px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText("loading…", cx, cy + 4);
-        ctx.textAlign = "left";
+        placeLabel(ctx, "loading…", cx, cy + 4, {
+          font: LABEL_FONT,
+          color: "rgba(255,225,120,0.9)",
+          align: "center",
+        });
       } else {
         ctx.beginPath();
         ctx.moveTo(valid[0][0], valid[0][1]);
@@ -507,28 +665,63 @@
           ? "rgba(100,190,255,0.22)"
           : isSel
             ? "rgba(255,190,70,0.10)"
-            : "rgba(80,140,220,0.10)";
-        ctx.strokeStyle = isHov
+            : "rgba(80,140,220,0.09)";
+        ctx.fill();
+
+        const strokeColor = isHov
           ? "rgba(120,210,255,0.95)"
           : isSel
-            ? "rgba(255,210,80,0.7)"
-            : "rgba(100,160,255,0.55)";
-        ctx.lineWidth = isHov ? 2 : isSel ? 1.8 : 1.2;
-        ctx.fill();
+            ? "rgba(255,210,80,0.75)"
+            : "rgba(100,160,255,0.5)";
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = isHov ? 2 : isSel ? 1.8 : 1.1;
         ctx.stroke();
-        ctx.fillStyle = isHov
-          ? "rgba(190,230,255,1)"
-          : isSel
-            ? "rgba(255,220,100,0.9)"
-            : "rgba(160,205,255,0.85)";
-        ctx.font = isHov ? "bold 11px monospace" : "10px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(entry.object || entry.name, cx, cy + 4);
-        ctx.textAlign = "left";
+
+        // Corner ticks give footprints a "finder chart" feel instead of a flat box
+        if (isHov || isSel) {
+          const tick = 14;
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2;
+          for (const [vx, vy] of valid) {
+            const dx = vx < cx ? 1 : -1;
+            const dy = vy < cy ? 1 : -1;
+            ctx.beginPath();
+            ctx.moveTo(vx, vy + dy * tick);
+            ctx.lineTo(vx, vy);
+            ctx.lineTo(vx + dx * tick, vy);
+            ctx.stroke();
+          }
+        }
+
+        if (showLabels) {
+          // Selected/hovered frames are drawn with force:true so they always win
+          // collisions against normal frames — the user's focus takes priority.
+          const color = isHov
+            ? "rgba(210,235,255,1)"
+            : isSel
+              ? "rgba(255,225,130,0.95)"
+              : "rgba(180,215,255,0.9)";
+          placeLabel(ctx, entry.object || entry.name, cx, cy + 5, {
+            font: isHov || isSel ? LABEL_FONT_EMPHASIS : LABEL_FONT,
+            color,
+            align: "center",
+            force: isHov || isSel,
+            bg: isHov || isSel,
+          });
+        }
       }
     } else {
       // Not zoomed enough — draw dot
       const r = isSel ? 5 : isHov ? 4 : 3;
+      if (isSel || isHov) {
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
+        glow.addColorStop(0, isSel ? "rgba(255,210,80,0.35)" : "rgba(120,210,255,0.35)");
+        glow.addColorStop(1, "rgba(120,210,255,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fillStyle = isSel
@@ -537,20 +730,47 @@
           ? "rgba(120,210,255,0.9)"
           : "rgba(100,165,255,0.65)";
       ctx.fill();
-      if (pixPerDeg >= 4) {
-        ctx.fillStyle = isSel ? "rgba(255,220,100,1)" : "rgba(165,205,255,0.75)";
-        ctx.font = "9px monospace";
-        ctx.fillText(entry.object || entry.name, cx + r + 2, cy + 3);
+      if (showLabels && pixPerDeg >= 4) {
+        placeLabel(ctx, entry.object || entry.name, cx + r + 4, cy + 4, {
+          font: isSel || isHov ? LABEL_FONT_EMPHASIS : LABEL_FONT_SMALL,
+          color: isSel ? "rgba(255,225,130,1)" : "rgba(190,220,255,0.9)",
+          force: isSel || isHov,
+          bg: isSel || isHov,
+        });
       }
     }
   }
 
   function drawCompass(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.font = "10px monospace";
-    ctx.fillStyle = "rgba(120,150,200,0.6)";
-    ctx.fillText("N↑", canvasW - 32, 16);
-    ctx.fillText("E→", 8, canvasH / 2);
+    const cx = canvasW - 34;
+    const cy = 40;
+    const r = 20;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(10,12,24,0.55)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(110,140,195,0.4)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(150,180,235,0.7)";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r + 5);
+    ctx.lineTo(cx, cy + r - 5);
+    ctx.moveTo(cx - r + 5, cy);
+    ctx.lineTo(cx + r - 5, cy);
+    ctx.stroke();
+
+    ctx.font = LABEL_FONT_EMPHASIS;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(190,215,255,0.9)";
+    ctx.fillText("N", cx, cy - r + 13);
+    ctx.fillStyle = "rgba(150,185,255,0.75)";
+    ctx.fillText("E", cx - r + 11, cy + 4);
+    ctx.textAlign = "left";
     ctx.restore();
   }
 
@@ -579,6 +799,7 @@
     void sizesVersion;
     void previewVersion;
     void showStacked;
+    void showLabels;
     void rotOverVersion;
     scheduleRedraw();
   });
@@ -842,13 +1063,55 @@
     </div>
   {/if}
 
-  <!-- Frame type toggle -->
-  <div class="atlas-toggle">
-    <button class="toggle-btn" class:active={!showStacked} onclick={() => (showStacked = false)}
-      >Processed / Image</button
+  <!-- Top control cluster: frame filter + label visibility -->
+  <div class="atlas-controls">
+    <div class="atlas-toggle">
+      <button class="toggle-btn" class:active={!showStacked} onclick={() => (showStacked = false)}
+        >Processed / Image</button
+      >
+      <button class="toggle-btn" class:active={showStacked} onclick={() => (showStacked = true)}
+        >All</button
+      >
+    </div>
+    <button
+      class="atlas-icon-btn"
+      class:active={showLabels}
+      onclick={() => (showLabels = !showLabels)}
+      title={showLabels ? "Hide labels" : "Show labels"}
     >
-    <button class="toggle-btn" class:active={showStacked} onclick={() => (showStacked = true)}
-      >All</button
+      🏷 <span class="atlas-icon-btn-label">Labels</span>
+    </button>
+  </div>
+
+  <!-- Zoom controls -->
+  <div class="atlas-zoom">
+    <button
+      class="atlas-zoom-btn"
+      title="Zoom in"
+      onclick={() => {
+        pixPerDeg = Math.min(8000, pixPerDeg * 1.4);
+        scheduleLazyLoad();
+      }}>+</button
+    >
+    <button
+      class="atlas-zoom-btn"
+      title="Zoom out"
+      onclick={() => {
+        pixPerDeg = Math.max(0.3, pixPerDeg / 1.4);
+        scheduleLazyLoad();
+      }}>−</button
+    >
+    <button
+      class="atlas-zoom-btn atlas-zoom-reset"
+      title="Reset view to fit all frames"
+      onclick={() => {
+        if (index.length > 0) {
+          viewRA = index.reduce((s, f) => s + f.ra, 0) / index.length;
+          viewDec = index.reduce((s, f) => s + f.dec, 0) / index.length;
+        }
+        pixPerDeg = canvasW / 30;
+        scheduleLazyLoad();
+      }}>⤢</button
     >
   </div>
 
@@ -1075,23 +1338,98 @@
     padding: 3px 8px;
     border-radius: 4px;
     border: 1px solid var(--border);
+    backdrop-filter: blur(2px);
   }
   .hud-sep {
     opacity: 0.4;
   }
 
-  /* Frame type toggle */
-  .atlas-toggle {
+  /* Top control cluster: frame filter + label toggle, centred as one group */
+  .atlas-controls {
     position: absolute;
     top: 8px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 20;
+  }
+
+  /* Frame type toggle */
+  .atlas-toggle {
+    display: flex;
     background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
     border: 1px solid var(--border);
     border-radius: 5px;
     overflow: hidden;
+    backdrop-filter: blur(2px);
+  }
+
+  .atlas-icon-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 3px 10px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    backdrop-filter: blur(2px);
+    transition:
+      color 0.15s,
+      border-color 0.15s,
+      background 0.15s;
+  }
+  .atlas-icon-btn-label {
+    font-family: inherit;
+  }
+  .atlas-icon-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-accent);
+  }
+  .atlas-icon-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent-dim) 35%, transparent);
+  }
+
+  /* Zoom controls, bottom-right stacked over the canvas */
+  .atlas-zoom {
+    position: absolute;
+    bottom: 32px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
     z-index: 20;
+  }
+  .atlas-zoom-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(2px);
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .atlas-zoom-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .atlas-zoom-reset {
+    font-size: 0.8rem;
   }
   .toggle-btn {
     padding: 3px 12px;
@@ -1123,6 +1461,8 @@
     pointer-events: none;
     z-index: 20;
     min-width: 175px;
+    backdrop-filter: blur(3px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   }
   .tt-name {
     font-size: 0.82rem;
@@ -1156,6 +1496,8 @@
     flex-direction: column;
     overflow: hidden;
     max-height: calc(100% - 16px);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
   }
   .ap-header {
     display: flex;
@@ -1296,6 +1638,8 @@
     flex-direction: column;
     overflow: hidden;
     max-height: calc(100% - 80px);
+    backdrop-filter: blur(3px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
   }
   .obj-browser--collapsed {
     max-height: none;

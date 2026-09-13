@@ -27,6 +27,7 @@ export class AppInfo {
      * "EIRIN_PORT env var" or "default"
      */
     "portSource": string;
+    "capabilities": Capabilities;
 
     /** Creates a new AppInfo instance. */
     constructor($$source: Partial<AppInfo> = {}) {
@@ -42,6 +43,9 @@ export class AppInfo {
         if (!("portSource" in $$source)) {
             this["portSource"] = "";
         }
+        if (!("capabilities" in $$source)) {
+            this["capabilities"] = (new Capabilities());
+        }
 
         Object.assign(this, $$source);
     }
@@ -50,7 +54,11 @@ export class AppInfo {
      * Creates a new AppInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): AppInfo {
+        const $$createField4_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("capabilities" in $$parsedSource) {
+            $$parsedSource["capabilities"] = $$createField4_0($$parsedSource["capabilities"]);
+        }
         return new AppInfo($$parsedSource as Partial<AppInfo>);
     }
 }
@@ -143,6 +151,33 @@ export class AtlasIndexEntry {
     static createFrom($$source: any = {}): AtlasIndexEntry {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new AtlasIndexEntry($$parsedSource as Partial<AtlasIndexEntry>);
+    }
+}
+
+/**
+ * Capabilities describes which features are available in the current build.
+ * Desktop builds (default) expose everything; headless builds (-tags server,
+ * used for the Docker/NAS-mini-PC deployment) are read-only visualization
+ * only — no import, no Siril processing, no project management.
+ */
+export class Capabilities {
+    "desktopMode": boolean;
+
+    /** Creates a new Capabilities instance. */
+    constructor($$source: Partial<Capabilities> = {}) {
+        if (!("desktopMode" in $$source)) {
+            this["desktopMode"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Capabilities instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Capabilities {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Capabilities($$parsedSource as Partial<Capabilities>);
     }
 }
 
@@ -495,7 +530,7 @@ export class PagedLightFrames {
      * Creates a new PagedLightFrames instance from a string or object.
      */
     static createFrom($$source: any = {}): PagedLightFrames {
-        const $$createField0_0 = $$createType1;
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frames" in $$parsedSource) {
             $$parsedSource["frames"] = $$createField0_0($$parsedSource["frames"]);
@@ -620,7 +655,7 @@ export class StorageNode {
      * Creates a new StorageNode instance from a string or object.
      */
     static createFrom($$source: any = {}): StorageNode {
-        const $$createField3_0 = $$createType3;
+        const $$createField3_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField3_0($$parsedSource["children"]);
@@ -672,7 +707,7 @@ export class SuggestResult {
      * Creates a new SuggestResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SuggestResult {
-        const $$createField0_0 = $$createType0;
+        const $$createField0_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frame" in $$parsedSource) {
             $$parsedSource["frame"] = $$createField0_0($$parsedSource["frame"]);
@@ -682,7 +717,8 @@ export class SuggestResult {
 }
 
 // Private type creation functions
-const $$createType0 = LibraryFrame.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = StorageNode.createFrom;
-const $$createType3 = $Create.Array($$createType2);
+const $$createType0 = Capabilities.createFrom;
+const $$createType1 = LibraryFrame.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = StorageNode.createFrom;
+const $$createType4 = $Create.Array($$createType3);

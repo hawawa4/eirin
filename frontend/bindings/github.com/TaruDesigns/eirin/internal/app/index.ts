@@ -10,6 +10,7 @@ export {
     AppInfo,
     AtlasFrameSize,
     AtlasIndexEntry,
+    Capabilities,
     CatalogObject,
     EnrichedFileEntry,
     FileEntry,
