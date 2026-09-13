@@ -35,6 +35,8 @@
     onprojectsfolderset,
   }: Props = $props();
 
+  let desktopMode = $derived(appInfo.capabilities.desktopMode);
+
   // ── Projects folder ────────────────────────────────────────────────────────
   async function browseProjectsFolder() {
     const path = await SelectProjectsFolder();
@@ -81,7 +83,7 @@
   let sirilPathDirty = $state(false);
 
   onMount(async () => {
-    await refreshSiril();
+    if (desktopMode) await refreshSiril();
   });
 
   async function refreshSiril() {
@@ -153,84 +155,96 @@
       {/if}
     </section>
 
-    <!-- ── Projects Folder ─────────────────────────────────────────────────── -->
-    <section class="card">
-      <h2 class="section-title">Projects Folder</h2>
-      <p class="section-desc">
-        Local folder where Siril projects are stored. Each project gets its own subfolder containing
-        a <code>lights/</code> directory with symlinks or copies of your frames.
-      </p>
+    {#if !desktopMode}
+      <section class="card">
+        <h2 class="section-title">Server Mode</h2>
+        <p class="section-desc">
+          Eirin is running in headless server mode — read-only visualization only. Import, Siril
+          processing, and project management are only available in the desktop app.
+        </p>
+      </section>
+    {/if}
 
-      <div class="path-row">
-        <span class="path-value" title={projectsFolder || "Not set"}>
-          {projectsFolder || "No folder selected"}
-        </span>
-        <button class="btn-secondary" onclick={browseProjectsFolder}>
-          {projectsFolder ? "Change" : "Select"}
-        </button>
-      </div>
-    </section>
+    {#if desktopMode}
+      <!-- ── Projects Folder ─────────────────────────────────────────────────── -->
+      <section class="card">
+        <h2 class="section-title">Projects Folder</h2>
+        <p class="section-desc">
+          Local folder where Siril projects are stored. Each project gets its own subfolder containing
+          a <code>lights/</code> directory with symlinks or copies of your frames.
+        </p>
 
-    <!-- ── Siril ─────────────────────────────────────────────────────────── -->
-    <section class="card">
-      <h2 class="section-title">Siril</h2>
-      <p class="section-desc">
-        Siril is used for astrophotography processing. Eirin can open files directly in Siril from
-        the right-click context menu.
-      </p>
-
-      <div class="siril-status">
-        <span
-          class="status-dot"
-          class:dot-ok={sirilInfo.available}
-          class:dot-err={!sirilInfo.available}
-        ></span>
-        <span class="status-version">
-          {#if sirilChecking}
-            Checking…
-          {:else}
-            {sirilInfo.version}
-          {/if}
-        </span>
-        <button class="btn-ghost" onclick={refreshSiril} disabled={sirilChecking} title="Re-check">
-          ↺
-        </button>
-      </div>
-
-      <div class="path-row">
-        <input
-          class="path-input"
-          type="text"
-          bind:value={sirilPathInput}
-          oninput={() => (sirilPathDirty = true)}
-          placeholder="siril"
-          spellcheck="false"
-        />
-        <button class="btn-secondary" onclick={browseSiril}>Browse…</button>
-      </div>
-
-      {#if sirilPathDirty}
-        <div class="action-row">
-          <button class="btn-primary" onclick={saveSirilPath}>Save</button>
-          <button
-            class="btn-ghost"
-            onclick={() => {
-              sirilPathInput = sirilInfo.executable;
-              sirilPathDirty = false;
-            }}
-          >
-            Cancel
+        <div class="path-row">
+          <span class="path-value" title={projectsFolder || "Not set"}>
+            {projectsFolder || "No folder selected"}
+          </span>
+          <button class="btn-secondary" onclick={browseProjectsFolder}>
+            {projectsFolder ? "Change" : "Select"}
           </button>
         </div>
-      {:else if sirilInfo.executable !== "siril" && sirilInfo.executable !== ""}
-        <button class="btn-ghost reset-btn" onclick={resetSirilPath}>Reset to default</button>
-      {/if}
+      </section>
 
-      <p class="action-hint">
-        Leave blank or set to <code>siril</code> to use the system PATH. Use Browse to locate a custom
-        binary.
-      </p>
-    </section>
+      <!-- ── Siril ─────────────────────────────────────────────────────────── -->
+      <section class="card">
+        <h2 class="section-title">Siril</h2>
+        <p class="section-desc">
+          Siril is used for astrophotography processing. Eirin can open files directly in Siril from
+          the right-click context menu.
+        </p>
+
+        <div class="siril-status">
+          <span
+            class="status-dot"
+            class:dot-ok={sirilInfo.available}
+            class:dot-err={!sirilInfo.available}
+          ></span>
+          <span class="status-version">
+            {#if sirilChecking}
+              Checking…
+            {:else}
+              {sirilInfo.version}
+            {/if}
+          </span>
+          <button class="btn-ghost" onclick={refreshSiril} disabled={sirilChecking} title="Re-check">
+            ↺
+          </button>
+        </div>
+
+        <div class="path-row">
+          <input
+            class="path-input"
+            type="text"
+            bind:value={sirilPathInput}
+            oninput={() => (sirilPathDirty = true)}
+            placeholder="siril"
+            spellcheck="false"
+          />
+          <button class="btn-secondary" onclick={browseSiril}>Browse…</button>
+        </div>
+
+        {#if sirilPathDirty}
+          <div class="action-row">
+            <button class="btn-primary" onclick={saveSirilPath}>Save</button>
+            <button
+              class="btn-ghost"
+              onclick={() => {
+                sirilPathInput = sirilInfo.executable;
+                sirilPathDirty = false;
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        {:else if sirilInfo.executable !== "siril" && sirilInfo.executable !== ""}
+          <button class="btn-ghost reset-btn" onclick={resetSirilPath}>Reset to default</button>
+        {/if}
+
+        <p class="action-hint">
+          Leave blank or set to <code>siril</code> to use the system PATH. Use Browse to locate a custom
+          binary.
+        </p>
+      </section>
+    {/if}
 
     <!-- ── Database ──────────────────────────────────────────────────────── -->
     <section class="card">

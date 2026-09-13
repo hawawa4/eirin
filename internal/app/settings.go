@@ -8,10 +8,11 @@ import (
 
 // AppInfo contains read-only runtime information surfaced in the Settings view.
 type AppInfo struct {
-	DBPath     string `json:"dbPath"`
-	ServerPort int    `json:"serverPort"`
-	ServerURL  string `json:"serverUrl"`
-	PortSource string `json:"portSource"` // "EIRIN_PORT env var" or "default"
+	DBPath       string       `json:"dbPath"`
+	ServerPort   int          `json:"serverPort"`
+	ServerURL    string       `json:"serverUrl"`
+	PortSource   string       `json:"portSource"` // "EIRIN_PORT env var" or "default"
+	Capabilities Capabilities `json:"capabilities"`
 }
 
 // GetAppInfo returns static runtime information about the application.
@@ -22,9 +23,10 @@ func (a *App) GetAppInfo() AppInfo {
 		source = "EIRIN_PORT env var"
 	}
 	return AppInfo{
-		DBPath:     a.store.DBPath(),
-		ServerPort: port,
-		ServerURL:  fmt.Sprintf("http://localhost:%d", port),
-		PortSource: source,
+		DBPath:       a.store.DBPath(),
+		ServerPort:   port,
+		ServerURL:    fmt.Sprintf("http://localhost:%d", port),
+		PortSource:   source,
+		Capabilities: currentCapabilities(),
 	}
 }

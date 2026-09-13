@@ -6,11 +6,12 @@
     rootFolder: string;
     appMode: AppMode;
     theme: Theme;
+    desktopMode: boolean;
     onmodechange: (mode: AppMode) => void;
     onthemechange: (theme: Theme) => void;
   }
 
-  let { rootFolder, appMode, theme, onmodechange, onthemechange }: Props = $props();
+  let { rootFolder, appMode, theme, desktopMode, onmodechange, onthemechange }: Props = $props();
 
   const THEMES: { id: Theme; color: string; title: string }[] = [
     { id: "blue", color: "#7c9ef5", title: "Blue theme" },
@@ -23,7 +24,7 @@
   <span class="logo">✦ Eirin</span>
 
   <div class="mode-area">
-    <ModeSelector mode={appMode} {onmodechange} {rootFolder} />
+    <ModeSelector mode={appMode} {onmodechange} {rootFolder} {desktopMode} />
   </div>
 
   <div class="header-right">

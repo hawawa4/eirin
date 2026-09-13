@@ -79,11 +79,18 @@
   );
 
   // ── App info (DB path, server URL) ────────────────────────────────────────
-  let appInfo = $state<AppInfo>({ dbPath: "", serverPort: 7070, serverUrl: "", portSource: "" });
+  let appInfo = $state<AppInfo>({
+    dbPath: "",
+    serverPort: 7070,
+    serverUrl: "",
+    portSource: "",
+    capabilities: { desktopMode: true },
+  });
+  let desktopMode = $derived(appInfo.capabilities.desktopMode);
 
   // ── Siril ─────────────────────────────────────────────────────────────────
   let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
-  let sirilAvailable = $derived(sirilInfo.available);
+  let sirilAvailable = $derived(sirilInfo.available && desktopMode);
 
   // ── Projects ───────────────────────────────────────────────────────────────
   let projectsFolder = $state("");
@@ -127,6 +134,13 @@
   let atlasOpened = $state(false);
   $effect(() => {
     if (appMode === "atlas") atlasOpened = true;
+  });
+
+  // ── Server mode guard — Import/Projects are desktop-only ─────────────────
+  $effect(() => {
+    if (!desktopMode && (appMode === "import" || appMode === "projects")) {
+      appMode = "library";
+    }
   });
 
   onMount(async () => {
@@ -380,6 +394,7 @@
     {rootFolder}
     {appMode}
     {theme}
+    {desktopMode}
     onmodechange={(m) => {
       appMode = m;
       clearPreview();

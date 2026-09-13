@@ -80,11 +80,16 @@ export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
 
 export type ImportState = "idle" | "scanning" | "scanned" | "importing" | "done" | "error";
 
+export interface Capabilities {
+  desktopMode: boolean;
+}
+
 export interface AppInfo {
   dbPath: string;
   serverPort: number;
   serverUrl: string;
   portSource: string;
+  capabilities: Capabilities;
 }
 
 export interface ImportCandidate {

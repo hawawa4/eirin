@@ -809,7 +809,7 @@
   >
     ▶ Blink{selectedPaths.size >= 2 ? ` (${selectedPaths.size})` : ""}
   </button>
-  {#if !showRejected}
+  {#if !showRejected && sirilAvailable}
     <button
       class="tool-btn suggest-btn"
       onclick={openSuggest}
