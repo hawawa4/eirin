@@ -18,7 +18,19 @@ You designate a root folder (ideally in a NAS) to store *all* your astrophotogra
 
 ## Installing
 
-Coming Soon through Github Releases. For now, you have to build from source
+### Linux
+
+Grab the latest release from the [Releases page](https://github.com/hawawa4/eirin/releases). Three formats are published:
+
+- **`.zip`** — extract and run the `eirin` binary directly
+- **`.deb`** — `sudo apt install ./eirin-linux-amd64.deb` (Debian/Ubuntu and derivatives)
+- **`.AppImage`** — `chmod +x eirin-linux-amd64.AppImage && ./eirin-linux-amd64.AppImage` (portable, works on most distros)
+
+All three require `libwebkit2gtk-4.1-0` to be installed (the `.deb` declares this as a dependency automatically).
+
+### Windows / macOS
+
+Not yet published — build from source (see Development below).
 
 # Features
 
@@ -75,19 +87,20 @@ Set your settings, scan the folder
 |------|---------------|
 | Go | 1.25+ |
 | Node.js | 22+ |
-| Wails CLI | v2.12.0 |
+| Wails CLI | v3 (alpha) |
 | staticcheck | v0.7.0+ |
 | just | any recent |
 
 Install Go tools once:
 ```
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 go install honnef.co/go/tools/cmd/staticcheck@latest
 ```
 
-Install frontend dependencies:
+Install dependencies:
 ```
-just install
+just install-backend
+just install-frontend
 ```
 
 ## Running in dev mode
@@ -104,9 +117,16 @@ Wails launches a live-reload server: Go backend recompiles on save, Svelte/Vite 
 just build
 ```
 
-Output is placed in `build/bin/`.
+Output is placed in `bin/`.
 
-TODO: Only Debian/ubuntu binaries are created right now
+Other useful build recipes:
+- `just build-backend` — Go backend only, no frontend/Wails packaging (`go build ./`)
+- `just build-frontend` — Svelte frontend only (`npm run build` in `frontend/`)
+- `just build-server` — headless server binary for Docker (`eirin-server`, see [Headless/server mode](#headlessserver-mode) below)
+- `just check` — type-check only (`go build ./...` + `svelte-check`/`tsc`), no binaries produced
+- `just lint` / `just format` — staticcheck + ESLint/Prettier
+
+TODO: only Linux binaries are built and released right now (see [Installing](#installing)); Windows/macOS builds work locally via `wails3`/Task but aren't wired into CI yet.
 
 ## Technical details
 
@@ -137,6 +157,22 @@ But it can be overriden by setting the environment variable `EIRIN_DB_PATH`
 ### Localhost Port
 
 Due to the `wails` architecture, Eirin will start a webserver on a local port. If that port is taken, you might have to set the environment variable `EIRIN_PORT`
+
+
+### Headless/server mode
+
+`just build-server` builds a `-tags server` binary intended for headless Docker deployment: read-only visualization (library browse, FITS preview, sky atlas, storage stats) with no import, no Siril processing, and no project management — those require the desktop app.
+
+Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases:
+```
+docker run -p 8080:8080 -p 7070:7070 -v /path/to/nas:/mnt/nas -v /path/to/prefs.db:/root/.config/eirin/prefs.db ghcr.io/hawawa4/eirin-server:latest
+```
+
+Note the root folder path and everything else is stored in the prefs SQLite DB (no env var or flag sets it directly) — the DB is written by the desktop app's folder picker, so mount a `prefs.db` that already has `RootFolder` pointed at wherever you mount the NAS inside the container (or override the DB location with `EIRIN_DB_PATH`). There's currently no way to configure a from-scratch headless container without running the desktop app once first.
+
+To build the image locally instead: `docker build -t eirin-server .` (`just docker-build` uses buildx's `local` output instead, extracting the static `eirin-server` binary to `./dist/` rather than producing a runnable image).
+
+Two independent HTTP listeners run in the container: Wails' own server (serves the Svelte frontend, `WAILS_SERVER_PORT`, default 8080) and Eirin's side-channel REST API (`/api/status`, `/api/frames`, `/api/image`, via `EIRIN_PORT`, default 7070).
 
 
 ## AI Disclaimer
