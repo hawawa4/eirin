@@ -91,9 +91,9 @@ Set your settings, scan the folder
 | staticcheck | v0.7.0+ |
 | just | any recent |
 
-Install Go tools once:
+Install Go tools once (`-tags gtk3` targets Linux's older webkit2gtk-4.1 stack — see the Linux/Ubuntu note below; omit it on macOS/Windows):
 ```
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest
 go install honnef.co/go/tools/cmd/staticcheck@latest
 ```
 
@@ -138,7 +138,7 @@ Wails requires a WebKit GTK library. Ubuntu 22.04+ and derivatives (including Pi
 sudo apt install libwebkit2gtk-4.1-dev
 ```
 
-The Justfile already passes `-tags webkit2_41` to all Wails commands so this is handled automatically.
+Wails v3 defaults to GTK4/webkitgtk-6.0 on Linux; this project targets the older GTK3/webkit2gtk-4.1 stack instead via the `gtk3` build tag, which `build/linux/Taskfile.yml` already passes to `go build`/`wails3 generate bindings` automatically. The `wails3` CLI itself also needs to be installed with that tag — `go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest` — otherwise installing the CLI fails looking for GTK4 headers.
 
 
 ### Preferences database

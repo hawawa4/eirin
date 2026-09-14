@@ -94,4 +94,4 @@ Two independent HTTP listeners run in server mode: Wails' own server (serves the
 
 ### Linux note
 
-Wails requires `libwebkit2gtk-4.1-dev` (not the older 4.0 variant) on Ubuntu 22.04+/derivatives. The Justfile already passes `-tags webkit2_41` to Wails commands.
+Wails requires `libwebkit2gtk-4.1-dev` (not the older 4.0 variant) on Ubuntu 22.04+/derivatives. Wails v3 defaults to GTK4/webkitgtk-6.0 on Linux since alpha.93; this project targets the GTK3/webkit2gtk-4.1 stack instead, so `build/linux/Taskfile.yml` passes `-tags gtk3` to `go build` (and `wails3 generate bindings`). The `wails3` CLI itself must also be installed with `-tags gtk3` (`go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@...`), or its own cgo-linked internals will probe for GTK4/webkitgtk-6.0 instead.

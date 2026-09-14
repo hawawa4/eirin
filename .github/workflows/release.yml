@@ -38,7 +38,7 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/goreleaser/nfpm/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Install Wails3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
+        run: go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
 
       - name: Build application (production)
         run: wails3 build production=true
