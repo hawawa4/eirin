@@ -155,6 +155,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: ${{ env.APP_NAME }}-linux-amd64
           path: artifacts
 
       - name: Create release
