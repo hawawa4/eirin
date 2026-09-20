@@ -48,22 +48,54 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 
 		// ── Phase 1: collect all indexable paths under rootPath ─────────────
 		// fitsPaths need header parsing; rasterPaths are indexed as-is.
+		// The walk runs on its own goroutine: a stalled NAS mount can block a
+		// single readdir/lstat syscall indefinitely, and WalkDir only notices
+		// ctx cancellation between callbacks, so it may never return. Waiting
+		// on it via select lets CancelIndex (or a shutdown) unstick the UI
+		// even if the walk goroutine itself is left stuck and leaked.
+		type scanResult struct {
+			fitsPaths, rasterPaths []string
+		}
+		scanDone := make(chan scanResult, 1)
+		go func() {
+			var res scanResult
+			scanned := 0
+			lastScanEmit := time.Now()
+			_ = filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
+				if err != nil || ctx.Err() != nil {
+					return nil
+				}
+				if d.IsDir() {
+					return nil
+				}
+				switch {
+				case indexer.IsFitsFile(d.Name()):
+					res.fitsPaths = append(res.fitsPaths, path)
+				case indexer.IsRasterFile(d.Name()):
+					res.rasterPaths = append(res.rasterPaths, path)
+				}
+				scanned++
+				if time.Since(lastScanEmit) >= 80*time.Millisecond {
+					a.emitIndexProgress(indexProgressEvent{
+						Phase:   "scanning",
+						Current: "Scanning directories… (" + filepath.Base(path) + ")",
+						Total:   scanned,
+					})
+					lastScanEmit = time.Now()
+				}
+				return nil
+			})
+			scanDone <- res
+		}()
+
 		var fitsPaths, rasterPaths []string
-		_ = filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || ctx.Err() != nil {
-				return nil
-			}
-			if d.IsDir() {
-				return nil
-			}
-			switch {
-			case indexer.IsFitsFile(d.Name()):
-				fitsPaths = append(fitsPaths, path)
-			case indexer.IsRasterFile(d.Name()):
-				rasterPaths = append(rasterPaths, path)
-			}
-			return nil
-		})
+		select {
+		case res := <-scanDone:
+			fitsPaths, rasterPaths = res.fitsPaths, res.rasterPaths
+		case <-ctx.Done():
+			a.emitIndexProgress(indexProgressEvent{Phase: "cancelled"})
+			return
+		}
 
 		if ctx.Err() != nil {
 			a.emitIndexProgress(indexProgressEvent{Phase: "cancelled", Total: len(fitsPaths) + len(rasterPaths)})

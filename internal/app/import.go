@@ -100,5 +100,7 @@ func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta
 			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
 		// Siril cannot load PNG/TIFF for plate-solving, so no analysis is spawned here.
+	default:
+		slog.Warn("import: skipping unrecognized file type", "path", c.DestPath)
 	}
 }

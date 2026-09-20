@@ -19,7 +19,14 @@ func IsFitsFile(name string) bool {
 }
 
 // IsRasterFile reports whether the given filename is a plain raster image
-// (PNG) that should be indexed as a processed frame without parsing a FITS header.
+// (PNG, TIFF, JPEG) that should be indexed as a processed frame without
+// parsing a FITS header.
 func IsRasterFile(name string) bool {
-	return strings.HasSuffix(strings.ToLower(name), ".png")
+	l := strings.ToLower(name)
+	for _, ext := range []string{".png", ".tif", ".tiff", ".jpg", ".jpeg"} {
+		if strings.HasSuffix(l, ext) {
+			return true
+		}
+	}
+	return false
 }
