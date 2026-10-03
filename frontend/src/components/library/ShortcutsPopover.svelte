@@ -17,7 +17,7 @@
     [["x"], "Reject current / selected, then advance"],
     [["u"], "Restore current / selected"],
     [["Delete"], "Delete from disk (asks first)"],
-    [["b"], "Blink selected frames"],
+    [["b"], "Blink checked frames, or the previewed frame's object"],
     [["Esc"], "Close preview, then clear selection"],
     [["?"], "Show / hide this help"],
   ];

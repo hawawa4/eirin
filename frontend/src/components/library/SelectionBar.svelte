@@ -8,6 +8,8 @@
     onrestore: () => void;
     ondelete: () => void;
     onblink: () => void;
+    /** What Blink would show (e.g. "all 240 M 31 lights"); null disables it. */
+    blinkLabel: string | null;
     /** Hidden when absent (e.g. server mode). */
     oncreateproject?: () => void;
     onclear: () => void;
@@ -21,6 +23,7 @@
     onrestore,
     ondelete,
     onblink,
+    blinkLabel,
     oncreateproject,
     onclear,
   }: Props = $props();
@@ -53,8 +56,10 @@
   <button
     class="sel-btn"
     onclick={onblink}
-    disabled={busy || count < 2}
-    title={count < 2 ? "Check 2 or more frames to blink" : "Blink checked frames (b)"}
+    disabled={busy || !blinkLabel}
+    title={blinkLabel
+      ? `Blink ${blinkLabel} (b)`
+      : "No other frames of this object and type in the current view"}
   >
     ▶ Blink
   </button>

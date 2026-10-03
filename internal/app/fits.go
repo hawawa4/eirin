@@ -15,10 +15,11 @@ func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {
 	return fits.ReadFITSHeader(path)
 }
 
-// GeneratePreview returns a PNG preview as a base64 data URL, scaled to 1024 px.
+// GeneratePreview returns a JPEG preview as a base64 data URL, scaled to
+// 1024 px and cached in memory (Blink loops over the same frames).
 // stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong
 func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
-	return fits.GeneratePreview(path, 1024, stretchLevel)
+	return a.previews.Preview(path, 1024, stretchLevel)
 }
 
 // GeneratePreviewRawSized returns raw float32 RGBA pixel data (base64-encoded) plus

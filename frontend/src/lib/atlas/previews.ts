@@ -47,6 +47,7 @@ async function loadFits(entry: app.AtlasIndexEntry): Promise<HTMLCanvasElement> 
     result.height,
     result.channels,
     result.stats,
+    result.balance,
     linear ? 0 : 2,
   );
 }
