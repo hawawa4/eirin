@@ -34,7 +34,7 @@ func AnalyzeSingleFrame(ctx context.Context, exe, nasPath string, hintRA, hintDe
 	if hintRA != 0 || hintDec != 0 {
 		platesolveCmd = fmt.Sprintf("platesolve %.6f %.6f", hintRA, hintDec)
 	}
-	script := "requires 1.0.0\nload \"" + escaped + "\"\nfindstar\n" + platesolveCmd + "\n"
+	script := "requires 1.0.0\nload \"" + escaped + "\"\nfindstar\n" + platesolveCmd + "\nstatistics\n"
 
 	tmp, err := os.CreateTemp("", "eirin-siril-*.ssf")
 	if err != nil {
@@ -72,6 +72,10 @@ var (
 	reStarCount = regexp.MustCompile(`(?i)\bFound\s+(\d+)\s+\w+\s+\w+\s+stars?`)
 	reFWHM      = regexp.MustCompile(`(?i)\bFWHM\s+([0-9]+(?:[.,][0-9]+)?)`)
 
+	// statistics: "  median:        1234.5" / "  bgnoise:        25.3" / "  sigma:          30.0"
+	reMedian = regexp.MustCompile(`(?i)\bmedian\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
+	reBgNoise = regexp.MustCompile(`(?i)\bbgnoise\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
+	reSigma   = regexp.MustCompile(`(?i)\bsigma\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
 
 	// platesolve: "Image center: alpha: 06 45 51.505, delta: -20 46 52.259"
 	rePlateAlpha = regexp.MustCompile(`(?i)\balpha\s*:\s*([0-9]{1,3})\s+([0-9]{1,2})\s+([0-9]+(?:[.,][0-9]+)?)`)
@@ -106,6 +110,32 @@ func ParseSirilOutput(output string) (store.FrameQuality, error) {
 				}
 			}
 		}
+		if q.Background == 0 {
+			if m := reMedian.FindStringSubmatch(line); m != nil {
+				if v, err := ParseDecimal(m[1]); err == nil {
+					q.Background = v
+					found = true
+				}
+			}
+		}
+		// bgnoise is preferred over sigma; only fall back to sigma if bgnoise wasn't seen.
+		if m := reBgNoise.FindStringSubmatch(line); m != nil {
+			if v, err := ParseDecimal(m[1]); err == nil {
+				q.Noise = v
+				found = true
+			}
+		} else if q.Noise == 0 {
+			if m := reSigma.FindStringSubmatch(line); m != nil {
+				if v, err := ParseDecimal(m[1]); err == nil {
+					q.Noise = v
+					found = true
+				}
+			}
+		}
+	}
+
+	if q.Noise != 0 {
+		q.SNR = q.Background / q.Noise
 	}
 
 	if !found {
