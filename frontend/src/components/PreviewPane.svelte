@@ -71,10 +71,6 @@
 
   let showAnnotations = $state(false);
   let annotations = $state<catalog.Annotation[]>([]);
-  let annotationsLoading = $state(false);
-  // Plain flag, not state: an empty result must not look like "not fetched yet",
-  // or the fetch effect re-runs on every assignment and floods the backend.
-  let annotationsFetched = false;
 
   // ── Viewport size tracking ─────────────────────────────────────────────────
   let viewportEl = $state<HTMLElement | null>(null);
@@ -389,8 +385,6 @@ void main() {
     rasterDataUrl = "";
     histBins = null;
     annotations = [];
-    annotationsFetched = false;
-    annotationsLoading = false;
     showAnnotations = false;
     resetView();
 
@@ -583,26 +577,39 @@ void main() {
     !!(qualityFrame?.wcsSolved || (fitsHeader?.ra && fitsHeader.pixelScale > 0)),
   );
 
+  // Without a plate solve, positions come from the FITS header's pointing, which
+  // can be off by a fraction of the field and may carry no usable rotation.
+  let annotationsApprox = $derived(!qualityFrame?.wcsSolved);
+
+  // Fetched as soon as the frame is shown (cheap projection math, no file I/O) so the
+  // Labels button only appears when a catalog object actually falls inside the field.
+  // Debounced so holding an arrow key doesn't call the backend for every row.
+  const ANNOTATION_DELAY_MS = 150;
+
   $effect(() => {
-    if (!showAnnotations || !canAnnotate || !rawInfo) return;
-    if (annotationsFetched) return;
-    annotationsFetched = true;
-    annotationsLoading = true;
-    const id = previewReqId;
-    const ra = qualityFrame?.wcsSolved ? qualityFrame.ra : (fitsHeader?.ra ?? 0);
-    const dec = qualityFrame?.wcsSolved ? qualityFrame.dec : (fitsHeader?.dec ?? 0);
-    const scale = qualityFrame?.wcsSolved ? qualityFrame.pixelScale : (fitsHeader?.pixelScale ?? 0);
-    const rot = qualityFrame?.wcsSolved ? qualityFrame.rotation : (fitsHeader?.rotation ?? 0);
-    GetAnnotations(ra, dec, scale, rot, rawInfo.width, rawInfo.height)
-      .then((res) => {
-        if (id !== previewReqId) return;
-        annotations = res ?? [];
-        annotationsLoading = false;
-      })
-      .catch(() => {
-        if (id !== previewReqId) return;
-        annotationsLoading = false;
-      });
+    if (!canAnnotate || !rawInfo) return;
+    const solved = !!qualityFrame?.wcsSolved;
+    const ra = solved ? qualityFrame!.ra : (fitsHeader?.ra ?? 0);
+    const dec = solved ? qualityFrame!.dec : (fitsHeader?.dec ?? 0);
+    const scale = solved ? qualityFrame!.pixelScale : (fitsHeader?.pixelScale ?? 0);
+    const rot = solved ? qualityFrame!.rotation : (fitsHeader?.rotation ?? 0);
+    const { width, height } = rawInfo;
+    // Cleanup runs when the frame or its WCS changes, so a late reply can't
+    // land on the wrong frame.
+    let stale = false;
+    const t = setTimeout(() => {
+      GetAnnotations(ra, dec, scale, rot, width, height)
+        .then((res) => {
+          if (!stale) annotations = res ?? [];
+        })
+        .catch(() => {
+          if (!stale) annotations = [];
+        });
+    }, ANNOTATION_DELAY_MS);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
   });
 
   function imgToViewport(imgX: number, imgY: number): { x: number; y: number } {
@@ -776,12 +783,14 @@ void main() {
         >
       {/if}
 
-      {#if canAnnotate && rawInfo}
+      {#if annotations.length > 0}
         <button
           class="tool-btn"
           class:active={showAnnotations}
           onclick={() => (showAnnotations = !showAnnotations)}
-          title="Star / DSO annotations">✦ Labels</button
+          title={annotationsApprox
+            ? "Star / DSO labels — approximate: this frame isn't plate-solved, so positions come from the FITS header's pointing"
+            : "Star / DSO labels (plate-solved)"}>✦ Labels{annotationsApprox ? " ≈" : ""}</button
         >
       {/if}
     </div>
@@ -817,69 +826,59 @@ void main() {
     {/if}
 
     <!-- Annotation overlay — absolute, viewport-space coordinates computed by imgToViewport() -->
-    {#if showAnnotations && rawInfo && viewportW > 0}
+    {#if showAnnotations && annotations.length > 0 && rawInfo && viewportW > 0}
       <svg class="annotation-svg" width={viewportW} height={viewportH}>
-        {#if annotationsLoading}
-          <text
-            x={viewportW / 2}
-            y={viewportH / 2}
-            dominant-baseline="middle"
-            text-anchor="middle"
-            font-size="14"
-            fill="rgba(255,200,50,0.7)">Loading annotations…</text
-          >
-        {:else if annotations.length === 0}
+        {#if annotationsApprox}
           <text x="8" y={viewportH - 8} font-size="12" fill="rgba(255,200,50,0.55)"
-            >No catalog objects in this field</text
+            >Approximate positions — frame not plate-solved</text
           >
-        {:else}
-          {#each annotations as ann (`${ann.label}${ann.x}${ann.y}`)}
-            {@const vp = imgToViewport(ann.x, ann.y)}
-            {#if ann.type === "star"}
-              <circle
-                cx={vp.x}
-                cy={vp.y}
-                r="7"
-                fill="none"
-                stroke="rgba(136,196,255,0.75)"
-                stroke-width="0.9"
-              />
-              <text
-                x={vp.x}
-                y={vp.y + 16}
-                font-size="12"
-                fill="rgba(136,196,255,0.95)"
-                text-anchor="middle"
-                class="ann-lbl">{ann.label}</text
-              >
-            {:else}
-              <line
-                x1={vp.x - 9}
-                y1={vp.y}
-                x2={vp.x + 9}
-                y2={vp.y}
-                stroke="rgba(255,204,68,0.8)"
-                stroke-width="0.9"
-              />
-              <line
-                x1={vp.x}
-                y1={vp.y - 9}
-                x2={vp.x}
-                y2={vp.y + 9}
-                stroke="rgba(255,204,68,0.8)"
-                stroke-width="0.9"
-              />
-              <text
-                x={vp.x}
-                y={vp.y + 17}
-                font-size="12"
-                fill="rgba(255,204,68,1)"
-                text-anchor="middle"
-                class="ann-lbl">{ann.label}</text
-              >
-            {/if}
-          {/each}
         {/if}
+        {#each annotations as ann (`${ann.label}${ann.x}${ann.y}`)}
+          {@const vp = imgToViewport(ann.x, ann.y)}
+          {#if ann.type === "star"}
+            <circle
+              cx={vp.x}
+              cy={vp.y}
+              r="7"
+              fill="none"
+              stroke="rgba(136,196,255,0.75)"
+              stroke-width="0.9"
+            />
+            <text
+              x={vp.x}
+              y={vp.y + 16}
+              font-size="12"
+              fill="rgba(136,196,255,0.95)"
+              text-anchor="middle"
+              class="ann-lbl">{ann.label}</text
+            >
+          {:else}
+            <line
+              x1={vp.x - 9}
+              y1={vp.y}
+              x2={vp.x + 9}
+              y2={vp.y}
+              stroke="rgba(255,204,68,0.8)"
+              stroke-width="0.9"
+            />
+            <line
+              x1={vp.x}
+              y1={vp.y - 9}
+              x2={vp.x}
+              y2={vp.y + 9}
+              stroke="rgba(255,204,68,0.8)"
+              stroke-width="0.9"
+            />
+            <text
+              x={vp.x}
+              y={vp.y + 17}
+              font-size="12"
+              fill="rgba(255,204,68,1)"
+              text-anchor="middle"
+              class="ann-lbl">{ann.label}</text
+            >
+          {/if}
+        {/each}
       </svg>
     {/if}
 
