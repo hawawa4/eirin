@@ -114,7 +114,6 @@
 
   .group-header-row td {
     background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent) 15%);
-    border-top: 1px solid var(--border-accent);
     border-bottom: 1px solid var(--border-accent);
     padding: 4px 10px 4px 4px;
   }
@@ -122,6 +121,9 @@
   .group-hdr-inner {
     display: flex;
     align-items: center;
+    /* Fixed so every header has the same pitch (the table body is virtualized). */
+    height: 1.625rem;
+    overflow: hidden;
     gap: 8px;
     width: 100%;
     min-width: 0;

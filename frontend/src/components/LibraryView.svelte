@@ -48,6 +48,7 @@
     toGroupBy,
     type LibGroup,
   } from "../lib/library/groups";
+  import { flattenGroups, itemOffsets, visibleRange, type TableItem } from "../lib/library/virtual";
   import { forgetPreview } from "../lib/library/previewCache";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
@@ -91,8 +92,9 @@
     indexRunning = false,
   }: Props = $props();
 
-  const CHUNK = 300;
   const SEARCH_DEBOUNCE_MS = 150;
+  /** Extra rows rendered above/below the viewport, in px. */
+  const OVERSCAN_PX = 600;
 
   function baseName(path: string) {
     return path.split(/[\\/]/).pop() ?? path;
@@ -226,7 +228,6 @@
   // are temporary and dropped when the filters clear, restoring the manual set.
   const manualExpanded = new SvelteMap<string, boolean>();
   const filterExpanded = new SvelteMap<string, boolean>();
-  const groupLimits = new SvelteMap<string, number>();
 
   function isExpanded(key: string): boolean {
     const choice = (filtering ? filterExpanded : manualExpanded).get(key);
@@ -242,7 +243,6 @@
     void groupBy;
     untrack(() => {
       manualExpanded.clear();
-      groupLimits.clear();
     });
   });
 
@@ -255,25 +255,106 @@
     for (const g of groups) m.set(g.key, expanded);
   }
 
-  function limitFor(key: string): number {
-    return groupLimits.get(key) ?? CHUNK;
-  }
-
   /** Rows in display order (expanded groups only, ignoring render chunking). */
   let visibleRows = $derived(groups.flatMap((g) => (isExpanded(g.key) ? g.frames : [])));
   let visiblePos = $derived(positionsByPath(visibleRows));
 
-  /** Makes sure the chunked renderer includes `path` (and its group is expanded). */
+  /** Makes sure `path`'s group is expanded so the row exists in the table. */
   function ensureRowRendered(path: string) {
     const f = frameByPath.get(path);
     if (!f) return;
     const key = groupKeyFor(f, groupBy);
-    const group = groups.find((g) => g.key === key);
-    if (!group) return;
     if (!isExpanded(key)) (filtering ? filterExpanded : manualExpanded).set(key, true);
-    const idx = group.frames.findIndex((x) => x.nasPath === path);
-    if (idx >= limitFor(key)) groupLimits.set(key, Math.ceil((idx + 1) / CHUNK) * CHUNK);
   }
+
+  // ── Virtualized table body ────────────────────────────────────────────────
+  // Only rows intersecting the viewport are in the DOM, so a filter matching tens
+  // of thousands of frames (all groups auto-expanded) stays cheap to render.
+  // Row heights are measured from the DOM (they scale with the UI font size).
+  let rowH = $state(34);
+  let groupH = $state(36);
+  let headH = $state(0);
+  let scrollTop = $state(0);
+  let viewportH = $state(600);
+
+  let items = $derived<TableItem[]>(flattenGroups(groups, isExpanded));
+  let itemPos = $derived(new Map(items.map((it, i) => [it.key, i])));
+  let offsets = $derived(itemOffsets(items, rowH, groupH));
+  let range = $derived(
+    visibleRange(offsets, scrollTop - OVERSCAN_PX, scrollTop + viewportH - headH + OVERSCAN_PX),
+  );
+  let windowItems = $derived(items.slice(range.start, range.end));
+  let padTop = $derived(offsets[range.start]);
+  let padBottom = $derived(offsets[items.length] - offsets[range.end]);
+
+  let scrollFrame = 0;
+  function onTableScroll() {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      if (tableWrap) scrollTop = tableWrap.scrollTop;
+    });
+  }
+
+  $effect(() => {
+    const wrap = tableWrap;
+    if (!wrap) return;
+    const ro = new ResizeObserver(() => {
+      viewportH = wrap.clientHeight;
+      scrollTop = wrap.scrollTop;
+      measureRows();
+    });
+    ro.observe(wrap);
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = 0;
+    };
+  });
+
+  /** Row pitch = distance to the next row's top (exact, includes borders). */
+  function pitchOf(row: Element | null): number | null {
+    const next = row?.nextElementSibling;
+    if (!row || !next) return null;
+    const p = next.getBoundingClientRect().top - row.getBoundingClientRect().top;
+    return p > 0 ? p : null;
+  }
+
+  function measureRows() {
+    const wrap = tableWrap;
+    if (!wrap) return;
+    const head = wrap.querySelector("thead");
+    if (head) headH = head.getBoundingClientRect().height;
+    const r = pitchOf(wrap.querySelector("tbody tr.frame-row"));
+    if (r !== null && Math.abs(r - rowH) > 0.01) rowH = r;
+    const g = pitchOf(wrap.querySelector("tbody tr.group-header-row"));
+    if (g !== null && Math.abs(g - groupH) > 0.01) groupH = g;
+  }
+
+  // A new query starts at the top of its results.
+  $effect(() => {
+    void search;
+    void colFilters;
+    void showRejected;
+    const wrap = untrack(() => tableWrap);
+    if (wrap) wrap.scrollTop = 0;
+  });
+
+  // The browser clamps scrollTop when the list shrinks; resync the window to it.
+  $effect(() => {
+    void items;
+    tick().then(() => {
+      if (tableWrap) scrollTop = tableWrap.scrollTop;
+    });
+  });
+
+  // Re-measure after each window render and when sizes can change.
+  $effect(() => {
+    void windowItems;
+    void visibleColumns;
+    void ui.uiScale;
+    measureRows();
+  });
 
   // ── Selection & preview cursor ───────────────────────────────────────────
   /** Checked rows (multi-selection). */
@@ -297,8 +378,14 @@
 
   async function scrollToPath(path: string) {
     await tick();
-    const row = tableWrap?.querySelector<HTMLElement>(`tr[data-path="${CSS.escape(path)}"]`);
-    row?.scrollIntoView({ block: "nearest" });
+    const wrap = tableWrap;
+    const i = itemPos.get(path);
+    if (!wrap || i === undefined) return;
+    const top = offsets[i];
+    const bottom = offsets[i + 1];
+    const bodyViewH = wrap.clientHeight - headH;
+    if (top < wrap.scrollTop) wrap.scrollTop = top;
+    else if (bottom > wrap.scrollTop + bodyViewH) wrap.scrollTop = bottom - bodyViewH;
   }
 
   function setCursor(path: string | null, scroll = true) {
@@ -859,7 +946,7 @@
           <button class="btn-secondary" onclick={() => reload()}>Retry</button>
         </div>
       {:else}
-        <div class="table-scroll-wrapper" bind:this={tableWrap}>
+        <div class="table-scroll-wrapper" bind:this={tableWrap} onscroll={onTableScroll}>
           <table
             class="lib-table"
             style="width: {Math.max(totalColWidth + 28, 100)}px; min-width: 100%"
@@ -919,57 +1006,45 @@
                   </td>
                 </tr>
               {/if}
-              {#each groups as group (group.key)}
-                {@const expanded = isExpanded(group.key)}
-                <GroupHeaderRow
-                  {group}
-                  colspan={visibleColumns.length + 1}
-                  {expanded}
-                  ontoggle={() => toggleGroup(group.key)}
-                  {sirilAvailable}
-                  analyzing={analyzingGroup === group.key}
-                  analysisBusy={analyzingGroup !== null}
-                  {analysisProgress}
-                  onanalyze={(force) => analyzeGroup(group, force)}
-                  oncancelanalysis={cancelAnalysis}
-                />
-                {#if expanded}
-                  {@const limit = limitFor(group.key)}
-                  {#each group.frames.slice(0, limit) as frame (frame.nasPath)}
-                    <FrameRow
-                      {frame}
-                      columns={visibleColumns}
-                      current={previewPath === frame.nasPath}
-                      checked={selectedPaths.has(frame.nasPath)}
-                      onrowclick={(e) => onRowClick(e, frame)}
-                      onctxmenu={(e) => openCtxMenu(e, frame)}
-                      oncheck={() => onCheckbox(frame)}
-                      onchangetype={(t, el) => changeFrameType(frame.nasPath, t, el)}
-                    />
-                  {/each}
-                  {#if group.frames.length > limit}
-                    {@const remaining = group.frames.length - limit}
-                    <tr class="more-row">
-                      <td colspan={visibleColumns.length + 1}>
-                        <button
-                          class="btn-secondary"
-                          onclick={() => groupLimits.set(group.key, limit + CHUNK)}
-                        >
-                          Show {Math.min(CHUNK, remaining)} more
-                        </button>
-                        {#if remaining > CHUNK}
-                          <button
-                            class="btn-secondary"
-                            onclick={() => groupLimits.set(group.key, group.frames.length)}
-                          >
-                            Show all {remaining}
-                          </button>
-                        {/if}
-                      </td>
-                    </tr>
-                  {/if}
+              {#if padTop > 0}
+                <tr class="spacer-row" aria-hidden="true">
+                  <td colspan={visibleColumns.length + 1} style="height: {padTop}px"></td>
+                </tr>
+              {/if}
+              {#each windowItems as item (item.key)}
+                {#if item.kind === "group"}
+                  {@const group = item.group}
+                  <GroupHeaderRow
+                    {group}
+                    colspan={visibleColumns.length + 1}
+                    expanded={isExpanded(group.key)}
+                    ontoggle={() => toggleGroup(group.key)}
+                    {sirilAvailable}
+                    analyzing={analyzingGroup === group.key}
+                    analysisBusy={analyzingGroup !== null}
+                    {analysisProgress}
+                    onanalyze={(force) => analyzeGroup(group, force)}
+                    oncancelanalysis={cancelAnalysis}
+                  />
+                {:else}
+                  {@const frame = item.frame}
+                  <FrameRow
+                    {frame}
+                    columns={visibleColumns}
+                    current={previewPath === frame.nasPath}
+                    checked={selectedPaths.has(frame.nasPath)}
+                    onrowclick={(e) => onRowClick(e, frame)}
+                    onctxmenu={(e) => openCtxMenu(e, frame)}
+                    oncheck={() => onCheckbox(frame)}
+                    onchangetype={(t, el) => changeFrameType(frame.nasPath, t, el)}
+                  />
                 {/if}
               {/each}
+              {#if padBottom > 0}
+                <tr class="spacer-row" aria-hidden="true">
+                  <td colspan={visibleColumns.length + 1} style="height: {padBottom}px"></td>
+                </tr>
+              {/if}
             </tbody>
           </table>
         </div>
@@ -1172,7 +1247,9 @@
   }
 
   .lib-table {
-    border-collapse: collapse;
+    /* Separate borders keep every row's pitch exact for the virtualized body. */
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: var(--fs-md);
     table-layout: fixed;
   }
@@ -1191,11 +1268,8 @@
     gap: 12px;
   }
 
-  .more-row td {
-    padding: 6px 10px 8px 36px;
-    border-bottom: 1px solid var(--border);
-  }
-  .more-row button {
-    font-size: var(--fs-xs);
+  .spacer-row td {
+    padding: 0;
+    border: 0;
   }
 </style>

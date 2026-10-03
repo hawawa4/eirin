@@ -79,9 +79,6 @@
 <style>
   .frame-row {
     cursor: pointer;
-    /* Keep rows clear of the sticky two-row table header when scrolled into view. */
-    scroll-margin-top: 68px;
-    scroll-margin-bottom: 8px;
   }
 
   .frame-row td {
