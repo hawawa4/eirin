@@ -1,54 +1,40 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     SelectRootFolder,
-    ListDirectoryEnriched,
-    BuildIndex,
-    CancelIndex,
-    RejectFile,
-    UnrejectFile,
-    HardDeleteFile,
     LoadPrefs,
     SetPref,
     GetAppInfo,
     CheckSiril,
-    OpenWithSiril,
     GetProjectsFolder,
   } from "$app";
   import { Events } from "@wailsio/runtime";
-  import type * as app from "$models/app";
   import {
     DEFAULT_COLUMNS,
     DEFAULT_LIBRARY_COLUMNS,
     type AppInfo,
     type AppMode,
     type ColumnDef,
-    type CtxEntry,
-    type CtxMenuState,
-    type IndexProgress,
+    type Project,
     type SirilInfo,
     type Theme,
   } from "./lib/types";
-  import { isFits } from "./lib/utils";
   import AppHeader from "./components/AppHeader.svelte";
-  import NavToolbar from "./components/NavToolbar.svelte";
   import IndexProgressBar from "./components/IndexProgressBar.svelte";
-  import FileList from "./components/FileList.svelte";
   import LibraryView from "./components/LibraryView.svelte";
   import ImportView from "./components/ImportView.svelte";
   import ProjectsView from "./components/ProjectsView.svelte";
   import SettingsView from "./components/SettingsView.svelte";
-  import PreviewPane from "./components/PreviewPane.svelte";
-  import ContextMenu from "./components/ContextMenu.svelte";
-  import HardDeleteModal from "./components/HardDeleteModal.svelte";
-  import StatusFooter from "./components/StatusFooter.svelte";
   import StorageView from "./components/StorageView.svelte";
   import SkyAtlas from "./components/SkyAtlas.svelte";
-  import SplitPane from "./components/SplitPane.svelte";
+  import BrowseView from "./components/browse/BrowseView.svelte";
   import Toaster from "./components/Toaster.svelte";
   import { loadUiState } from "./lib/uiState.svelte";
   import { installUiScaleShortcuts } from "./lib/uiScale.svelte";
   import { loadPreviewPrefs } from "./lib/previewPrefs.svelte";
+  import { toast } from "./lib/toast.svelte";
+  import { indexer, type IndexOutcome, type StartOptions } from "./lib/shell/indexing.svelte";
+  import { DEFAULT_MODE, MODES } from "./lib/shell/modes";
 
   const PREF_ROOT_FOLDER = "root_folder";
   const PREF_COLUMN_CONFIG = "column_config";
@@ -56,28 +42,23 @@
   const PREF_THEME = "theme";
 
   // ── App mode ──────────────────────────────────────────────────────────────
-  let appMode = $state<AppMode>("library");
+  let appMode = $state<AppMode>(DEFAULT_MODE);
+  /** Views stay mounted (hidden) once visited, so they keep their state across tabs. */
+  let visited = $state<Partial<Record<AppMode, boolean>>>({ [DEFAULT_MODE]: true });
+  let modeRequiresRoot = $derived(MODES.find((m) => m.value === appMode)?.requiresRoot ?? true);
+
+  function setMode(m: AppMode) {
+    appMode = m;
+    visited[m] = true;
+  }
 
   // ── Theme ─────────────────────────────────────────────────────────────────
   let theme = $state<Theme>("blue");
 
-  // ── File browser state ────────────────────────────────────────────────────
+  // ── Root folder / column configs ──────────────────────────────────────────
   let rootFolder = $state("");
-  let currentPath = $state("");
-  let pathHistory = $state<string[]>([]);
-  let files = $state<app.EnrichedFileEntry[]>([]);
-  let error = $state("");
-  let loading = $state(false);
-
-  // ── Column configs ────────────────────────────────────────────────────────
   let columns = $state<ColumnDef[]>(DEFAULT_COLUMNS.map((c) => ({ ...c })));
   let libraryColumns = $state<ColumnDef[]>(DEFAULT_LIBRARY_COLUMNS.map((c) => ({ ...c })));
-
-  // ── Index builder state ───────────────────────────────────────────────────
-  let indexProgress = $state<IndexProgress | null>(null);
-  let indexRunning = $derived(
-    indexProgress !== null && indexProgress.phase !== "done" && indexProgress.phase !== "cancelled",
-  );
 
   // ── App info (DB path, server URL) ────────────────────────────────────────
   let appInfo = $state<AppInfo>({
@@ -93,51 +74,37 @@
   let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
   let sirilAvailable = $derived(sirilInfo.available && desktopMode);
 
-  // ── Projects ───────────────────────────────────────────────────────────────
+  // ── Projects ──────────────────────────────────────────────────────────────
   let projectsFolder = $state("");
-  let initialProjectId = $state<number | null>(null);
-
-  // ── Context menu / delete modal ───────────────────────────────────────────
-  let ctxMenu = $state<CtxMenuState | null>(null);
-  let confirmDel = $state<{ path: string; name: string } | null>(null);
-
-  // ── Selected file / preview ───────────────────────────────────────────────
-  let selectedEntry = $state<app.EnrichedFileEntry | null>(null);
-  let librarySelectedFrame = $state<app.LibraryFrame | null>(null);
 
   // ── Pref persistence guard ────────────────────────────────────────────────
   let prefsLoaded = $state(false);
 
-  // ── Pane layout (split % lives in uiState) ────────────────────────────────
-  let collapsed = $state(false);
-
-  // ── Footer counts (updated by FileList) ──────────────────────────────────
-  let filteredCount = $state(0);
-  let totalCount = $derived(files.length);
-  let uncachedCount = $derived(
-    files.filter((f) => !f.isDir && isFits(f.name) && !f.hasMeta).length,
+  // ── View refs ─────────────────────────────────────────────────────────────
+  let libraryView = $state<{ reload: () => void; focusFile: (nasPath: string) => void } | null>(
+    null,
   );
-
-  // ── Library view ref ─────────────────────────────────────────────────────
-  let libraryView = $state<{ reload: () => void } | null>(null);
-
-  // ── Library focus filter (set when navigating from Atlas) ─────────────────
-  let libraryInitialFilter = $state<string | undefined>(undefined);
-
-  // ── Atlas mount guard — keep the atlas in DOM once opened ─────────────────
-  let atlasOpened = $state(false);
-  $effect(() => {
-    if (appMode === "atlas") atlasOpened = true;
-  });
+  let projectsView = $state<{ selectProjectById: (id: number) => void } | null>(null);
+  let browseView = $state<{ reload: () => void } | null>(null);
 
   // ── Server mode guard — Import/Projects are desktop-only ─────────────────
   $effect(() => {
-    if (!desktopMode && (appMode === "import" || appMode === "projects")) {
-      appMode = "library";
-    }
+    if (!desktopMode && (appMode === "import" || appMode === "projects")) setMode("library");
   });
 
   onMount(() => installUiScaleShortcuts());
+
+  onMount(() => {
+    const offIndex = indexer.listen(onIndexFinished);
+    const offImport = Events.On("import:progress", (event) => {
+      const data = event.data as { phase?: string; copied?: number };
+      if (data.phase === "done" && (data.copied ?? 0) > 0) startScan({ ifRunning: "queue" });
+    });
+    return () => {
+      offIndex();
+      offImport();
+    };
+  });
 
   onMount(async () => {
     const [p, info, siril, pf] = await Promise.all([
@@ -153,45 +120,10 @@
     loadPreviewPrefs(p);
     if (p.theme === "red" || p.theme === "grey") theme = p.theme;
     loadUiState(p.uiState);
-
-    if (p.columnConfig) {
-      try {
-        const saved = JSON.parse(p.columnConfig) as ColumnDef[];
-        columns = DEFAULT_COLUMNS.map((def) => {
-          const s = saved.find((x) => x.id === def.id);
-          return s ? { ...def, ...s } : { ...def };
-        });
-      } catch {
-        /* keep defaults */
-      }
-    }
-
-    if (p.libraryColumnConfig) {
-      try {
-        const saved = JSON.parse(p.libraryColumnConfig) as ColumnDef[];
-        libraryColumns = DEFAULT_LIBRARY_COLUMNS.map((def) => {
-          const s = saved.find((x) => x.id === def.id);
-          return s ? { ...def, ...s } : { ...def };
-        });
-      } catch {
-        /* keep defaults */
-      }
-    }
-
-    if (p.rootFolder) {
-      rootFolder = p.rootFolder;
-      await loadDirectory(p.rootFolder);
-    }
+    columns = mergeColumns(DEFAULT_COLUMNS, p.columnConfig);
+    libraryColumns = mergeColumns(DEFAULT_LIBRARY_COLUMNS, p.libraryColumnConfig);
+    if (p.rootFolder) rootFolder = p.rootFolder;
     prefsLoaded = true;
-
-    Events.On("index:progress", (event) => {
-      const data = event.data as IndexProgress;
-      indexProgress = data;
-      if (data.phase === "done" || data.phase === "cancelled") {
-        if (currentPath) setTimeout(() => loadDirectory(currentPath), 400);
-        if (appMode === "library") setTimeout(() => libraryView?.reload(), 400);
-      }
-    });
   });
 
   $effect(() => {
@@ -203,143 +135,83 @@
     if (prefsLoaded) SetPref(PREF_THEME, theme);
   });
 
+  function mergeColumns(defaults: ColumnDef[], json: string | undefined): ColumnDef[] {
+    if (json) {
+      try {
+        const saved = JSON.parse(json) as ColumnDef[];
+        return defaults.map((def) => {
+          const s = saved.find((x) => x.id === def.id);
+          return s ? { ...def, ...s } : { ...def };
+        });
+      } catch {
+        /* keep defaults */
+      }
+    }
+    return defaults.map((c) => ({ ...c }));
+  }
+
   function saveColumnConfig() {
-    if (!prefsLoaded) return;
-    SetPref(PREF_COLUMN_CONFIG, JSON.stringify(columns));
+    if (prefsLoaded) SetPref(PREF_COLUMN_CONFIG, JSON.stringify(columns));
   }
 
   function saveLibraryColumnConfig() {
-    if (!prefsLoaded) return;
-    SetPref(PREF_LIBRARY_COLUMN_CONFIG, JSON.stringify(libraryColumns));
+    if (prefsLoaded) SetPref(PREF_LIBRARY_COLUMN_CONFIG, JSON.stringify(libraryColumns));
   }
 
-  // ── Index ─────────────────────────────────────────────────────────────────
-  async function startBuildIndex(force = false) {
-    if (!rootFolder || indexRunning) return;
-    indexProgress = {
-      phase: "scanning",
-      total: 0,
-      done: 0,
-      indexed: 0,
-      errors: 0,
-      current: "Starting…",
-    };
-    await BuildIndex(rootFolder, force);
+  // ── Library scan (index) ──────────────────────────────────────────────────
+  function startScan(opts: StartOptions = {}) {
+    void indexer.start(rootFolder, opts);
   }
 
-  // ── Navigation ────────────────────────────────────────────────────────────
-  async function selectFolder() {
-    const path = await SelectRootFolder();
-    if (path) {
-      rootFolder = path;
-      if (prefsLoaded) SetPref(PREF_ROOT_FOLDER, path);
-      pathHistory = [];
-      clearPreview();
-      await loadDirectory(path);
-    }
-  }
-
-  async function loadDirectory(path: string) {
-    loading = true;
-    error = "";
-    try {
-      const result = await ListDirectoryEnriched(path);
-      files = (result || []).slice().sort((a, b) => {
-        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-        return a.name.localeCompare(b.name);
+  function onIndexFinished(o: IndexOutcome) {
+    if (o.kind === "error") {
+      toast.error(`Library scan failed: ${o.message}`);
+    } else if (o.kind === "cancelled") {
+      toast.info("Library scan cancelled");
+    } else {
+      const { indexed, errors } = o.progress;
+      let msg = `Library scan complete — ${indexed} new/updated frame${indexed !== 1 ? "s" : ""}`;
+      if (errors > 0) msg += ` · ${errors} file${errors !== 1 ? "s" : ""} couldn't be read`;
+      const offerLibrary = indexed > 0 && appMode !== "library";
+      toast.success(msg, {
+        action: offerLibrary ? { label: "View library", run: () => setMode("library") } : undefined,
       });
-      currentPath = path;
+    }
+    if (o.kind !== "error" || o.progress) {
+      setTimeout(() => {
+        browseView?.reload();
+        libraryView?.reload();
+      }, 400);
+    }
+  }
+
+  // ── Root folder ───────────────────────────────────────────────────────────
+  async function selectFolder() {
+    let path: string;
+    try {
+      path = await SelectRootFolder();
     } catch (e) {
-      error = String(e);
-      files = [];
-    } finally {
-      loading = false;
+      toast.error(`Couldn't select the folder: ${String(e)}`);
+      return;
     }
+    if (!path || path === rootFolder) return;
+    rootFolder = path;
+    if (prefsLoaded) SetPref(PREF_ROOT_FOLDER, path);
+    // Pick up whatever is already in the new root; supersedes a scan of the old one.
+    startScan({ ifRunning: "supersede" });
   }
 
-  async function navigateBack() {
-    if (pathHistory.length === 0) return;
-    const prev = pathHistory[pathHistory.length - 1];
-    pathHistory = pathHistory.slice(0, -1);
-    clearPreview();
-    await loadDirectory(prev);
+  // ── Cross-view navigation ─────────────────────────────────────────────────
+  async function openInLibrary(nasPath: string) {
+    setMode("library");
+    await tick();
+    libraryView?.focusFile(nasPath);
   }
 
-  async function onRowClick(entry: app.EnrichedFileEntry) {
-    if (entry.isDir) {
-      clearPreview();
-      pathHistory = [...pathHistory, currentPath];
-      await loadDirectory(entry.path);
-    } else if (isFits(entry.name)) {
-      selectedEntry = entry;
-    }
-  }
-
-  function clearPreview() {
-    selectedEntry = null;
-    librarySelectedFrame = null;
-  }
-
-  // ── File operations ───────────────────────────────────────────────────────
-  async function rejectFile(entry: { path: string; isRejected: boolean }) {
-    ctxMenu = null;
-    await RejectFile(entry.path);
-    entry.isRejected = true;
-  }
-
-  async function restoreFile(entry: { path: string; isRejected: boolean }) {
-    ctxMenu = null;
-    await UnrejectFile(entry.path);
-    entry.isRejected = false;
-  }
-
-  function openHardDeleteConfirm(entry: { path: string; name: string }) {
-    ctxMenu = null;
-    confirmDel = { path: entry.path, name: entry.name };
-  }
-
-  async function doHardDelete() {
-    if (!confirmDel) return;
-    const { path } = confirmDel;
-    confirmDel = null;
-    await HardDeleteFile(path);
-    files = files.filter((f) => f.path !== path);
-    if (selectedEntry?.path === path) clearPreview();
-  }
-
-  // ── Siril ─────────────────────────────────────────────────────────────────
-  async function doOpenWithSiril(entry: CtxEntry) {
-    ctxMenu = null;
-    await OpenWithSiril(entry.path);
-  }
-
-  // ── Library preview ───────────────────────────────────────────────────────
-  function onLibraryFramesReloaded(freshFrames: app.LibraryFrame[]) {
-    if (!librarySelectedFrame) return;
-    const updated = freshFrames.find((f) => f.nasPath === librarySelectedFrame!.nasPath);
-    if (updated) librarySelectedFrame = updated;
-  }
-
-  function onLibraryFileClick(frame: app.LibraryFrame) {
-    librarySelectedFrame = frame;
-    selectedEntry = {
-      name: frame.fileName,
-      path: frame.nasPath,
-      isDir: false,
-      modTime: frame.dateObs || new Date().toISOString(),
-      size: frame.fileSize,
-      object: frame.object,
-      filter: frame.filter,
-      expTime: frame.expTime,
-      dateObs: frame.dateObs,
-      gain: frame.gain,
-      ccdTemp: frame.ccdTemp,
-      telescope: frame.telescope,
-      instrument: frame.instrument,
-      hasMeta: true,
-      isRejected: frame.isRejected,
-      rejectionReason: "",
-    } as app.EnrichedFileEntry;
+  async function openProject(project: Project) {
+    setMode("projects");
+    await tick();
+    projectsView?.selectProjectById(project.id);
   }
 </script>
 
@@ -349,158 +221,138 @@
     {appMode}
     {theme}
     {desktopMode}
-    onmodechange={(m) => {
-      appMode = m;
-      clearPreview();
-    }}
+    onmodechange={setMode}
     onthemechange={(t) => {
       theme = t;
     }}
   />
 
-  <!-- Global index progress bar — visible in all modes while indexing -->
-  {#if indexRunning && indexProgress}
-    <IndexProgressBar progress={indexProgress} oncancel={() => CancelIndex()} />
+  <!-- Global index progress bar — visible in all modes while scanning -->
+  {#if indexer.running && indexer.progress}
+    <IndexProgressBar progress={indexer.progress} oncancel={() => indexer.cancel()} />
   {/if}
 
-  {#if !rootFolder && appMode !== "settings"}
-    <div class="empty-state">
-      <div class="empty-icon">◎</div>
-      <p class="empty-title">No folder selected</p>
-      <p class="empty-sub">Choose your astrophotography NAS folder to get started</p>
-      <button class="btn-primary btn-large" onclick={selectFolder}>Select Root Folder</button>
-    </div>
-  {:else if appMode === "browser"}
-    <NavToolbar {currentPath} canGoBack={pathHistory.length > 0} onnavigateBack={navigateBack} />
-
-    <SplitPane showSecondary={!!selectedEntry} collapsedLabel="file list" bind:collapsed>
-      {#snippet list()}
-        <FileList
-          {files}
-          {selectedEntry}
-          {columns}
-          {error}
-          {loading}
-          onfileclick={onRowClick}
-          oncontextmenu={(x, y, entry) => {
-            ctxMenu = {
-              x,
-              y,
-              entry: { path: entry.path, name: entry.name, isRejected: false, frameType: "" },
-              sirilAvailable,
-              selectionCount: 1,
-            };
-          }}
-          onsavecolumns={saveColumnConfig}
-          onfilteredcountchange={(n) => {
-            filteredCount = n;
-          }}
-        />
-      {/snippet}
-      {#snippet secondary()}
-        {#if selectedEntry}
-          <PreviewPane entry={selectedEntry} onclose={clearPreview} />
+  <main class="views">
+    {#if !rootFolder && modeRequiresRoot}
+      <div class="empty-state">
+        <div class="empty-icon" aria-hidden="true">◎</div>
+        <p class="empty-title">No folder selected</p>
+        {#if desktopMode}
+          <p class="empty-sub">Choose your astrophotography NAS folder to get started</p>
+          <button class="btn-primary btn-large" onclick={selectFolder}>Select Root Folder</button>
+        {:else}
+          <p class="empty-sub">
+            No root folder is configured on this server. It's read from the preferences database —
+            set it once with the desktop app.
+          </p>
         {/if}
-      {/snippet}
-    </SplitPane>
+      </div>
+    {/if}
 
-    <StatusFooter
-      {totalCount}
-      {filteredCount}
-      {uncachedCount}
-      {indexRunning}
-      {indexProgress}
-      {rootFolder}
-    />
-  {:else if appMode === "library"}
-    <SplitPane showSecondary={!!selectedEntry} collapsedLabel="library" bind:collapsed>
-      {#snippet list()}
-        <LibraryView
-          bind:this={libraryView}
+    {#if rootFolder}
+      <!-- Re-key on root change so every view starts fresh against the new library. -->
+      {#key rootFolder}
+        {#if visited.library}
+          <div class="view" class:hidden={appMode !== "library"}>
+            <LibraryView
+              bind:this={libraryView}
+              {rootFolder}
+              columns={libraryColumns}
+              {sirilAvailable}
+              active={appMode === "library"}
+              indexRunning={indexer.running}
+              onscan={() => startScan()}
+              onsavecolumns={saveLibraryColumnConfig}
+              oncreateproject={openProject}
+            />
+          </div>
+        {/if}
+
+        {#if desktopMode && visited.projects}
+          <div class="view" class:hidden={appMode !== "projects"}>
+            <ProjectsView
+              bind:this={projectsView}
+              {rootFolder}
+              {projectsFolder}
+              {sirilAvailable}
+              active={appMode === "projects"}
+              onscan={() => startScan()}
+            />
+          </div>
+        {/if}
+
+        {#if desktopMode && visited.import}
+          <div class="view" class:hidden={appMode !== "import"}>
+            <ImportView
+              {rootFolder}
+              active={appMode === "import"}
+              onscan={() => startScan()}
+              onviewlibrary={() => setMode("library")}
+            />
+          </div>
+        {/if}
+
+        {#if visited.atlas}
+          <div class="view" class:hidden={appMode !== "atlas"}>
+            <SkyAtlas
+              rootPath={rootFolder}
+              active={appMode === "atlas"}
+              onscan={() => startScan()}
+              onframeopen={openInLibrary}
+            />
+          </div>
+        {/if}
+
+        {#if visited.storage}
+          <div class="view" class:hidden={appMode !== "storage"}>
+            <StorageView
+              rootPath={rootFolder}
+              active={appMode === "storage"}
+              onscan={() => startScan()}
+            />
+          </div>
+        {/if}
+
+        {#if visited.browser}
+          <div class="view" class:hidden={appMode !== "browser"}>
+            <BrowseView
+              bind:this={browseView}
+              {rootFolder}
+              {columns}
+              {sirilAvailable}
+              {desktopMode}
+              active={appMode === "browser"}
+              indexRunning={indexer.running}
+              indexProgress={indexer.progress}
+              onsavecolumns={saveColumnConfig}
+              onscan={() => startScan()}
+            />
+          </div>
+        {/if}
+      {/key}
+    {/if}
+
+    {#if appMode === "settings"}
+      <div class="view">
+        <SettingsView
           {rootFolder}
-          columns={libraryColumns}
-          selectedNasPath={librarySelectedFrame?.nasPath ?? null}
-          {sirilAvailable}
-          initialFilter={libraryInitialFilter}
-          onfileclick={onLibraryFileClick}
-          onsavecolumns={saveLibraryColumnConfig}
-          onframesreloaded={onLibraryFramesReloaded}
-          oncreateproject={(project) => {
-            initialProjectId = project.id;
-            appMode = "projects";
+          {projectsFolder}
+          {appInfo}
+          indexRunning={indexer.running}
+          onselectfolder={selectFolder}
+          onbuildindex={() => startScan()}
+          onrebuildindex={() => startScan({ force: true })}
+          onsirilchange={(info) => (sirilInfo = info)}
+          onprojectsfolderset={(path) => {
+            projectsFolder = path;
           }}
         />
-      {/snippet}
-      {#snippet secondary()}
-        {#if selectedEntry}
-          <PreviewPane
-            entry={selectedEntry}
-            qualityFrame={librarySelectedFrame}
-            onclose={clearPreview}
-          />
-        {/if}
-      {/snippet}
-    </SplitPane>
-  {:else if appMode === "import"}
-    <ImportView {rootFolder} />
-  {:else if appMode === "projects"}
-    <ProjectsView {rootFolder} {projectsFolder} {initialProjectId} />
-  {:else if appMode === "storage"}
-    <StorageView rootPath={rootFolder} />
-  {:else if appMode === "settings"}
-    <SettingsView
-      {rootFolder}
-      {projectsFolder}
-      {appInfo}
-      {indexRunning}
-      onselectfolder={selectFolder}
-      onbuildindex={startBuildIndex}
-      onrebuildindex={() => startBuildIndex(true)}
-      onsirilchange={(info) => (sirilInfo = info)}
-      onprojectsfolderset={(path) => {
-        projectsFolder = path;
-      }}
-    />
-  {/if}
-
-  <!-- Sky Atlas stays mounted after first visit to avoid reloading all WCS data -->
-  {#if atlasOpened}
-    <div class="content-area" style="display: {appMode === 'atlas' ? 'flex' : 'none'};">
-      <SkyAtlas
-        rootPath={rootFolder}
-        onframeopen={(nasPath) => {
-          libraryInitialFilter = nasPath.split("/").pop();
-          appMode = "library";
-        }}
-      />
-    </div>
-  {/if}
+      </div>
+    {/if}
+  </main>
 </div>
 
-{#if ctxMenu}
-  <ContextMenu
-    menu={ctxMenu}
-    onclose={() => {
-      ctxMenu = null;
-    }}
-    onreject={rejectFile}
-    onrestore={restoreFile}
-    onharddelete={openHardDeleteConfirm}
-    onopensiril={doOpenWithSiril}
-  />
-{/if}
-
 <Toaster />
-
-{#if confirmDel}
-  <HardDeleteModal
-    target={confirmDel}
-    onconfirm={doHardDelete}
-    oncancel={() => {
-      confirmDel = null;
-    }}
-  />
-{/if}
 
 <style>
   .layout {
@@ -509,10 +361,24 @@
     height: 100vh;
   }
 
-  .content-area {
+  .views {
     flex: 1;
     display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
+  }
+
+  .view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .view.hidden {
+    display: none;
   }
 
   .empty-state {
@@ -522,27 +388,24 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
+    padding: 24px;
   }
 
   .empty-icon {
     font-size: 3rem;
-    color: var(--accent-dim);
+    line-height: 1;
+    color: var(--accent);
     margin-bottom: 8px;
   }
   .empty-title {
-    font-size: 1.1rem;
+    font-size: var(--fs-xl);
     font-weight: 500;
     color: var(--text-primary);
   }
   .empty-sub {
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
-    max-width: 340px;
+    max-width: 380px;
     text-align: center;
-  }
-
-  .btn-large {
-    padding: 9px 24px;
-    font-size: 0.9rem;
   }
 </style>

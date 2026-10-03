@@ -4,6 +4,7 @@
   import { isFits, getCellValue } from "../lib/utils";
   import { makeColumnManager } from "../lib/columnManager";
   import { SvelteMap } from "svelte/reactivity";
+  import { untrack } from "svelte";
 
   interface Props {
     files: app.EnrichedFileEntry[];
@@ -15,6 +16,8 @@
     oncontextmenu: (x: number, y: number, entry: app.EnrichedFileEntry) => void;
     onsavecolumns: () => void;
     onfilteredcountchange: (count: number) => void;
+    /** Identifies the listed folder; the filter dropdown resets when it changes. */
+    dirKey?: string;
   }
 
   let {
@@ -27,6 +30,7 @@
     oncontextmenu,
     onsavecolumns,
     onfilteredcountchange,
+    dirKey = "",
   }: Props = $props();
 
   // ── Local UI state ────────────────────────────────────────────────────────
@@ -62,20 +66,45 @@
   let filteredFits = $derived(filteredFiles.filter((f) => !f.isDir && f.hasMeta));
   let filteredOther = $derived(filteredFiles.filter((f) => !f.isDir && !f.hasMeta));
   let fileGroups = $derived(groupByObject ? buildGroups(filteredFits) : null);
+  let filtersActive = $derived(searchQuery !== "" || filterFilter !== "");
+
+  // A filter value from another folder would hide every file here (and its <select>
+  // may not even render), so start each folder unfiltered.
+  $effect(() => {
+    void dirKey;
+    untrack(() => {
+      filterFilter = "";
+    });
+  });
+
+  function clearFilters() {
+    searchQuery = "";
+    filterFilter = "";
+  }
 
   $effect(() => {
     onfilteredcountchange(filteredFiles.length);
   });
 
-  // Close column menu on outside click.
+  // Close column menu on outside click or Escape.
+  let columnMenuRoot = $state<HTMLDivElement | null>(null);
   $effect(() => {
     if (!showColumnMenu) return;
     function onDoc(e: MouseEvent) {
-      const el = document.getElementById("column-menu-root");
-      if (el && !el.contains(e.target as Node)) showColumnMenu = false;
+      if (columnMenuRoot && !columnMenuRoot.contains(e.target as Node)) showColumnMenu = false;
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      showColumnMenu = false;
     }
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey, true);
+    };
   });
 
   // ── Filtering / grouping ─────────────────────────────────────────────────
@@ -150,12 +179,15 @@
     placeholder="Search name or object…"
     bind:value={searchQuery}
   />
-  {#if uniqueFilters.length > 0}
-    <select class="filter-select" bind:value={filterFilter}>
+  {#if uniqueFilters.length > 0 || filterFilter}
+    <select class="filter-select" bind:value={filterFilter} aria-label="Filter by optical filter">
       <option value="">All filters</option>
       {#each uniqueFilters as f (f)}
         <option value={f}>{f}</option>
       {/each}
+      {#if filterFilter && !uniqueFilters.includes(filterFilter)}
+        <option value={filterFilter}>{filterFilter}</option>
+      {/if}
     </select>
   {/if}
   <button
@@ -164,10 +196,11 @@
     onclick={() => (groupByObject = !groupByObject)}
     title="Group by object + date">Group</button
   >
-  <div class="column-selector" id="column-menu-root">
+  <div class="column-selector" bind:this={columnMenuRoot}>
     <button
       class="tool-btn"
       onclick={() => (showColumnMenu = !showColumnMenu)}
+      aria-expanded={showColumnMenu}
       title="Show/hide columns">Cols ▾</button
     >
     {#if showColumnMenu}
@@ -194,6 +227,18 @@
   <div class="status-row">Loading…</div>
 {:else if files.length === 0}
   <div class="status-row">This folder is empty</div>
+{:else if filteredFiles.length === 0}
+  <div class="status-row empty-filtered">
+    {#if filtersActive}
+      <span>No files match</span>
+      <button class="btn-secondary" onclick={clearFilters}>Clear filters</button>
+    {:else if viewMode === "rejected"}
+      <span>No rejected files in this folder</span>
+      <button class="btn-secondary" onclick={() => (viewMode = "files")}>Show files</button>
+    {:else}
+      <span>No files to show</span>
+    {/if}
+  </div>
 {:else}
   <div class="table-scroll-wrapper">
     <table class="file-table" style="width: {Math.max(totalColWidth, 100)}px; min-width: 100%">
@@ -239,10 +284,8 @@
               class:selected={selectedEntry && selectedEntry.path === entry.path}
               onclick={() => onfileclick(entry)}
               oncontextmenu={(e) => {
-                if (!entry.isDir) {
-                  e.preventDefault();
-                  oncontextmenu(e.clientX, e.clientY, entry);
-                }
+                e.preventDefault();
+                oncontextmenu(e.clientX, e.clientY, entry);
               }}
             >
               {#each visibleColumns as col (col.id)}
@@ -262,7 +305,14 @@
         {:else}
           <!-- Grouped view -->
           {#each filteredDirs as entry (entry.path)}
-            <tr class="file-row is-dir" onclick={() => onfileclick(entry)}>
+            <tr
+              class="file-row is-dir"
+              onclick={() => onfileclick(entry)}
+              oncontextmenu={(e) => {
+                e.preventDefault();
+                oncontextmenu(e.clientX, e.clientY, entry);
+              }}
+            >
               {#each visibleColumns as col (col.id)}
                 <td class="col-{col.id}">
                   {#if col.id === "name"}
@@ -361,7 +411,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 3px 8px;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--text-primary);
     outline: none;
   }
@@ -369,7 +419,7 @@
     border-color: var(--accent);
   }
   .search-input::placeholder {
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 
   .filter-select {
@@ -377,11 +427,11 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 2px 6px;
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     cursor: pointer;
     outline: none;
-    max-width: 90px;
+    max-width: 110px;
   }
   .filter-select:focus {
     border-color: var(--accent);
@@ -410,7 +460,7 @@
     align-items: center;
     gap: 7px;
     padding: 4px 10px;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
@@ -438,7 +488,7 @@
     border: 1px solid transparent;
     border-radius: 4px;
     padding: 2px 10px;
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
     transition:
       color 0.15s,
@@ -451,19 +501,19 @@
     color: var(--text-primary);
   }
   .view-tab.active {
-    color: var(--accent);
+    color: var(--accent-contrast);
     border-color: var(--accent);
-    background: var(--accent-dim);
+    background: var(--accent);
   }
 
   .tab-badge {
     background: var(--danger);
-    color: #fff;
+    color: var(--bg-base);
     border-radius: 8px;
     padding: 0 5px;
-    font-size: 0.65rem;
+    font-size: var(--fs-xs);
     font-weight: 600;
-    line-height: 14px;
+    line-height: 1.3;
   }
 
   /* ── Table scroll ───────────────────────────────────────────────────────── */
@@ -488,7 +538,7 @@
 
   .file-table {
     border-collapse: collapse;
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
     table-layout: fixed;
   }
 
@@ -502,7 +552,7 @@
   .file-table th {
     padding: 7px 10px 7px 8px;
     text-align: left;
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -576,10 +626,6 @@
   .file-row.is-rejected td {
     color: var(--text-secondary);
     text-decoration: line-through;
-    opacity: 0.55;
-  }
-  .file-row.is-rejected:hover td {
-    opacity: 0.8;
   }
 
   .col-size,
@@ -588,23 +634,33 @@
   .col-ccdTemp {
     text-align: right;
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
   }
   .col-modTime,
   .col-dateObs {
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
   }
   .col-filter,
   .col-object {
-    font-size: 0.83rem;
+    font-size: var(--fs-sm);
   }
 
   .file-icon {
     margin-right: 6px;
     font-size: 0.9em;
+  }
+
+  .empty-filtered {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .empty-filtered .btn-secondary {
+    margin-right: 0;
   }
 
   /* ── Group header ───────────────────────────────────────────────────────── */
@@ -617,18 +673,18 @@
   }
 
   .group-object {
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--accent);
   }
   .group-date {
-    font-size: 0.74rem;
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     margin-left: 8px;
     font-variant-numeric: tabular-nums;
   }
   .group-count {
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     margin-left: 8px;
   }

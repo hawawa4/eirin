@@ -13,6 +13,8 @@
 
   let { rootFolder, appMode, theme, desktopMode, onmodechange, onthemechange }: Props = $props();
 
+  // Swatch colours are each theme's own accent, so they can't come from the
+  // (current-theme) CSS tokens.
   const THEMES: { id: Theme; color: string; title: string }[] = [
     { id: "blue", color: "#7c9ef5", title: "Blue theme" },
     { id: "red", color: "#e07060", title: "Red (night) theme" },
@@ -31,12 +33,16 @@
     <div class="theme-toggle" role="group" aria-label="Theme">
       {#each THEMES as t (t.id)}
         <button
-          class="theme-dot"
+          class="theme-btn"
           class:active={theme === t.id}
           style="--dot-color: {t.color}"
           onclick={() => onthemechange(t.id)}
           title={t.title}
-        ></button>
+          aria-label={t.title}
+          aria-pressed={theme === t.id}
+        >
+          <span class="theme-dot" aria-hidden="true"></span>
+        </button>
       {/each}
     </div>
   </div>
@@ -56,7 +62,7 @@
   }
 
   .logo {
-    font-size: 1.1rem;
+    font-size: var(--fs-lg);
     font-weight: 600;
     color: var(--accent);
     letter-spacing: 0.05em;
@@ -67,6 +73,7 @@
     flex: 1;
     display: flex;
     justify-content: center;
+    min-width: 0;
     -webkit-app-region: no-drag;
   }
 
@@ -79,8 +86,22 @@
 
   .theme-toggle {
     display: flex;
-    gap: 7px;
+    gap: 2px;
     align-items: center;
+  }
+
+  /* 22px hit target around a 13px swatch. */
+  .theme-btn {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
   }
 
   .theme-dot {
@@ -89,9 +110,6 @@
     border-radius: 50%;
     background: var(--dot-color);
     border: 2px solid transparent;
-    outline: none;
-    cursor: pointer;
-    padding: 0;
     opacity: 0.55;
     transition:
       opacity 0.15s,
@@ -99,12 +117,12 @@
       transform 0.15s;
   }
 
-  .theme-dot:hover {
+  .theme-btn:hover .theme-dot {
     opacity: 0.9;
     transform: scale(1.2);
   }
 
-  .theme-dot.active {
+  .theme-btn.active .theme-dot {
     border-color: var(--text-primary);
     opacity: 1;
   }
