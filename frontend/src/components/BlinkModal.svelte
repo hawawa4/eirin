@@ -20,8 +20,10 @@
   let confirmDelete = $state(false);
 
   // Cache: nasPath → data-URL. Only a sliding window of entries is kept.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
   const cache = new Map<string, string>();
   // Tracks in-flight fetches so we don't double-fetch.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
   const fetching = new Set<string>();
 
   // How many frames to preload ahead and behind the current index.
@@ -59,9 +61,10 @@
     if (n === 0) return;
 
     // Compute the set of indices we want loaded.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
     const wanted = new Set<number>();
     for (let d = -BEHIND; d <= AHEAD; d++) {
-      wanted.add(((currentIndex + d) % n + n) % n);
+      wanted.add((((currentIndex + d) % n) + n) % n);
     }
 
     // Evict entries outside the window.
@@ -204,7 +207,10 @@
       {/if}
       <!-- Preload indicator: how many of the window are ready -->
       {#if frames.length > WINDOW}
-        {@const ready = [currentIndex, ...Array.from({length: AHEAD}, (_, i) => ((currentIndex + i + 1) % frames.length))].filter(i => cache.has(frames[i]?.nasPath ?? "")).length}
+        {@const ready = [
+          currentIndex,
+          ...Array.from({ length: AHEAD }, (_, i) => (currentIndex + i + 1) % frames.length),
+        ].filter((i) => cache.has(frames[i]?.nasPath ?? "")).length}
         {@const total = Math.min(WINDOW, frames.length)}
         {#if ready < total}
           <div class="blink-preload-badge">⟳ {ready}/{total}</div>
@@ -287,7 +293,7 @@
 
       <div class="blink-dots">
         {#each [-2, -1, 0, 1, 2] as offset (offset)}
-          {@const idx = ((currentIndex + offset) % frames.length + frames.length) % frames.length}
+          {@const idx = (((currentIndex + offset) % frames.length) + frames.length) % frames.length}
           {@const frame = frames[idx]}
           {#if frame}
             <button
@@ -295,13 +301,15 @@
               class:active={offset === 0}
               class:rejected={frame.isRejected}
               class:cached={cache.has(frame.nasPath)}
-              onclick={() => { stopBlink(); currentIndex = idx; }}
+              onclick={() => {
+                stopBlink();
+                currentIndex = idx;
+              }}
               title={frame.fileName}
             ></button>
           {/if}
         {/each}
       </div>
-
     </div>
   </div>
 </div>

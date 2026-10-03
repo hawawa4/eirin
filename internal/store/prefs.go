@@ -21,6 +21,7 @@ const (
 	KeySirilPath           = "siril_path"
 	KeyProjectsFolder      = "projects_folder"
 	KeyTheme               = "theme"
+	KeyUIState             = "ui_state"
 )
 
 // Prefs is the typed snapshot of all user preferences, serialised to/from the
@@ -36,6 +37,9 @@ type Prefs struct {
 	SirilPath           string `json:"sirilPath"`
 	ProjectsFolder      string `json:"projectsFolder"`
 	Theme               string `json:"theme"`
+	// UIState is an opaque JSON blob owned by the frontend (layout, last
+	// view, …). Empty by default.
+	UIState string `json:"uiState"`
 }
 
 // DefaultPrefs returns the out-of-the-box preference values.
@@ -85,6 +89,9 @@ func (s *Store) Load() Prefs {
 	}
 	if v, ok := s.getString(KeyTheme); ok {
 		p.Theme = v
+	}
+	if v, ok := s.getString(KeyUIState); ok {
+		p.UIState = v
 	}
 	return p
 }

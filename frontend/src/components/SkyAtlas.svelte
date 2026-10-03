@@ -15,8 +15,13 @@
   interface Props {
     rootPath: string;
     onframeopen?: (nasPath: string) => void;
+    /** True while this view's tab is visible (Phase 2 contract). */
+    active?: boolean;
+    /** Request a library (re)scan/index (Phase 2 contract). */
+    onscan?: () => void;
   }
 
+  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
   let { rootPath, onframeopen }: Props = $props();
 
   function isRasterFile(path: string): boolean {
@@ -103,6 +108,7 @@
   }
 
   let objectGroups = $derived.by(() => {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
     const map = new Map<string, ObjectGroup>();
     for (const e of visibleIndex) {
       const key = e.object || e.name;

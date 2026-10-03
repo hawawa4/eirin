@@ -14,6 +14,7 @@ type App struct {
 	store   *store.Store
 	indexer appIndexer
 	server  *http.Server
+	imports importJob
 }
 
 func NewApp() *App {
@@ -40,4 +41,13 @@ func (a *App) ServiceShutdown() error {
 		_ = a.store.Close()
 	}
 	return nil
+}
+
+// emitEvent emits a Wails custom event. It is a no-op when the Wails app is
+// not wired up (unit tests construct App without it).
+func (a *App) emitEvent(name string, data any) {
+	if a.wails == nil {
+		return
+	}
+	a.wails.Event.EmitEvent(&application.CustomEvent{Name: name, Data: data})
 }

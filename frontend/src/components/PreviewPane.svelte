@@ -3,12 +3,7 @@
   import type * as app from "$models/app";
   import type * as fits from "$models/fits";
   import type * as catalog from "$models/catalog";
-  import {
-    GeneratePreviewRawSized,
-    LoadRasterImage,
-    ReadFITSHeader,
-    GetAnnotations,
-  } from "$app";
+  import { GeneratePreviewRawSized, LoadRasterImage, ReadFITSHeader, GetAnnotations } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
   import { mtfMidtone } from "../lib/stretchPreview";
 
@@ -387,16 +382,18 @@ void main() {
     const id = ++previewReqId;
 
     if (isRaster) {
-      LoadRasterImage(e.path).then((dataUrl: string) => {
-        if (id !== previewReqId) return;
-        rasterDataUrl = dataUrl;
-        hasImage = true;
-        previewLoading = false;
-      }).catch((err: unknown) => {
-        if (id !== previewReqId) return;
-        previewError = err instanceof Error ? err.message : "Failed to load image";
-        previewLoading = false;
-      });
+      LoadRasterImage(e.path)
+        .then((dataUrl: string) => {
+          if (id !== previewReqId) return;
+          rasterDataUrl = dataUrl;
+          hasImage = true;
+          previewLoading = false;
+        })
+        .catch((err: unknown) => {
+          if (id !== previewReqId) return;
+          previewError = err instanceof Error ? err.message : "Failed to load image";
+          previewLoading = false;
+        });
       return;
     }
 

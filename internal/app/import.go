@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/TaruDesigns/eirin/internal/fits"
@@ -18,6 +21,77 @@ type ImportCandidate = importer.Candidate
 // ImportProgress is emitted as an "import:progress" event during StartImport.
 // Re-exported from the importer package for Wails binding compatibility.
 type ImportProgress = importer.Progress
+
+// errImportRunning is returned by StartImport while another import is active.
+var errImportRunning = errors.New("an import is already running")
+
+// importJob tracks the single import run allowed at a time, plus the latest
+// progress snapshot so a remounted UI can resume showing it.
+type importJob struct {
+	mu      sync.Mutex
+	running bool
+	cancel  context.CancelFunc
+	last    ImportProgress
+}
+
+// begin marks a job as running and returns its context. It fails if a job is
+// already running.
+func (j *importJob) begin() (context.Context, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.running {
+		return nil, errImportRunning
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	j.running = true
+	j.cancel = cancel
+	j.last = ImportProgress{Phase: importer.PhaseScanning, Errors: []string{}, Notes: []string{}}
+	return ctx, nil
+}
+
+// update records p as the latest snapshot.
+func (j *importJob) update(p ImportProgress) {
+	j.mu.Lock()
+	j.last = p
+	j.mu.Unlock()
+}
+
+// finish records the final snapshot and releases the job slot.
+func (j *importJob) finish(p ImportProgress) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.last = p
+	j.running = false
+	if j.cancel != nil {
+		j.cancel()
+		j.cancel = nil
+	}
+}
+
+// GetImportStatus returns the latest import progress snapshot, or a progress
+// with Phase "idle" if no import has run since startup.
+func (a *App) GetImportStatus() ImportProgress {
+	a.imports.mu.Lock()
+	defer a.imports.mu.Unlock()
+	if a.imports.last.Phase == "" {
+		return ImportProgress{Phase: importer.PhaseIdle, Errors: []string{}, Notes: []string{}}
+	}
+	p := a.imports.last
+	p.Errors = append([]string{}, p.Errors...)
+	p.Notes = append([]string{}, p.Notes...)
+	return p
+}
+
+// CancelImport stops the running import after the file currently being
+// processed. The run then emits a final "import:progress" with phase
+// "cancelled". No-op if nothing is running.
+func (a *App) CancelImport() {
+	a.imports.mu.Lock()
+	defer a.imports.mu.Unlock()
+	if a.imports.cancel != nil {
+		a.imports.cancel()
+	}
+}
 
 // indexImportedFile inserts a freshly-copied file into the database so it
 // shows up in the library without a separate Build Index run.

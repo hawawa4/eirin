@@ -143,13 +143,19 @@
             <button class="btn-primary" onclick={onbuildindex} disabled={indexRunning}>
               {indexRunning ? "Indexing…" : "Build Index"}
             </button>
-            <button class="btn-secondary" onclick={onrebuildindex} disabled={indexRunning} title="Re-read all files, even already-indexed ones">
+            <button
+              class="btn-secondary"
+              onclick={onrebuildindex}
+              disabled={indexRunning}
+              title="Re-read all files, even already-indexed ones"
+            >
               Force Reindex
             </button>
           </div>
           <p class="action-hint">
             Scans all subfolders and reads FITS headers for any files not yet in the database.
-            Re-run to pick up new files. Use <strong>Force Reindex</strong> to re-read every file from scratch.
+            Re-run to pick up new files. Use <strong>Force Reindex</strong> to re-read every file from
+            scratch.
           </p>
         </div>
       {/if}
@@ -170,8 +176,8 @@
       <section class="card">
         <h2 class="section-title">Projects Folder</h2>
         <p class="section-desc">
-          Local folder where Siril projects are stored. Each project gets its own subfolder containing
-          a <code>lights/</code> directory with symlinks or copies of your frames.
+          Local folder where Siril projects are stored. Each project gets its own subfolder
+          containing a <code>lights/</code> directory with symlinks or copies of your frames.
         </p>
 
         <div class="path-row">
@@ -205,7 +211,12 @@
               {sirilInfo.version}
             {/if}
           </span>
-          <button class="btn-ghost" onclick={refreshSiril} disabled={sirilChecking} title="Re-check">
+          <button
+            class="btn-ghost"
+            onclick={refreshSiril}
+            disabled={sirilChecking}
+            title="Re-check"
+          >
             ↺
           </button>
         </div>

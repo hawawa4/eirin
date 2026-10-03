@@ -53,8 +53,15 @@
     onsavecolumns: () => void;
     onframesreloaded?: (frames: app.LibraryFrame[]) => void;
     oncreateproject?: (project: Project) => void;
+    /** True while this view's tab is visible (Phase 2 contract). */
+    active?: boolean;
+    /** Request a library (re)scan/index (Phase 2 contract). */
+    onscan?: () => void;
+    /** True while a library index build is running (Phase 2 contract). */
+    indexRunning?: boolean;
   }
 
+  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
   let {
     rootFolder,
     columns,
@@ -197,7 +204,13 @@
   let renameWorking = $state(false);
 
   // ── Edit metadata modal ───────────────────────────────────────────────────
-  interface MetaEdit { path: string; object: string; telescope: string; filter: string; dateObs: string; }
+  interface MetaEdit {
+    path: string;
+    object: string;
+    telescope: string;
+    filter: string;
+    dateObs: string;
+  }
   let metaModal = $state<MetaEdit | null>(null);
   let metaWorking = $state(false);
   let metaError = $state("");
@@ -322,6 +335,12 @@
   }
 
   export { reload };
+
+  /** Reveal and select the frame at `nasPath` (Phase 2 contract). */
+  export function focusFile(nasPath: string): void {
+    // TODO(phase 2): clear filters as needed, expand its group, select and scroll into view.
+    void nasPath;
+  }
 
   // ── Derived ───────────────────────────────────────────────────────────────
   let visibleColumns = $derived(
@@ -1013,7 +1032,8 @@
                           analyzeGroup(group);
                         }}
                         disabled={analyzingGroup !== null}
-                        title="Analyze unanalyzed frames with Siril (findstar + platesolve)">✦ Analyze</button
+                        title="Analyze unanalyzed frames with Siril (findstar + platesolve)"
+                        >✦ Analyze</button
                       >
                     {/if}
                     <button
@@ -1023,7 +1043,8 @@
                         analyzeGroup(group, true);
                       }}
                       disabled={analyzingGroup !== null}
-                      title="Re-run analysis on all frames, including already-analyzed ones">↺ Reanalyze</button
+                      title="Re-run analysis on all frames, including already-analyzed ones"
+                      >↺ Reanalyze</button
                     >
                   {/if}
                 {/if}
@@ -1151,9 +1172,16 @@
     >
       <p class="cp-title">Create project</p>
       <p class="cp-sub">
-        {cpEligibleCount} frame{cpEligibleCount !== 1 ? "s" : ""} will be added (lights, darks &amp; bias only)
+        {cpEligibleCount} frame{cpEligibleCount !== 1 ? "s" : ""} will be added (lights, darks &amp; bias
+        only)
         {#if cpModal.paths.length > cpEligibleCount}
-          <span class="cp-skipped">· {cpModal.paths.length - cpEligibleCount} other type{cpModal.paths.length - cpEligibleCount !== 1 ? "s" : ""} skipped</span>
+          <span class="cp-skipped"
+            >· {cpModal.paths.length - cpEligibleCount} other type{cpModal.paths.length -
+              cpEligibleCount !==
+            1
+              ? "s"
+              : ""} skipped</span
+          >
         {/if}
       </p>
       <input
@@ -1195,14 +1223,12 @@
 {/if}
 
 {#if renameModal}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="modal-backdrop"
     onclick={() => (renameModal = null)}
     onkeydown={(e) => e.key === "Escape" && (renameModal = null)}
     role="presentation"
   >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
       <h3 class="modal-title">Rename File</h3>
       <p class="modal-desc">Enter a new filename (same directory).</p>
@@ -1218,7 +1244,11 @@
         <p class="modal-error">{renameError}</p>
       {/if}
       <div class="modal-actions">
-        <button class="btn-primary" onclick={doRename} disabled={renameWorking || !renameValue.trim()}>
+        <button
+          class="btn-primary"
+          onclick={doRename}
+          disabled={renameWorking || !renameValue.trim()}
+        >
           {renameWorking ? "Renaming…" : "Rename"}
         </button>
         <button class="btn-ghost" onclick={() => (renameModal = null)} disabled={renameWorking}>
@@ -1230,14 +1260,12 @@
 {/if}
 
 {#if metaModal}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="modal-backdrop"
     onclick={() => (metaModal = null)}
     onkeydown={(e) => e.key === "Escape" && (metaModal = null)}
     role="presentation"
   >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
       <h3 class="modal-title">Edit Metadata</h3>
       <p class="modal-desc">Override DB metadata. Empty fields are left unchanged.</p>
@@ -1248,7 +1276,12 @@
         </label>
         <label class="meta-label">
           Telescope
-          <input class="modal-input" type="text" bind:value={metaModal.telescope} spellcheck="false" />
+          <input
+            class="modal-input"
+            type="text"
+            bind:value={metaModal.telescope}
+            spellcheck="false"
+          />
         </label>
         <label class="meta-label">
           Filter
@@ -1256,7 +1289,13 @@
         </label>
         <label class="meta-label">
           Date (ISO)
-          <input class="modal-input" type="text" bind:value={metaModal.dateObs} placeholder="2024-01-15T22:30:00" spellcheck="false" />
+          <input
+            class="modal-input"
+            type="text"
+            bind:value={metaModal.dateObs}
+            placeholder="2024-01-15T22:30:00"
+            spellcheck="false"
+          />
         </label>
       </div>
       {#if metaError}
@@ -1687,7 +1726,9 @@
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* ── Table ───────────────────────────────────────────────────────────────── */

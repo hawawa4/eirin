@@ -44,6 +44,10 @@
   import StatusFooter from "./components/StatusFooter.svelte";
   import StorageView from "./components/StorageView.svelte";
   import SkyAtlas from "./components/SkyAtlas.svelte";
+  import SplitPane from "./components/SplitPane.svelte";
+  import Toaster from "./components/Toaster.svelte";
+  import { loadUiState } from "./lib/uiState.svelte";
+  import { installUiScaleShortcuts } from "./lib/uiScale.svelte";
 
   const PREF_ROOT_FOLDER = "root_folder";
   const PREF_BASIC_COLLAPSED = "basic_collapsed";
@@ -113,8 +117,7 @@
   // ── Pref persistence guard ────────────────────────────────────────────────
   let prefsLoaded = $state(false);
 
-  // ── Pane layout ───────────────────────────────────────────────────────────
-  let leftPct = $state(42);
+  // ── Pane layout (split % lives in uiState) ────────────────────────────────
   let collapsed = $state(false);
 
   // ── Footer counts (updated by FileList) ──────────────────────────────────
@@ -143,6 +146,8 @@
     }
   });
 
+  onMount(() => installUiScaleShortcuts());
+
   onMount(async () => {
     const [p, info, siril, pf] = await Promise.all([
       LoadPrefs(),
@@ -159,6 +164,7 @@
     basicCollapsed = p.basicCollapsed;
     advancedCollapsed = p.advancedCollapsed;
     if (p.theme === "red" || p.theme === "grey") theme = p.theme;
+    loadUiState(p.uiState);
 
     if (p.columnConfig) {
       try {
@@ -360,33 +366,6 @@
       rejectionReason: "",
     } as app.EnrichedFileEntry;
   }
-
-  // ── Pane resize ───────────────────────────────────────────────────────────
-  function onDividerMouseDown(e: MouseEvent) {
-    e.preventDefault();
-    const contentArea = document.querySelector(".content-area") as HTMLElement;
-
-    function onMove(ev: MouseEvent) {
-      const rect = contentArea.getBoundingClientRect();
-      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
-      leftPct = Math.max(15, Math.min(75, pct));
-      if (collapsed) collapsed = false;
-    }
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  let leftStyle = $derived(
-    selectedEntry
-      ? collapsed
-        ? "flex: 0 0 0px; min-width: 0; overflow: hidden;"
-        : `flex: 0 0 ${leftPct}%;`
-      : "flex: 1;",
-  );
 </script>
 
 <div class="layout">
@@ -419,8 +398,8 @@
   {:else if appMode === "browser"}
     <NavToolbar {currentPath} canGoBack={pathHistory.length > 0} onnavigateBack={navigateBack} />
 
-    <div class="content-area">
-      <div class="file-list-pane" style={leftStyle}>
+    <SplitPane showSecondary={!!selectedEntry} collapsedLabel="file list" bind:collapsed>
+      {#snippet list()}
         <FileList
           {files}
           {selectedEntry}
@@ -442,35 +421,20 @@
             filteredCount = n;
           }}
         />
-      </div>
-
-      {#if selectedEntry}
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-          class="divider"
-          onmousedown={onDividerMouseDown}
-          role="separator"
-          aria-label="Resize panel"
-        >
-          <button
-            class="collapse-btn"
-            onmousedown={(e) => e.stopPropagation()}
-            onclick={() => (collapsed = !collapsed)}
-            title={collapsed ? "Expand file list" : "Collapse file list"}
-            >{collapsed ? "›" : "‹"}</button
-          >
-        </div>
-
-        <PreviewPane
-          entry={selectedEntry}
-          bind:stretchEnabled
-          bind:stretchLevel
-          bind:basicCollapsed
-          bind:advancedCollapsed
-          onclose={clearPreview}
-        />
-      {/if}
-    </div>
+      {/snippet}
+      {#snippet secondary()}
+        {#if selectedEntry}
+          <PreviewPane
+            entry={selectedEntry}
+            bind:stretchEnabled
+            bind:stretchLevel
+            bind:basicCollapsed
+            bind:advancedCollapsed
+            onclose={clearPreview}
+          />
+        {/if}
+      {/snippet}
+    </SplitPane>
 
     <StatusFooter
       {totalCount}
@@ -481,8 +445,8 @@
       {rootFolder}
     />
   {:else if appMode === "library"}
-    <div class="content-area">
-      <div class="file-list-pane" style={leftStyle}>
+    <SplitPane showSecondary={!!selectedEntry} collapsedLabel="library" bind:collapsed>
+      {#snippet list()}
         <LibraryView
           bind:this={libraryView}
           {rootFolder}
@@ -498,36 +462,21 @@
             appMode = "projects";
           }}
         />
-      </div>
-
-      {#if selectedEntry}
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-          class="divider"
-          onmousedown={onDividerMouseDown}
-          role="separator"
-          aria-label="Resize panel"
-        >
-          <button
-            class="collapse-btn"
-            onmousedown={(e) => e.stopPropagation()}
-            onclick={() => (collapsed = !collapsed)}
-            title={collapsed ? "Expand library" : "Collapse library"}
-            >{collapsed ? "›" : "‹"}</button
-          >
-        </div>
-
-        <PreviewPane
-          entry={selectedEntry}
-          qualityFrame={librarySelectedFrame}
-          bind:stretchEnabled
-          bind:stretchLevel
-          bind:basicCollapsed
-          bind:advancedCollapsed
-          onclose={clearPreview}
-        />
-      {/if}
-    </div>
+      {/snippet}
+      {#snippet secondary()}
+        {#if selectedEntry}
+          <PreviewPane
+            entry={selectedEntry}
+            qualityFrame={librarySelectedFrame}
+            bind:stretchEnabled
+            bind:stretchLevel
+            bind:basicCollapsed
+            bind:advancedCollapsed
+            onclose={clearPreview}
+          />
+        {/if}
+      {/snippet}
+    </SplitPane>
   {:else if appMode === "import"}
     <ImportView {rootFolder} />
   {:else if appMode === "projects"}
@@ -574,9 +523,10 @@
     onrestore={restoreFile}
     onharddelete={openHardDeleteConfirm}
     onopensiril={doOpenWithSiril}
-    onchangetype={() => {}}
   />
 {/if}
+
+<Toaster />
 
 {#if confirmDel}
   <HardDeleteModal
@@ -599,14 +549,6 @@
     flex: 1;
     display: flex;
     overflow: hidden;
-  }
-
-  .file-list-pane {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    transition: flex 0.18s ease;
-    min-width: 0;
   }
 
   .empty-state {
@@ -638,48 +580,5 @@
   .btn-large {
     padding: 9px 24px;
     font-size: 0.9rem;
-  }
-
-  /* ── Resize divider ─────────────────────────────────────────────────────── */
-
-  .divider {
-    width: 5px;
-    flex-shrink: 0;
-    background: var(--border);
-    cursor: col-resize;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    transition: background 0.15s;
-  }
-
-  .divider:hover {
-    background: var(--accent-dim);
-  }
-
-  .collapse-btn {
-    position: absolute;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 50%;
-    width: 18px;
-    height: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    padding: 0;
-    line-height: 1;
-    z-index: 10;
-    transition:
-      color 0.15s,
-      border-color 0.15s;
-  }
-  .collapse-btn:hover {
-    color: var(--accent);
-    border-color: var(--accent);
   }
 </style>

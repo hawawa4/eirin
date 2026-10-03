@@ -349,6 +349,29 @@ func (s *Store) GetAllFrameHashes() (map[string]bool, error) {
 	return result, rows.Err()
 }
 
+// GetFramePathsByHash returns the paths of all frames whose file_hash (the
+// SHA-256 of the first 1 MiB) equals hash. A prefix match is not proof of
+// identical content; callers must verify before acting destructively.
+func (s *Store) GetFramePathsByHash(hash string) ([]string, error) {
+	if hash == "" {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`SELECT nas_path FROM frames WHERE file_hash = ?`, hash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}
+
 // FrameQuality holds quality metrics produced by Siril headless analysis.
 type FrameQuality struct {
 	FWHM       float64

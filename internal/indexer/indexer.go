@@ -10,6 +10,9 @@ type ProgressEvent struct {
 	Indexed int    `json:"indexed"` // files newly read and added to cache
 	Errors  int    `json:"errors"`
 	Current string `json:"current"` // short display name of file being processed
+	// Error is set when the run could not start (e.g. root folder missing);
+	// it accompanies Phase "done" so the UI always leaves its busy state.
+	Error string `json:"error,omitempty"`
 }
 
 // IsFitsFile reports whether the given filename has a FITS extension.

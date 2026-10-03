@@ -1,18 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
-  import {
-    SelectSourceFolder,
-    ScanImportCandidates,
-    StartImport,
-  } from "$app";
+  import { SelectSourceFolder, ScanImportCandidates, StartImport } from "$app";
   import { Events } from "@wailsio/runtime";
   import type { ImportCandidate, ImportProgress, ImportState } from "../lib/types";
 
   interface Props {
     rootFolder: string;
+    /** True while this view's tab is visible (Phase 2 contract). */
+    active?: boolean;
+    /** Request a library (re)scan/index (Phase 2 contract). */
+    onscan?: () => void;
   }
 
+  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
   let { rootFolder }: Props = $props();
 
   let phase = $state<ImportState>("idle");

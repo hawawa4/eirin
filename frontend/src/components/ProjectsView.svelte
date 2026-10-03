@@ -22,9 +22,22 @@
     rootFolder: string;
     projectsFolder: string;
     initialProjectId?: number | null;
+    /** True while this view's tab is visible (Phase 2 contract). */
+    active?: boolean;
+    /** Request a library (re)scan/index (Phase 2 contract). */
+    onscan?: () => void;
+    /** Siril CLI is available (Phase 2 contract). */
+    sirilAvailable?: boolean;
   }
 
+  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
   let { rootFolder, projectsFolder, initialProjectId = null }: Props = $props();
+
+  /** Select the project with the given id (Phase 2 contract). */
+  export function selectProjectById(id: number): void {
+    // TODO(phase 2): select once projects are loaded.
+    void id;
+  }
 
   // ── Project list ──────────────────────────────────────────────────────────
   let projects = $state<Project[]>([]);

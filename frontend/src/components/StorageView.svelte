@@ -4,8 +4,13 @@
 
   interface Props {
     rootPath: string;
+    /** True while this view's tab is visible (Phase 2 contract). */
+    active?: boolean;
+    /** Request a library (re)scan/index (Phase 2 contract). */
+    onscan?: () => void;
   }
 
+  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
   let { rootPath }: Props = $props();
 
   // ── Data ──────────────────────────────────────────────────────────────────

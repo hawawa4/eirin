@@ -353,3 +353,24 @@ func TestSetFrameType(t *testing.T) {
 		t.Errorf("FrameType = %q, want %q", frames[path].FrameType, FrameTypeProcessed)
 	}
 }
+
+func TestGetFramePathsByHash(t *testing.T) {
+	s := newTestStore(t)
+	must(t, s.UpsertFrame("/nas/a.fits", Frame{FrameType: FrameTypeLight, FileHash: "h1"}))
+	must(t, s.UpsertFrame("/nas/b.fits", Frame{FrameType: FrameTypeLight, FileHash: "h1"}))
+	must(t, s.UpsertFrame("/nas/c.fits", Frame{FrameType: FrameTypeLight, FileHash: "h2"}))
+
+	paths, err := s.GetFramePathsByHash("h1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("paths = %v, want 2 entries", paths)
+	}
+	if paths, _ := s.GetFramePathsByHash("missing"); len(paths) != 0 {
+		t.Errorf("unknown hash returned %v", paths)
+	}
+	if paths, _ := s.GetFramePathsByHash(""); len(paths) != 0 {
+		t.Errorf("empty hash returned %v", paths)
+	}
+}

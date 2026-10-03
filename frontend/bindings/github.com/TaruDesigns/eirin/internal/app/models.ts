@@ -16,6 +16,54 @@ import * as siril$0 from "../siril/models.js";
 import * as time$0 from "../../../../../time/models.js";
 
 /**
+ * AddFramesResult summarises an AddFramesToProjectDetailed call.
+ */
+export class AddFramesResult {
+    /**
+     * new entries created
+     */
+    "added": number;
+
+    /**
+     * same source already in the project (no-op)
+     */
+    "alreadyPresent": number;
+
+    /**
+     * Skipped lists NAS paths not added because their frame type (stacked,
+     * processed, image, unknown) has no place in a Siril project.
+     */
+    "skipped": string[];
+
+    /** Creates a new AddFramesResult instance. */
+    constructor($$source: Partial<AddFramesResult> = {}) {
+        if (!("added" in $$source)) {
+            this["added"] = 0;
+        }
+        if (!("alreadyPresent" in $$source)) {
+            this["alreadyPresent"] = 0;
+        }
+        if (!("skipped" in $$source)) {
+            this["skipped"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AddFramesResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AddFramesResult {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("skipped" in $$parsedSource) {
+            $$parsedSource["skipped"] = $$createField2_0($$parsedSource["skipped"]);
+        }
+        return new AddFramesResult($$parsedSource as Partial<AddFramesResult>);
+    }
+}
+
+/**
  * AppInfo contains read-only runtime information surfaced in the Settings view.
  */
 export class AppInfo {
@@ -54,7 +102,7 @@ export class AppInfo {
      * Creates a new AppInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): AppInfo {
-        const $$createField4_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField4_0($$parsedSource["capabilities"]);
@@ -356,6 +404,18 @@ export const ImportCandidate = importer$0.Candidate;
 export type ImportCandidate = importer$0.Candidate;
 
 /**
+ * ImportProgress is emitted as an "import:progress" event during StartImport.
+ * Re-exported from the importer package for Wails binding compatibility.
+ */
+export const ImportProgress = importer$0.Progress;
+
+/**
+ * ImportProgress is emitted as an "import:progress" event during StartImport.
+ * Re-exported from the importer package for Wails binding compatibility.
+ */
+export type ImportProgress = importer$0.Progress;
+
+/**
  * LibraryFrame is the data exported to the frontend for the library view.
  */
 export class LibraryFrame {
@@ -530,7 +590,7 @@ export class PagedLightFrames {
      * Creates a new PagedLightFrames instance from a string or object.
      */
     static createFrom($$source: any = {}): PagedLightFrames {
-        const $$createField0_0 = $$createType2;
+        const $$createField0_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frames" in $$parsedSource) {
             $$parsedSource["frames"] = $$createField0_0($$parsedSource["frames"]);
@@ -580,7 +640,7 @@ export class Project {
 }
 
 /**
- * ProjectOutputFile describes a file in the project root (outside lights/).
+ * ProjectOutputFile describes a file in the project root (outside the frame subfolders).
  */
 export class ProjectOutputFile {
     "name": string;
@@ -655,7 +715,7 @@ export class StorageNode {
      * Creates a new StorageNode instance from a string or object.
      */
     static createFrom($$source: any = {}): StorageNode {
-        const $$createField3_0 = $$createType4;
+        const $$createField3_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField3_0($$parsedSource["children"]);
@@ -707,7 +767,7 @@ export class SuggestResult {
      * Creates a new SuggestResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SuggestResult {
-        const $$createField0_0 = $$createType1;
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frame" in $$parsedSource) {
             $$parsedSource["frame"] = $$createField0_0($$parsedSource["frame"]);
@@ -717,8 +777,9 @@ export class SuggestResult {
 }
 
 // Private type creation functions
-const $$createType0 = Capabilities.createFrom;
-const $$createType1 = LibraryFrame.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = StorageNode.createFrom;
-const $$createType4 = $Create.Array($$createType3);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = Capabilities.createFrom;
+const $$createType2 = LibraryFrame.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = StorageNode.createFrom;
+const $$createType5 = $Create.Array($$createType4);
