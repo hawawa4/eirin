@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { SvelteSet, SvelteMap } from "svelte/reactivity";
+  import { tick, untrack } from "svelte";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import {
     GetLibraryFrames,
     SetFrameType,
@@ -13,17 +13,12 @@
     OpenWithSiril,
     AnalyzeFrames,
     CancelAnalysis,
-    CreateProject,
-    AddFramesToProject,
-    SuggestRejects,
-    RenameFrame,
-    UpdateFrameMeta,
+    RevealPath,
   } from "$app";
   import { Events } from "@wailsio/runtime";
   import type * as app from "$models/app";
   import type {
     AnalysisProgress,
-    ColFilter,
     ColumnDef,
     CtxEntry,
     CtxMenuState,
@@ -31,108 +26,147 @@
     LibraryGroupBy,
     Project,
   } from "../lib/types";
-  import { FRAME_TYPE_META } from "../lib/types";
-  import {
-    getLibraryCellValue,
-    getFrameTextVal,
-    getFrameNumVal,
-    getFrameSortVal,
-  } from "../lib/utils";
+  import { libraryFrameToEntry } from "../lib/utils";
   import { makeColumnManager } from "../lib/columnManager";
+  import { ui } from "../lib/uiState.svelte";
+  import { toast, attempt } from "../lib/toast.svelte";
+  import { isModalOpen, isTypingTarget } from "../lib/keys";
+  import {
+    anyColFilterActive,
+    matchesColFilters,
+    matchesSearch,
+    type ColFilters,
+  } from "../lib/library/filters";
+  import {
+    buildGroups,
+    cursorAfterRemoval,
+    groupKeyFor,
+    indexByPath,
+    positionsByPath,
+    sortFrames,
+    toGroupBy,
+    type LibGroup,
+  } from "../lib/library/groups";
+  import { forgetPreview } from "../lib/library/previewCache";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
   import BlinkModal from "./BlinkModal.svelte";
+  import SplitPane from "./SplitPane.svelte";
+  import PreviewPane from "./PreviewPane.svelte";
+  import LibraryToolbar from "./library/LibraryToolbar.svelte";
+  import SelectionBar from "./library/SelectionBar.svelte";
+  import LibraryTableHead from "./library/LibraryTableHead.svelte";
+  import GroupHeaderRow from "./library/GroupHeaderRow.svelte";
+  import FrameRow from "./library/FrameRow.svelte";
+  import TypeFilterPopup from "./library/TypeFilterPopup.svelte";
+  import ShortcutsPopover from "./library/ShortcutsPopover.svelte";
+  import CreateProjectModal from "./library/CreateProjectModal.svelte";
+  import RenameModal from "./library/RenameModal.svelte";
+  import EditMetaModal, { type FrameMetaEdit } from "./library/EditMetaModal.svelte";
+  import SuggestRejectsModal from "./library/SuggestRejectsModal.svelte";
 
   interface Props {
     rootFolder: string;
     columns: ColumnDef[];
-    selectedNasPath: string | null;
     sirilAvailable: boolean;
-    initialFilter?: string;
-    onfileclick: (frame: app.LibraryFrame) => void;
     onsavecolumns: () => void;
-    onframesreloaded?: (frames: app.LibraryFrame[]) => void;
     oncreateproject?: (project: Project) => void;
-    /** True while this view's tab is visible (Phase 2 contract). */
+    /** True while this view's tab is visible; keyboard shortcuts are off otherwise. */
     active?: boolean;
-    /** Request a library (re)scan/index (Phase 2 contract). */
+    /** Request a library (re)scan/index. */
     onscan?: () => void;
-    /** True while a library index build is running (Phase 2 contract). */
+    /** True while a library index build is running. */
     indexRunning?: boolean;
+    /** @deprecated ignored; removed after merge */
+    selectedNasPath?: string | null;
+    /** @deprecated ignored; removed after merge */
+    initialFilter?: string;
+    /** @deprecated ignored; removed after merge */
+    onfileclick?: (frame: app.LibraryFrame) => void;
+    /** @deprecated ignored; removed after merge */
+    onframesreloaded?: (frames: app.LibraryFrame[]) => void;
   }
 
-  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
+  // eslint-disable-next-line svelte/no-unused-props -- deprecated props kept until App stops passing them
   let {
     rootFolder,
     columns,
-    selectedNasPath,
     sirilAvailable,
-    initialFilter,
-    onfileclick,
     onsavecolumns,
-    onframesreloaded,
     oncreateproject,
+    active = true,
+    onscan,
+    indexRunning = false,
   }: Props = $props();
 
+  const CHUNK = 300;
+  const SEARCH_DEBOUNCE_MS = 150;
+
+  function plural(n: number, word = "frame") {
+    return `${n} ${word}${n === 1 ? "" : "s"}`;
+  }
+
+  function baseName(path: string) {
+    return path.split(/[\\/]/).pop() ?? path;
+  }
+
   // ── Data ─────────────────────────────────────────────────────────────────
-  let frames = $state<app.LibraryFrame[]>([]);
+  let frames = $state.raw<app.LibraryFrame[]>([]);
+  let loadedOnce = $state(false);
+  /** First load for the current root (full spinner). */
   let loading = $state(false);
+  /** Background reload — the table stays visible. */
+  let refreshing = $state(false);
   let error = $state("");
+  let reloadQueued = false;
 
-  // ── Toolbar state ─────────────────────────────────────────────────────────
+  let frameByPath = $derived(indexByPath(frames));
+
+  // ── View state ───────────────────────────────────────────────────────────
   let showRejected = $state(false);
-  let groupBy = $state<LibraryGroupBy>("object");
-  let search = $state("");
-  let showColumnMenu = $state(false);
+  let groupBy = $derived(toGroupBy(ui.libraryGroupBy));
+  let sort = $derived(ui.librarySort);
 
-  // ── Sort state ────────────────────────────────────────────────────────────
-  let sortCol = $state<string | null>(null);
-  let sortDir = $state<"asc" | "desc">("asc");
+  let searchInput = $state("");
+  let search = $state("");
+  $effect(() => {
+    const v = searchInput.trim();
+    if (!v) {
+      search = "";
+      return;
+    }
+    const t = setTimeout(() => (search = v), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  });
+
+  let colFilters = $state<ColFilters>({});
+  let typeFilterPos = $state<{ x: number; y: number } | null>(null);
+  let showShortcuts = $state(false);
+
+  let colFiltersActive = $derived(anyColFilterActive(colFilters));
+  let filtering = $derived(!!search || colFiltersActive);
+
+  function setGroupBy(g: LibraryGroupBy) {
+    ui.libraryGroupBy = g;
+  }
 
   function toggleSort(colId: string) {
-    if (sortCol === colId) {
-      sortDir = sortDir === "asc" ? "desc" : "asc";
-    } else {
-      sortCol = colId;
-      sortDir = "asc";
-    }
+    const s = ui.librarySort;
+    ui.librarySort =
+      s?.col === colId
+        ? { col: colId, dir: s.dir === "asc" ? "desc" : "asc" }
+        : { col: colId, dir: "asc" };
+  }
+
+  function switchTab(rejected: boolean) {
+    if (showRejected === rejected) return;
+    showRejected = rejected;
+    selectedPaths.clear();
+    previewPath = null;
+    anchorPath = null;
   }
 
   // ── Column filters ────────────────────────────────────────────────────────
-  const TEXT_FILTER_COLS = new Set([
-    "name",
-    "object",
-    "filter",
-    "telescope",
-    "instrument",
-    "dateObs",
-  ]);
-  const NUMERIC_FILTER_COLS = new Set([
-    "expTime",
-    "size",
-    "gain",
-    "ccdTemp",
-    "fwhm",
-    "starCount",
-    "background",
-    "noise",
-    "snr",
-  ]);
-
-  let colFilters = $state<Record<string, ColFilter>>({});
-  let typeFilterPos = $state<{ x: number; y: number } | null>(null);
-
-  function getColFilterActive(colId: string): boolean {
-    const cf = colFilters[colId];
-    if (!cf) return false;
-    if (colId === "frameType") return (cf.types?.length ?? 0) > 0;
-    if (TEXT_FILTER_COLS.has(colId)) return !!cf.text;
-    if (NUMERIC_FILTER_COLS.has(colId)) return cf.numOp != null && cf.numVal != null;
-    return false;
-  }
-
-  let anyColFilterActive = $derived(Object.keys(colFilters).some((k) => getColFilterActive(k)));
-
   function clearColFilters() {
     colFilters = {};
     typeFilterPos = null;
@@ -140,25 +174,12 @@
 
   function clearAllFilters() {
     clearColFilters();
+    searchInput = "";
     search = "";
   }
 
-  // When the atlas opens a specific file, pre-filter the name column to that filename.
-  $effect(() => {
-    if (initialFilter) {
-      colFilters = { name: { text: initialFilter } };
-    }
-  });
-
-  const textDebounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-
   function setTextFilter(colId: string, text: string) {
     colFilters = { ...colFilters, [colId]: { ...colFilters[colId], text: text || undefined } };
-  }
-
-  function setTextFilterDebounced(colId: string, text: string) {
-    clearTimeout(textDebounceTimers[colId]);
-    textDebounceTimers[colId] = setTimeout(() => setTextFilter(colId, text), 100);
   }
 
   function setNumFilter(colId: string, val: number | null) {
@@ -168,17 +189,17 @@
 
   function toggleNumOp(colId: string) {
     const current = colFilters[colId]?.numOp ?? "<";
-    const newOp: "<" | ">" = current === "<" ? ">" : "<";
-    colFilters = { ...colFilters, [colId]: { ...colFilters[colId], numOp: newOp } };
+    const numOp: "<" | ">" = current === "<" ? ">" : "<";
+    colFilters = { ...colFilters, [colId]: { ...colFilters[colId], numOp } };
   }
 
   function toggleTypeFilter(type: FrameType) {
-    const current = colFilters["frameType"]?.types ?? [];
-    const next = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
-    colFilters = { ...colFilters, frameType: { ...colFilters["frameType"], types: next } };
+    const current = colFilters.frameType?.types ?? [];
+    const types = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
+    colFilters = { ...colFilters, frameType: { ...colFilters.frameType, types } };
   }
 
-  // ── Column drag ───────────────────────────────────────────────────────────
+  // ── Columns ───────────────────────────────────────────────────────────────
   let dragOverIndex = $state(-1);
   const colMgr = makeColumnManager(
     () => columns,
@@ -188,82 +209,281 @@
     () => onsavecolumns(),
   );
 
-  // ── Multi-select ──────────────────────────────────────────────────────────
-  let selectedPaths = new SvelteSet<string>();
-  let lastSelectedPath = "";
-  let ctxPaths = $state<string[]>([]);
+  let visibleColumns = $derived(
+    [...columns].filter((c) => c.visible).sort((a, b) => a.order - b.order),
+  );
+  let totalColWidth = $derived(visibleColumns.reduce((s, c) => s + c.width, 0));
 
-  // ── Context menu / delete modal ───────────────────────────────────────────
-  let ctxMenu = $state<CtxMenuState | null>(null);
-  let confirmDel = $state<{ paths: string[]; name: string } | null>(null);
-
-  // ── Rename modal ──────────────────────────────────────────────────────────
-  let renameModal = $state<{ entry: CtxEntry } | null>(null);
-  let renameValue = $state("");
-  let renameError = $state("");
-  let renameWorking = $state(false);
-
-  // ── Edit metadata modal ───────────────────────────────────────────────────
-  interface MetaEdit {
-    path: string;
-    object: string;
-    telescope: string;
-    filter: string;
-    dateObs: string;
+  function toggleColumn(colId: string) {
+    const col = columns.find((c) => c.id === colId);
+    if (!col) return;
+    col.visible = !col.visible;
+    onsavecolumns();
   }
-  let metaModal = $state<MetaEdit | null>(null);
-  let metaWorking = $state(false);
-  let metaError = $state("");
 
-  // ── Create project modal ──────────────────────────────────────────────────
-  let cpModal = $state<{ paths: string[] } | null>(null);
-  let cpName = $state("");
-  let cpMode = $state<"symlink" | "copy">("symlink");
-  let cpError = $state("");
-  let cpCreating = $state(false);
+  // ── Derived rows ──────────────────────────────────────────────────────────
+  let rejectedCount = $derived(frames.reduce((n, f) => n + (f.isRejected ? 1 : 0), 0));
+  let tabFrames = $derived(frames.filter((f) => f.isRejected === showRejected));
+  let filtered = $derived(
+    filtering
+      ? tabFrames.filter((f) => matchesSearch(f, search) && matchesColFilters(f, colFilters))
+      : tabFrames,
+  );
+  let sorted = $derived(sortFrames(filtered, sort));
+  let groups = $derived<LibGroup[]>(buildGroups(sorted, groupBy));
 
-  const PROJECT_FRAME_TYPES = new Set(["light", "dark", "bias"]);
+  // ── Group expansion ───────────────────────────────────────────────────────
+  // Explicit choices only; without one, a group is expanded while filtering (so
+  // matches are visible) or when there are ≤ 3 groups. Choices made while filtering
+  // are temporary and dropped when the filters clear, restoring the manual set.
+  const manualExpanded = new SvelteMap<string, boolean>();
+  const filterExpanded = new SvelteMap<string, boolean>();
+  const groupLimits = new SvelteMap<string, number>();
 
-  let cpEligibleCount = $derived(
-    cpModal
-      ? cpModal.paths.filter((p) => {
-          const f = frames.find((fr) => fr.nasPath === p);
-          return f ? PROJECT_FRAME_TYPES.has(f.frameType) : false;
-        }).length
-      : 0,
+  function isExpanded(key: string): boolean {
+    const choice = (filtering ? filterExpanded : manualExpanded).get(key);
+    if (choice !== undefined) return choice;
+    return filtering || groups.length <= 3;
+  }
+
+  $effect(() => {
+    if (!filtering) untrack(() => filterExpanded.clear());
+  });
+
+  $effect(() => {
+    void groupBy;
+    untrack(() => {
+      manualExpanded.clear();
+      groupLimits.clear();
+    });
+  });
+
+  function toggleGroup(key: string) {
+    (filtering ? filterExpanded : manualExpanded).set(key, !isExpanded(key));
+  }
+
+  function setAllExpanded(expanded: boolean) {
+    const m = filtering ? filterExpanded : manualExpanded;
+    for (const g of groups) m.set(g.key, expanded);
+  }
+
+  function limitFor(key: string): number {
+    return groupLimits.get(key) ?? CHUNK;
+  }
+
+  /** Rows in display order (expanded groups only, ignoring render chunking). */
+  let visibleRows = $derived(groups.flatMap((g) => (isExpanded(g.key) ? g.frames : [])));
+  let visiblePos = $derived(positionsByPath(visibleRows));
+
+  /** Makes sure the chunked renderer includes `path` (and its group is expanded). */
+  function ensureRowRendered(path: string) {
+    const f = frameByPath.get(path);
+    if (!f) return;
+    const key = groupKeyFor(f, groupBy);
+    const group = groups.find((g) => g.key === key);
+    if (!group) return;
+    if (!isExpanded(key)) (filtering ? filterExpanded : manualExpanded).set(key, true);
+    const idx = group.frames.findIndex((x) => x.nasPath === path);
+    if (idx >= limitFor(key)) groupLimits.set(key, Math.ceil((idx + 1) / CHUNK) * CHUNK);
+  }
+
+  // ── Selection & preview cursor ───────────────────────────────────────────
+  /** Checked rows (multi-selection). */
+  const selectedPaths = new SvelteSet<string>();
+  /** The previewed row — also the keyboard cursor. */
+  let previewPath = $state<string | null>(null);
+  /** Start of the next Shift-click range. */
+  let anchorPath: string | null = null;
+  let collapsed = $state(false);
+  let tableWrap = $state<HTMLDivElement | null>(null);
+
+  let previewFrame = $derived(previewPath ? (frameByPath.get(previewPath) ?? null) : null);
+  let previewEntry = $derived(previewFrame ? libraryFrameToEntry(previewFrame) : null);
+  let cursorIdx = $derived(previewPath ? (visiblePos.get(previewPath) ?? -1) : -1);
+  let prevPath = $derived(cursorIdx > 0 ? visibleRows[cursorIdx - 1].nasPath : null);
+  let nextPath = $derived(
+    cursorIdx !== -1 && cursorIdx < visibleRows.length - 1
+      ? visibleRows[cursorIdx + 1].nasPath
+      : null,
   );
 
-  async function doCreateProject() {
-    if (!cpName.trim() || !cpModal) return;
-    cpCreating = true;
-    cpError = "";
-    try {
-      const eligible = cpModal.paths.filter((p) => {
-        const f = frames.find((fr) => fr.nasPath === p);
-        return f ? PROJECT_FRAME_TYPES.has(f.frameType) : false;
-      });
-      const project = await CreateProject(cpName.trim(), "");
-      if (eligible.length > 0) {
-        await AddFramesToProject(project.folder, eligible, cpMode);
+  async function scrollToPath(path: string) {
+    await tick();
+    const row = tableWrap?.querySelector<HTMLElement>(`tr[data-path="${CSS.escape(path)}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+  }
+
+  function setCursor(path: string | null, scroll = true) {
+    previewPath = path;
+    if (!path) return;
+    anchorPath = path;
+    ensureRowRendered(path);
+    if (scroll) scrollToPath(path);
+  }
+
+  function moveCursor(delta: 1 | -1) {
+    const rows = visibleRows;
+    if (rows.length === 0) return;
+    const i = cursorIdx;
+    const next =
+      i === -1
+        ? delta > 0
+          ? 0
+          : rows.length - 1
+        : Math.max(0, Math.min(rows.length - 1, i + delta));
+    setCursor(rows[next].nasPath);
+  }
+
+  function toggleChecked(path: string) {
+    if (selectedPaths.has(path)) selectedPaths.delete(path);
+    else selectedPaths.add(path);
+  }
+
+  function onRowClick(e: MouseEvent, frame: app.LibraryFrame) {
+    const path = frame.nasPath;
+    if (e.shiftKey) {
+      const from = anchorPath ?? previewPath;
+      const a = from ? visiblePos.get(from) : undefined;
+      const b = visiblePos.get(path);
+      if (a !== undefined && b !== undefined) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        for (let i = lo; i <= hi; i++) selectedPaths.add(visibleRows[i].nasPath);
+      } else {
+        selectedPaths.add(path);
       }
-      cpModal = null;
-      cpName = "";
-      oncreateproject?.(project);
+      previewPath = path;
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      // Seed with the previewed row so click + Ctrl-click selects both.
+      if (selectedPaths.size === 0 && previewPath && previewPath !== path) {
+        selectedPaths.add(previewPath);
+      }
+      toggleChecked(path);
+      anchorPath = path;
+      previewPath = path;
+      return;
+    }
+    anchorPath = path;
+    previewPath = previewPath === path ? null : path;
+  }
+
+  function onCheckbox(frame: app.LibraryFrame) {
+    toggleChecked(frame.nasPath);
+    anchorPath = frame.nasPath;
+  }
+
+  function selectAll() {
+    for (const f of sorted) selectedPaths.add(f.nasPath);
+  }
+
+  function clearSelection() {
+    selectedPaths.clear();
+  }
+
+  /** Checked rows, or the previewed row when nothing is checked. */
+  function targetPaths(): string[] {
+    if (selectedPaths.size > 0) return [...selectedPaths];
+    return previewPath ? [previewPath] : [];
+  }
+
+  // ── Loading ──────────────────────────────────────────────────────────────
+  let pendingFocus: string | null = null;
+
+  async function reload(): Promise<void> {
+    const root = rootFolder;
+    if (!root) return;
+    if (loading || refreshing) {
+      reloadQueued = true;
+      return;
+    }
+    const initial = !loadedOnce;
+    if (initial) loading = true;
+    else refreshing = true;
+    try {
+      const res = (await GetLibraryFrames(root)) ?? [];
+      if (root !== rootFolder) return; // root changed mid-flight; a reload is queued
+      frames = res;
+      loadedOnce = true;
+      error = "";
+      pruneMissing();
     } catch (e) {
-      cpError = String(e);
+      if (initial) error = String(e);
+      else toast.error(`Could not refresh the library: ${String(e)}`);
     } finally {
-      cpCreating = false;
+      loading = false;
+      refreshing = false;
+      if (reloadQueued) {
+        reloadQueued = false;
+        reload();
+      } else if (pendingFocus && loadedOnce) {
+        applyFocus(pendingFocus);
+      }
     }
   }
 
-  // ── Siril analysis ────────────────────────────────────────────────────────
+  /** Drops selection / preview / blink entries whose files vanished after a reload. */
+  function pruneMissing() {
+    for (const p of [...selectedPaths]) if (!frameByPath.has(p)) selectedPaths.delete(p);
+    if (previewPath && !frameByPath.has(previewPath)) previewPath = null;
+    if (blinkFrames.length) {
+      blinkFrames = blinkFrames.flatMap((f) => {
+        const fresh = frameByPath.get(f.nasPath);
+        return fresh ? [fresh] : [];
+      });
+      if (blinkFrames.length < 2) showBlink = false;
+    }
+  }
+
+  export { reload };
+
+  // (Re)load whenever the root changes — including the first mount.
+  let loadedRoot: string | null = null;
+  $effect(() => {
+    const root = rootFolder;
+    untrack(() => {
+      if (root === loadedRoot) return;
+      loadedRoot = root;
+      frames = [];
+      loadedOnce = false;
+      error = "";
+      selectedPaths.clear();
+      previewPath = null;
+      reload();
+    });
+  });
+
+  // ── Focus a frame (e.g. from the Sky Atlas) ──────────────────────────────
+  /** Reveal, select and preview the frame at `nasPath`; queued until frames are loaded. */
+  export function focusFile(nasPath: string): void {
+    if (!loadedOnce || loading || refreshing) {
+      pendingFocus = nasPath;
+      return;
+    }
+    applyFocus(nasPath);
+  }
+
+  function applyFocus(nasPath: string) {
+    pendingFocus = null;
+    const f = frameByPath.get(nasPath);
+    if (!f) {
+      toast.info(`${baseName(nasPath)} is not in the library index yet — try a scan.`);
+      return;
+    }
+    clearAllFilters();
+    if (showRejected !== f.isRejected) switchTab(f.isRejected);
+    selectedPaths.clear();
+    manualExpanded.set(groupKeyFor(f, groupBy), true);
+    setCursor(nasPath);
+  }
+
+  // ── Events ───────────────────────────────────────────────────────────────
   let analyzingGroup = $state<string | null>(null);
   let analysisProgress = $state<AnalysisProgress | null>(null);
 
   $effect(() => {
     const unsubProgress = Events.On("analysis:progress", (event) => {
-      const data = event.data as AnalysisProgress;
-      analysisProgress = data;
+      analysisProgress = event.data as AnalysisProgress;
     });
     const unsubUpdated = Events.On("library:updated", () => {
       reload();
@@ -274,274 +494,176 @@
     };
   });
 
-  async function analyzeGroup(group: LibGroup, force = false) {
-    const paths = force
-      ? group.frames.map((f) => f.nasPath)
-      : group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
+  async function analyzeGroup(group: LibGroup, force: boolean) {
+    const paths = (force ? group.frames : group.frames.filter((f) => !f.qualityAnalyzed)).map(
+      (f) => f.nasPath,
+    );
     if (!paths.length) return;
     analyzingGroup = group.key;
     analysisProgress = null;
-    try {
+    const ok = await attempt(async () => {
       await AnalyzeFrames(paths);
-    } finally {
-      analyzingGroup = null;
-      analysisProgress = null;
-      reload();
-    }
-  }
-
-  // ── Group collapse — empty set = all collapsed (default) ─────────────────
-  let expandedGroups = new SvelteSet<string>();
-
-  function toggleGroup(key: string) {
-    if (expandedGroups.has(key)) expandedGroups.delete(key);
-    else expandedGroups.add(key);
-  }
-
-  function expandAll() {
-    expandedGroups.clear();
-    groups.forEach((g) => expandedGroups.add(g.key));
-  }
-
-  function collapseAll() {
-    expandedGroups.clear();
-  }
-
-  const GROUP_BY_OPTIONS: { value: LibraryGroupBy; label: string }[] = [
-    { value: "object", label: "Object" },
-    { value: "date", label: "Date" },
-    { value: "filter", label: "Filter" },
-    { value: "frameType", label: "Type" },
-  ];
-
-  onMount(() => {
-    reload();
-  });
-
-  async function reload() {
-    if (!rootFolder || loading) return;
-    loading = true;
-    error = "";
-    selectedPaths.clear();
-    try {
-      frames = (await GetLibraryFrames(rootFolder)) ?? [];
-      onframesreloaded?.(frames);
-    } catch (e) {
-      error = String(e);
-      frames = [];
-    } finally {
-      loading = false;
-    }
-  }
-
-  export { reload };
-
-  /** Reveal and select the frame at `nasPath` (Phase 2 contract). */
-  export function focusFile(nasPath: string): void {
-    // TODO(phase 2): clear filters as needed, expand its group, select and scroll into view.
-    void nasPath;
-  }
-
-  // ── Derived ───────────────────────────────────────────────────────────────
-  let visibleColumns = $derived(
-    [...columns].filter((c) => c.visible).sort((a, b) => a.order - b.order),
-  );
-
-  let totalColWidth = $derived(visibleColumns.reduce((s, c) => s + c.width, 0));
-
-  let rejectedCount = $derived(frames.filter((f) => f.isRejected).length);
-
-  let filtered = $derived(
-    frames.filter((f) => {
-      if (showRejected ? !f.isRejected : f.isRejected) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !f.fileName.toLowerCase().includes(q) &&
-          !f.object.toLowerCase().includes(q) &&
-          !f.filter.toLowerCase().includes(q)
-        )
-          return false;
-      }
-      for (const [colId, cf] of Object.entries(colFilters)) {
-        if (colId === "frameType") {
-          if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType))
-            return false;
-        } else if (TEXT_FILTER_COLS.has(colId) && cf.text) {
-          if (!getFrameTextVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase()))
-            return false;
-        } else if (NUMERIC_FILTER_COLS.has(colId) && cf.numOp && cf.numVal != null) {
-          const val = getFrameNumVal(f, colId);
-          if (val === null) continue;
-          if (cf.numOp === "<" && val >= cf.numVal) return false;
-          if (cf.numOp === ">" && val <= cf.numVal) return false;
-        }
-      }
       return true;
-    }),
-  );
-
-  let sorted = $derived(
-    sortCol
-      ? [...filtered].sort((a, b) => {
-          const av = getFrameSortVal(a, sortCol!);
-          const bv = getFrameSortVal(b, sortCol!);
-          const mul = sortDir === "asc" ? 1 : -1;
-          if (av < bv) return -1 * mul;
-          if (av > bv) return 1 * mul;
-          return 0;
-        })
-      : filtered,
-  );
-
-  interface LibGroup {
-    key: string;
-    label: string;
-    frames: app.LibraryFrame[];
+    }, `Analysis of “${group.label}” failed`);
+    const errors = (analysisProgress as AnalysisProgress | null)?.errors ?? 0;
+    analyzingGroup = null;
+    analysisProgress = null;
+    if (ok) {
+      if (errors > 0) toast.error(`Analysis finished with ${plural(errors, "error")}`);
+      else toast.success(`Analyzed ${plural(paths.length)} in “${group.label}”`);
+    }
+    reload();
   }
 
-  let groups = $derived<LibGroup[]>(buildGroups(sorted));
+  function cancelAnalysis() {
+    attempt(() => CancelAnalysis(), "Could not cancel the analysis");
+  }
 
-  function buildGroups(items: app.LibraryFrame[]): LibGroup[] {
-    const map = new SvelteMap<string, app.LibraryFrame[]>();
-    for (const f of items) {
-      const key = groupKeyFor(f);
-      const bucket = map.get(key);
-      if (bucket) {
-        bucket.push(f);
-      } else {
-        map.set(key, [f]);
-      }
+  // ── Reject / restore / delete ────────────────────────────────────────────
+  /**
+   * Sets the rejected flag on `paths` (skipping ones already in that state).
+   * Optimistic: the state flips synchronously and is reverted if the backend call
+   * fails. Shows a toast with Undo unless `undoable` is false. Resolves true on success.
+   */
+  async function setRejected(paths: string[], rejected: boolean, undoable = true) {
+    const list = paths.filter((p) => {
+      const f = frameByPath.get(p);
+      return f !== undefined && f.isRejected !== rejected;
+    });
+    if (list.length === 0) return true;
+    const changed = new Set(list);
+    const applyFlag = (value: boolean) => {
+      const flip = (f: app.LibraryFrame) =>
+        changed.has(f.nasPath) ? { ...f, isRejected: value } : f;
+      frames = frames.map(flip);
+      blinkFrames = blinkFrames.map(flip);
+    };
+    applyFlag(rejected);
+    const ok = await attempt(
+      async () => {
+        if (list.length === 1) await (rejected ? RejectFile(list[0]) : UnrejectFile(list[0]));
+        else await (rejected ? BatchRejectFiles(list) : BatchUnrejectFiles(list));
+        return true;
+      },
+      `Could not ${rejected ? "reject" : "restore"} ${plural(list.length)}`,
+    );
+    if (!ok) {
+      applyFlag(!rejected);
+      if (list.length > 1) reload(); // a batch may have partially applied
+      return false;
     }
-    const result: LibGroup[] = [];
-    for (const [key, gFrames] of map) {
-      result.push({ key, label: labelForKey(key), frames: gFrames });
+    if (undoable) {
+      toast.success(`${rejected ? "Rejected" : "Restored"} ${plural(list.length)}`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await setRejected(list, !rejected, false);
+          },
+        },
+      });
     }
-    result.sort((a, b) => a.key.localeCompare(b.key));
+    return true;
+  }
+
+  /**
+   * Rejects/restores `paths`; rows that leave the current tab are unchecked and the
+   * preview cursor advances past them right away (so rapid `x` presses keep culling).
+   */
+  function applyReject(paths: string[], rejected: boolean): Promise<boolean> {
+    if (paths.length === 0) return Promise.resolve(true);
+    const leavesTab = rejected !== showRejected;
+    const leaving = new Set(paths);
+    const next = leavesTab ? cursorAfterRemoval(visibleRows, previewPath, leaving) : previewPath;
+    const result = setRejected(paths, rejected); // flips state synchronously
+    if (leavesTab) {
+      for (const p of paths) selectedPaths.delete(p);
+      if (previewPath && leaving.has(previewPath)) setCursor(next);
+    }
     return result;
   }
 
-  function groupKeyFor(f: app.LibraryFrame): string {
-    switch (groupBy) {
-      case "object":
-        return f.object || "(unknown object)";
-      case "date":
-        return f.dateObs ? f.dateObs.slice(0, 10) : "(no date)";
-      case "filter":
-        return f.filter || "(no filter)";
-      case "frameType":
-        return f.frameType || "stacked";
-    }
+  let confirmDel = $state<{ paths: string[]; name: string } | null>(null);
+
+  function askDelete(paths: string[]) {
+    if (paths.length === 0) return;
+    confirmDel = {
+      paths,
+      name:
+        paths.length === 1
+          ? (frameByPath.get(paths[0])?.fileName ?? baseName(paths[0]))
+          : `${paths.length} frames`,
+    };
   }
 
-  function labelForKey(key: string): string {
-    if (groupBy === "frameType") return FRAME_TYPE_META[key]?.label ?? key;
-    return key;
-  }
-
-  function frameTypeMeta(type: string) {
-    return (
-      FRAME_TYPE_META[type] ?? {
-        label: type,
-        short: type.toUpperCase(),
-        color: "#9ca3af",
-        bg: "#1f2937",
-      }
+  async function hardDelete(paths: string[]): Promise<boolean> {
+    const removed = new Set(paths);
+    const next = cursorAfterRemoval(visibleRows, previewPath, removed);
+    const ok = await attempt(
+      async () => {
+        if (paths.length === 1) await HardDeleteFile(paths[0]);
+        else await BatchHardDeleteFiles(paths);
+        return true;
+      },
+      `Could not delete ${plural(paths.length)}`,
     );
-  }
-
-  const TYPE_ORDER = ["light", "stacked", "processed", "image", "flat", "dark", "bias"];
-
-  function selectAll() {
-    for (const f of sorted) selectedPaths.add(f.nasPath);
-  }
-
-  function clearSelection() {
-    selectedPaths.clear();
-  }
-
-  function unanalyzedPaths(group: LibGroup): string[] {
-    return group.frames.filter((f) => !f.qualityAnalyzed).map((f) => f.nasPath);
-  }
-
-  function groupTypeBreakdown(frames: app.LibraryFrame[]) {
-    const counts = new SvelteMap<string, number>();
-    for (const f of frames) counts.set(f.frameType, (counts.get(f.frameType) ?? 0) + 1);
-    return [...counts.entries()]
-      .sort((a, b) => {
-        const ai = TYPE_ORDER.indexOf(a[0]);
-        const bi = TYPE_ORDER.indexOf(b[0]);
-        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-      })
-      .map(([type, count]) => ({ type, count, meta: frameTypeMeta(type) }));
-  }
-
-  function toggleColumn(colId: string) {
-    const col = columns.find((c) => c.id === colId)!;
-    col.visible = !col.visible;
-    onsavecolumns();
-  }
-
-  // Close column menu on outside click
-  $effect(() => {
-    if (!showColumnMenu) return;
-    function onDoc(e: MouseEvent) {
-      const el = document.getElementById("lib-col-menu-root");
-      if (el && !el.contains(e.target as Node)) showColumnMenu = false;
+    if (!ok) {
+      if (paths.length > 1) reload();
+      return false;
     }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  });
-
-  // Close type-filter popup on outside click
-  $effect(() => {
-    if (!typeFilterPos) return;
-    function onDoc(e: MouseEvent) {
-      const el = document.getElementById("type-filter-popup");
-      if (el && !el.contains(e.target as Node)) typeFilterPos = null;
+    frames = frames.filter((f) => !removed.has(f.nasPath));
+    blinkFrames = blinkFrames.filter((f) => !removed.has(f.nasPath));
+    if (blinkFrames.length < 2) showBlink = false;
+    for (const p of paths) {
+      selectedPaths.delete(p);
+      forgetPreview(p);
     }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  });
-
-  // ── Frame type change ─────────────────────────────────────────────────────
-  async function changeFrameType(nasPath: string, newType: string, e: Event) {
-    e.stopPropagation();
-    await SetFrameType(nasPath, newType);
-    frames = frames.map((f) => (f.nasPath === nasPath ? { ...f, frameType: newType } : f));
+    if (previewPath && removed.has(previewPath)) setCursor(next);
+    toast.success(`Deleted ${plural(paths.length)} from disk`);
+    return true;
   }
 
-  // ── Row click (single/ctrl/shift select) ─────────────────────────────────
-  function handleRowClick(e: MouseEvent, frame: app.LibraryFrame) {
-    if (e.shiftKey && lastSelectedPath) {
-      const flat = sorted;
-      const aIdx = flat.findIndex((f) => f.nasPath === lastSelectedPath);
-      const bIdx = flat.findIndex((f) => f.nasPath === frame.nasPath);
-      if (aIdx !== -1 && bIdx !== -1) {
-        const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
-        for (let i = lo; i <= hi; i++) selectedPaths.add(flat[i].nasPath);
-      }
+  async function confirmHardDelete() {
+    const target = confirmDel;
+    confirmDel = null;
+    if (target) await hardDelete(target.paths);
+  }
+
+  // ── Frame type ───────────────────────────────────────────────────────────
+  async function changeFrameType(path: string, newType: string, select?: HTMLSelectElement) {
+    const ok = await attempt(async () => {
+      await SetFrameType(path, newType);
+      return true;
+    }, "Could not change the frame type");
+    if (!ok) {
+      if (select) select.value = frameByPath.get(path)?.frameType ?? select.value;
       return;
     }
-    if (e.ctrlKey || e.metaKey) {
-      if (selectedPaths.has(frame.nasPath)) selectedPaths.delete(frame.nasPath);
-      else selectedPaths.add(frame.nasPath);
-      lastSelectedPath = frame.nasPath;
-      return;
+    frames = frames.map((f) => (f.nasPath === path ? { ...f, frameType: newType } : f));
+  }
+
+  // ── Shell helpers ────────────────────────────────────────────────────────
+  function reveal(path: string) {
+    attempt(() => RevealPath(path), "Could not show the file in its folder");
+  }
+
+  async function copyPaths(paths: string[]) {
+    try {
+      await navigator.clipboard.writeText(paths.join("\n"));
+      toast.success(paths.length > 1 ? `${paths.length} paths copied` : "Path copied");
+    } catch (e) {
+      toast.error(`Could not copy to the clipboard: ${String(e)}`);
     }
-    selectedPaths.clear();
-    selectedPaths.add(frame.nasPath);
-    lastSelectedPath = frame.nasPath;
-    onfileclick(frame);
   }
 
-  function handleCheckbox(frame: app.LibraryFrame) {
-    if (selectedPaths.has(frame.nasPath)) selectedPaths.delete(frame.nasPath);
-    else selectedPaths.add(frame.nasPath);
-    lastSelectedPath = frame.nasPath;
+  function openWithSiril(path: string) {
+    toast.info("Opening in Siril…");
+    attempt(() => OpenWithSiril(path), "Could not open the file in Siril");
   }
 
-  // ── Reject / restore / hard delete ───────────────────────────────────────
+  // ── Context menu ─────────────────────────────────────────────────────────
+  let ctxMenu = $state<CtxMenuState | null>(null);
+  let ctxPaths = $state<string[]>([]);
+
   function openCtxMenu(e: MouseEvent, frame: app.LibraryFrame) {
     e.preventDefault();
     const inSelection = selectedPaths.has(frame.nasPath) && selectedPaths.size > 1;
@@ -561,765 +683,429 @@
     };
   }
 
-  async function onCtxChangeType(entry: CtxEntry, newType: string) {
+  function closeCtx() {
     ctxMenu = null;
-    await SetFrameType(entry.path, newType);
-    frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, frameType: newType } : f));
   }
 
-  async function onCtxOpenWithSiril(entry: CtxEntry) {
-    ctxMenu = null;
-    await OpenWithSiril(entry.path);
+  // ── Modals ───────────────────────────────────────────────────────────────
+  let renameTarget = $state<{ path: string; name: string } | null>(null);
+  let metaTarget = $state<{ path: string; initial: FrameMetaEdit } | null>(null);
+  let cpFrames = $state<app.LibraryFrame[] | null>(null);
+  let showSuggest = $state(false);
+
+  function onRenamed(oldPath: string, newPath: string, newName: string) {
+    frames = frames.map((f) =>
+      f.nasPath === oldPath ? { ...f, nasPath: newPath, fileName: newName } : f,
+    );
+    forgetPreview(oldPath);
+    if (selectedPaths.delete(oldPath)) selectedPaths.add(newPath);
+    if (previewPath === oldPath) previewPath = newPath;
+    if (anchorPath === oldPath) anchorPath = newPath;
+    toast.success(`Renamed to ${newName}`);
   }
 
-  async function onCtxReject(entry: CtxEntry) {
-    ctxMenu = null;
-    if (ctxPaths.length > 1) {
-      await BatchRejectFiles(ctxPaths);
-      const set = new Set(ctxPaths);
-      frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: true } : f));
-      selectedPaths.clear();
-    } else {
-      await RejectFile(entry.path);
-      frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: true } : f));
-    }
-  }
-
-  async function onCtxRestore(entry: CtxEntry) {
-    ctxMenu = null;
-    if (ctxPaths.length > 1) {
-      await BatchUnrejectFiles(ctxPaths);
-      const set = new Set(ctxPaths);
-      frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: false } : f));
-      selectedPaths.clear();
-    } else {
-      await UnrejectFile(entry.path);
-      frames = frames.map((f) => (f.nasPath === entry.path ? { ...f, isRejected: false } : f));
-    }
-  }
-
-  function onCtxHardDelete(entry: CtxEntry) {
-    ctxMenu = null;
-    if (ctxPaths.length > 1) {
-      confirmDel = { paths: [...ctxPaths], name: `${ctxPaths.length} frames` };
-    } else {
-      confirmDel = { paths: [entry.path], name: entry.name };
-    }
-  }
-
-  async function doHardDelete() {
-    if (!confirmDel) return;
-    const { paths } = confirmDel;
-    confirmDel = null;
-    if (paths.length > 1) {
-      await BatchHardDeleteFiles(paths);
-      const set = new Set(paths);
-      frames = frames.filter((f) => !set.has(f.nasPath));
-      selectedPaths.clear();
-    } else {
-      await HardDeleteFile(paths[0]);
-      frames = frames.filter((f) => f.nasPath !== paths[0]);
-    }
-  }
-
-  // ── Rename ────────────────────────────────────────────────────────────────
-  function onCtxRename(entry: CtxEntry) {
-    renameValue = entry.name;
-    renameError = "";
-    renameWorking = false;
-    renameModal = { entry };
-  }
-
-  async function doRename() {
-    if (!renameModal || !renameValue.trim()) return;
-    renameWorking = true;
-    renameError = "";
-    try {
-      const newPath = await RenameFrame(renameModal.entry.path, renameValue.trim());
-      const oldPath = renameModal.entry.path;
-      frames = frames.map((f) =>
-        f.nasPath === oldPath ? { ...f, nasPath: newPath, fileName: renameValue.trim() } : f,
-      );
-      renameModal = null;
-    } catch (e) {
-      renameError = String(e);
-    } finally {
-      renameWorking = false;
-    }
-  }
-
-  // ── Edit metadata ─────────────────────────────────────────────────────────
-  function onCtxEditMeta(entry: CtxEntry) {
-    const frame = frames.find((f) => f.nasPath === entry.path);
-    metaModal = {
+  function editMeta(entry: CtxEntry) {
+    const f = frameByPath.get(entry.path);
+    metaTarget = {
       path: entry.path,
-      object: frame?.object ?? "",
-      telescope: frame?.telescope ?? "",
-      filter: frame?.filter ?? "",
-      dateObs: frame?.dateObs ?? "",
+      initial: {
+        object: f?.object ?? "",
+        telescope: f?.telescope ?? "",
+        filter: f?.filter ?? "",
+        dateObs: f?.dateObs ?? "",
+      },
     };
-    metaError = "";
-    metaWorking = false;
   }
 
-  async function doSaveMeta() {
-    if (!metaModal) return;
-    metaWorking = true;
-    metaError = "";
-    try {
-      await UpdateFrameMeta(metaModal.path, {
-        Object: metaModal.object,
-        Telescope: metaModal.telescope,
-        Filter: metaModal.filter,
-        DateObs: metaModal.dateObs,
-      });
-      const { path, object, telescope, filter, dateObs } = metaModal;
-      frames = frames.map((f) =>
-        f.nasPath === path
-          ? {
-              ...f,
-              object: object || f.object,
-              telescope: telescope || f.telescope,
-              filter: filter || f.filter,
-              dateObs: dateObs || f.dateObs,
-            }
-          : f,
-      );
-      metaModal = null;
-    } catch (e) {
-      metaError = String(e);
-    } finally {
-      metaWorking = false;
-    }
+  function onMetaSaved(path: string, m: FrameMetaEdit) {
+    frames = frames.map((f) =>
+      f.nasPath === path
+        ? {
+            ...f,
+            object: m.object || f.object,
+            telescope: m.telescope || f.telescope,
+            filter: m.filter || f.filter,
+            dateObs: m.dateObs || f.dateObs,
+          }
+        : f,
+    );
+    toast.success("Metadata saved");
   }
 
-  // ── Blink comparison ──────────────────────────────────────────────────────
-  let blinkFrames = $state<app.LibraryFrame[]>([]);
+  function openCreateProject(paths: string[]) {
+    cpFrames = paths.flatMap((p) => {
+      const f = frameByPath.get(p);
+      return f ? [f] : [];
+    });
+  }
+
+  // ── Blink ────────────────────────────────────────────────────────────────
+  let blinkFrames = $state.raw<app.LibraryFrame[]>([]);
   let showBlink = $state(false);
 
   function openBlink() {
-    const sel = [...selectedPaths];
-    blinkFrames = frames.filter((f) => sel.includes(f.nasPath));
-    if (blinkFrames.length >= 2) showBlink = true;
+    if (selectedPaths.size < 2) {
+      toast.info("Check at least 2 frames to blink");
+      return;
+    }
+    // Display order first, then any checked frames hidden by the current filters.
+    const inView = groups.flatMap((g) => g.frames).filter((f) => selectedPaths.has(f.nasPath));
+    const seen = new Set(inView.map((f) => f.nasPath));
+    const rest = frames.filter((f) => selectedPaths.has(f.nasPath) && !seen.has(f.nasPath));
+    blinkFrames = [...inView, ...rest];
+    showBlink = blinkFrames.length >= 2;
   }
 
-  async function blinkReject(nasPath: string) {
-    await RejectFile(nasPath);
-    frames = frames.map((f) => (f.nasPath === nasPath ? { ...f, isRejected: true } : f));
-    blinkFrames = blinkFrames.map((f) => (f.nasPath === nasPath ? { ...f, isRejected: true } : f));
-  }
+  // ── Keyboard ─────────────────────────────────────────────────────────────
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (active === false || e.defaultPrevented) return;
+    // A focused row checkbox (after clicking it) shouldn't disable culling keys;
+    // Space on it keeps its native toggle.
+    const onCheckbox = e.target instanceof HTMLInputElement && e.target.type === "checkbox";
+    if ((isTypingTarget(e) && !onCheckbox) || isModalOpen()) return;
+    if (onCheckbox && e.key === " ") return;
+    if (ctxMenu || showBlink || confirmDel) return;
 
-  function blinkHardDelete(nasPath: string, name: string) {
-    confirmDel = { paths: [nasPath], name };
-    // frame will be removed from blinkFrames via the reload after delete
-  }
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && !e.altKey && (e.key === "a" || e.key === "A")) {
+      e.preventDefault();
+      selectAll();
+      return;
+    }
+    if (mod || e.altKey) return;
 
-  // ── Smart reject suggestions ──────────────────────────────────────────────
-  let suggestLoading = $state(false);
-  let suggestResults = $state<app.SuggestResult[]>([]);
-  let suggestSelected = $state(new Set<string>());
-  let showSuggest = $state(false);
-
-  async function openSuggest() {
-    suggestLoading = true;
-    showSuggest = true;
-    suggestResults = [];
-    const res = await SuggestRejects(rootFolder, 2.0);
-    suggestResults = res ?? [];
-    suggestSelected = new Set(suggestResults.map((r) => r.frame.nasPath));
-    suggestLoading = false;
-  }
-
-  async function applySuggestRejects() {
-    const paths = [...suggestSelected];
-    if (!paths.length) return;
-    await BatchRejectFiles(paths);
-    const set = new Set(paths);
-    frames = frames.map((f) => (set.has(f.nasPath) ? { ...f, isRejected: true } : f));
-    showSuggest = false;
-    suggestResults = [];
+    switch (e.key) {
+      case "ArrowDown":
+      case "j":
+        e.preventDefault();
+        moveCursor(1);
+        return;
+      case "ArrowUp":
+      case "k":
+        e.preventDefault();
+        moveCursor(-1);
+        return;
+      case "x":
+        e.preventDefault();
+        if (!showRejected) applyReject(targetPaths(), true);
+        return;
+      case "u":
+        e.preventDefault();
+        applyReject(targetPaths(), false);
+        return;
+      case "Delete":
+        e.preventDefault();
+        askDelete(targetPaths());
+        return;
+      case " ":
+        if (!previewPath) return;
+        e.preventDefault();
+        toggleChecked(previewPath);
+        anchorPath = previewPath;
+        return;
+      case "b":
+        e.preventDefault();
+        openBlink();
+        return;
+      case "?":
+        e.preventDefault();
+        showShortcuts = !showShortcuts;
+        return;
+      case "Escape":
+        if (showShortcuts) showShortcuts = false;
+        else if (previewPath) previewPath = null;
+        else if (selectedPaths.size > 0) selectedPaths.clear();
+        else return;
+        e.preventDefault();
+        return;
+    }
   }
 </script>
 
-<!-- ── Toolbar ───────────────────────────────────────────────────────────── -->
-<div class="toolbar">
-  <div class="view-tabs">
-    <button
-      class="view-tab"
-      class:active={!showRejected}
-      onclick={() => {
-        showRejected = false;
-      }}>Frames</button
-    >
-    <button
-      class="view-tab"
-      class:active={showRejected}
-      onclick={() => {
-        showRejected = true;
-      }}
-    >
-      Rejected
-      {#if rejectedCount > 0}<span class="tab-badge">{rejectedCount}</span>{/if}
-    </button>
-  </div>
+<svelte:window onkeydown={onWindowKeydown} />
 
-  {#if !showRejected}
-    <div class="group-by">
-      <span class="label">Group</span>
-      <div class="segmented">
-        {#each GROUP_BY_OPTIONS as opt (opt.value)}
-          <button
-            class="seg-btn"
-            class:active={groupBy === opt.value}
-            onclick={() => {
-              groupBy = opt.value;
-            }}>{opt.label}</button
-          >
-        {/each}
-      </div>
-    </div>
-  {/if}
+<div class="library-view">
+  <LibraryToolbar
+    {showRejected}
+    {rejectedCount}
+    ontab={switchTab}
+    {groupBy}
+    ongroupby={setGroupBy}
+    bind:search={searchInput}
+    onexpandall={() => setAllExpanded(true)}
+    oncollapseall={() => setAllExpanded(false)}
+    sortActive={!!sort}
+    onclearsort={() => (ui.librarySort = null)}
+    filtersActive={filtering || !!searchInput}
+    onclearfilters={clearAllFilters}
+    {refreshing}
+    visibleCount={sorted.length}
+    onselectall={selectAll}
+    onsuggest={sirilAvailable ? () => (showSuggest = true) : undefined}
+    {columns}
+    ontogglecolumn={toggleColumn}
+    shortcutsOpen={showShortcuts}
+    onshortcuts={() => (showShortcuts = !showShortcuts)}
+  />
 
-  <div class="toolbar-sep"></div>
-
-  <button class="tool-btn" onclick={expandAll} title="Expand all groups">⊞</button>
-  <button class="tool-btn" onclick={collapseAll} title="Collapse all groups">⊟</button>
-  {#if sortCol}
-    <button
-      class="tool-btn sort-clear"
-      onclick={() => {
-        sortCol = null;
-      }}
-      title="Clear sort"
-    >
-      ✕ sort
-    </button>
-  {/if}
-  {#if anyColFilterActive}
-    <button
-      class="tool-btn filter-clear"
-      onclick={clearColFilters}
-      title="Clear all column filters"
-    >
-      ✕ filters
-    </button>
-  {/if}
-  {#if selectedPaths.size > 0}
-    <button class="tool-btn" onclick={clearSelection} title="Clear selection">
-      ✕ {selectedPaths.size} selected
-    </button>
-  {:else}
-    <button
-      class="tool-btn"
-      onclick={selectAll}
-      disabled={sorted.length === 0}
-      title="Select all {sorted.length} visible frames"
-    >
-      Select all
-    </button>
-  {/if}
-  <button
-    class="tool-btn blink-btn"
-    disabled={selectedPaths.size < 2}
-    onclick={openBlink}
-    title={selectedPaths.size < 2
-      ? "Select 2+ frames (checkboxes or Ctrl+click) to blink"
-      : `Blink ${selectedPaths.size} selected frames`}
-  >
-    ▶ Blink{selectedPaths.size >= 2 ? ` (${selectedPaths.size})` : ""}
-  </button>
-  {#if !showRejected && sirilAvailable}
-    <button
-      class="tool-btn suggest-btn"
-      onclick={openSuggest}
-      title="Suggest statistical outliers for rejection"
-    >
-      ✦ Suggest rejects
-    </button>
-  {/if}
-  <input class="search-input" type="search" placeholder="Search…" bind:value={search} />
-  <div class="column-selector" id="lib-col-menu-root">
-    <button
-      class="tool-btn"
-      onclick={() => (showColumnMenu = !showColumnMenu)}
-      title="Show/hide columns">Cols ▾</button
-    >
-    {#if showColumnMenu}
-      <div class="column-menu">
-        {#each [...columns].sort((a, b) => a.order - b.order) as col (col.id)}
-          {#if col.id !== "frameType" && col.id !== "name"}
-            <label class="column-menu-item">
-              <input type="checkbox" checked={col.visible} onchange={() => toggleColumn(col.id)} />
-              {col.label}
-            </label>
-          {/if}
-        {/each}
-      </div>
+  <div class="popover-anchor">
+    {#if showShortcuts}
+      <ShortcutsPopover onclose={() => (showShortcuts = false)} />
     {/if}
   </div>
-</div>
 
-<!-- ── Table ──────────────────────────────────────────────────────────────── -->
-{#if loading}
-  <div class="status-row">
-    <span class="spinner" aria-label="Loading library"></span>
-  </div>
-{:else if error}
-  <div class="status-row error">{error}</div>
-{:else}
-  <div class="table-scroll-wrapper">
-    <table class="lib-table" style="width: {Math.max(totalColWidth + 28, 100)}px; min-width: 100%">
-      <colgroup>
-        <col style="width: 28px" />
-        {#each visibleColumns as col (col.id)}
-          <col style="width: {col.width}px" />
-        {/each}
-      </colgroup>
-      <thead>
-        <tr>
-          <th class="cb-th" onclick={(e) => e.stopPropagation()}></th>
-          {#each visibleColumns as col, i (col.id)}
-            <th
-              class:drag-over={dragOverIndex === i}
-              class:sorted={sortCol === col.id}
-              draggable={col.id !== "frameType" && col.id !== "name"}
-              onclick={() => toggleSort(col.id)}
-              ondragstart={(e) => colMgr.onColDragStart(e, i)}
-              ondragover={(e) => colMgr.onColDragOver(e, i)}
-              ondrop={(e) => colMgr.onColDrop(e, i)}
-              ondragend={colMgr.onColDragEnd}
-              ondragleave={() => {
+  {#if selectedPaths.size > 0}
+    <SelectionBar
+      count={selectedPaths.size}
+      {showRejected}
+      onreject={() => applyReject([...selectedPaths], true)}
+      onrestore={() => applyReject([...selectedPaths], false)}
+      ondelete={() => askDelete([...selectedPaths])}
+      onblink={openBlink}
+      oncreateproject={oncreateproject ? () => openCreateProject([...selectedPaths]) : undefined}
+      onclear={clearSelection}
+    />
+  {/if}
+
+  <SplitPane showSecondary={!!previewEntry} collapsedLabel="library" bind:collapsed>
+    {#snippet list()}
+      {#if !loadedOnce && loading}
+        <div class="status-row" role="status">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Loading library…</span>
+        </div>
+      {:else if !loadedOnce && error}
+        <div class="status-row error" role="alert">
+          <p>Could not load the library: {error}</p>
+          <button class="btn-secondary" onclick={() => reload()}>Retry</button>
+        </div>
+      {:else}
+        <div class="table-scroll-wrapper" bind:this={tableWrap}>
+          <table
+            class="lib-table"
+            style="width: {Math.max(totalColWidth + 28, 100)}px; min-width: 100%"
+          >
+            <colgroup>
+              <col style="width: 28px" />
+              {#each visibleColumns as col (col.id)}
+                <col style="width: {col.width}px" />
+              {/each}
+            </colgroup>
+            <LibraryTableHead
+              columns={visibleColumns}
+              {sort}
+              {colFilters}
+              {dragOverIndex}
+              {colMgr}
+              ontogglesort={toggleSort}
+              ondragleavecol={(i) => {
                 if (dragOverIndex === i) dragOverIndex = -1;
               }}
-            >
-              <span class="th-text">{col.label}</span>
-              {#if getColFilterActive(col.id)}
-                <span class="filter-indicator" title="Filter active">▽</span>
-              {/if}
-              {#if sortCol === col.id}
-                <span class="sort-indicator">{sortDir === "asc" ? "▲" : "▼"}</span>
-              {/if}
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-              <span
-                class="resize-handle"
-                onmousedown={(e) => colMgr.startColResize(e, col.id)}
-                role="separator"
-                aria-label="Resize column"
-              ></span>
-            </th>
-          {/each}
-        </tr>
-        <!-- Filter row -->
-        <tr class="filter-row">
-          <th class="cb-th filter-th"></th>
-          {#each visibleColumns as col (col.id)}
-            <th class="filter-th">
-              {#if col.id === "frameType"}
-                <button
-                  class="filter-type-btn"
-                  class:filter-active={getColFilterActive("frameType")}
-                  onclick={(e) => {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    typeFilterPos = typeFilterPos ? null : { x: rect.left, y: rect.bottom + 2 };
-                  }}
-                >
-                  {#if (colFilters.frameType?.types?.length ?? 0) > 0}
-                    {colFilters.frameType!.types!.length} ✓
-                  {:else}
-                    All ▽
-                  {/if}
-                </button>
-              {:else if TEXT_FILTER_COLS.has(col.id)}
-                <input
-                  class="filter-text"
-                  class:filter-active={getColFilterActive(col.id)}
-                  type="text"
-                  placeholder="…"
-                  value={colFilters[col.id]?.text ?? ""}
-                  oninput={(e) =>
-                    setTextFilterDebounced(col.id, (e.target as HTMLInputElement).value)}
-                />
-              {:else if NUMERIC_FILTER_COLS.has(col.id)}
-                <div class="filter-num">
-                  <button
-                    class="filter-num-op"
-                    onclick={() => toggleNumOp(col.id)}
-                    title="Toggle < / >">{colFilters[col.id]?.numOp ?? "<"}</button
-                  >
-                  <input
-                    class="filter-num-val"
-                    class:filter-active={getColFilterActive(col.id)}
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="—"
-                    value={colFilters[col.id]?.numVal ?? ""}
-                    oninput={(e) => {
-                      const v = parseFloat((e.target as HTMLInputElement).value);
-                      setNumFilter(col.id, isNaN(v) ? null : v);
-                    }}
-                  />
-                </div>
-              {/if}
-            </th>
-          {/each}
-        </tr>
-      </thead>
-      <tbody>
-        {#if groups.length === 0}
-          <tr class="empty-row">
-            <td colspan={visibleColumns.length + 1}>
-              <div class="empty-msg">
-                {#if showRejected}
-                  No rejected frames.
-                {:else if frames.filter((f) => !f.isRejected).length === 0}
-                  No indexed frames found. Run Build Index first.
-                {:else}
-                  No frames match the current filter.
-                  {#if anyColFilterActive || search}
-                    <button class="btn-clear-filters-inline" onclick={clearAllFilters}>
-                      Remove filters
-                    </button>
-                  {/if}
-                {/if}
-              </div>
-            </td>
-          </tr>
-        {/if}
-        {#each groups as group (group.key)}
-          <!-- Group header row -->
-          <tr class="group-header-row" onclick={() => toggleGroup(group.key)}>
-            <td colspan={visibleColumns.length + 1}>
-              <div class="group-hdr-inner">
-                <span class="group-chevron">{expandedGroups.has(group.key) ? "▼" : "▶"}</span>
-                <span class="group-label">{group.label}</span>
-                <span class="group-count"
-                  >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
-                >
-                <span class="group-type-breakdown">
-                  {#each groupTypeBreakdown(group.frames) as { count, meta } (meta.short)}
-                    <span class="group-type-badge" style="color:{meta.color};background:{meta.bg}">
-                      {meta.short}
-                      {count}
-                    </span>
-                  {/each}
-                </span>
-                {#if group.frames.some((f) => f.qualityAnalyzed)}
-                  <span class="quality-dot" title="Quality data available">✦</span>
-                {/if}
-                <span class="group-spacer"></span>
-                {#if sirilAvailable && group.frames.length > 0}
-                  {#if analyzingGroup === group.key}
-                    <span class="analysis-status">
-                      ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ??
-                        unanalyzedPaths(group).length}
-                      {#if analysisProgress?.current}· {analysisProgress.current}{/if}
-                    </span>
-                    <button
-                      class="btn-cancel-analysis"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        CancelAnalysis();
-                      }}
-                      title="Cancel analysis">✕</button
-                    >
-                  {:else}
-                    {#if group.frames.some((f) => !f.qualityAnalyzed)}
-                      <button
-                        class="btn-analyze"
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          analyzeGroup(group);
-                        }}
-                        disabled={analyzingGroup !== null}
-                        title="Analyze unanalyzed frames with Siril (findstar + platesolve)"
-                        >✦ Analyze</button
-                      >
-                    {/if}
-                    <button
-                      class="btn-analyze btn-reanalyze"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        analyzeGroup(group, true);
-                      }}
-                      disabled={analyzingGroup !== null}
-                      title="Re-run analysis on all frames, including already-analyzed ones"
-                      >↺ Reanalyze</button
-                    >
-                  {/if}
-                {/if}
-              </div>
-            </td>
-          </tr>
-
-          <!-- Frame rows — only rendered when group is expanded -->
-          {#if expandedGroups.has(group.key)}
-            {#each group.frames as frame (frame.nasPath)}
-              <tr
-                class="frame-row"
-                class:selected={selectedNasPath === frame.nasPath}
-                class:multi-selected={selectedPaths.has(frame.nasPath)}
-                onclick={(e) => handleRowClick(e, frame)}
-                oncontextmenu={(e) => openCtxMenu(e, frame)}
-              >
-                <td
-                  class="cb-td"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    handleCheckbox(frame);
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedPaths.has(frame.nasPath)}
-                    onclick={(e) => e.stopPropagation()}
-                    onchange={() => handleCheckbox(frame)}
-                  />
-                </td>
-                {#each visibleColumns as col (col.id)}
-                  <td class="col-{col.id}">
-                    {#if col.id === "frameType"}
-                      {@const meta = frameTypeMeta(frame.frameType)}
-                      <select
-                        class="type-select"
-                        value={frame.frameType}
-                        style="color:{meta.color};background:{meta.bg}"
-                        onclick={(e) => e.stopPropagation()}
-                        onchange={(e) =>
-                          changeFrameType(frame.nasPath, (e.target as HTMLSelectElement).value, e)}
-                      >
-                        {#each Object.entries(FRAME_TYPE_META) as [val, m] (val)}
-                          <option value={val}>{m.short}</option>
-                        {/each}
-                      </select>
-                    {:else if col.id === "name"}
-                      <span class="file-icon">🔭</span>
-                      <span class="file-name">{frame.fileName}</span>
-                    {:else}
-                      {getLibraryCellValue(frame, col.id)}
-                    {/if}
+              ontextfilter={setTextFilter}
+              onnumfilter={setNumFilter}
+              ontogglenumop={toggleNumOp}
+              ontypefilter={(rect) => {
+                typeFilterPos = typeFilterPos ? null : { x: rect.left, y: rect.bottom + 2 };
+              }}
+            />
+            <tbody>
+              {#if groups.length === 0}
+                <tr class="empty-row">
+                  <td colspan={visibleColumns.length + 1}>
+                    <div class="empty-msg">
+                      {#if frames.length === 0}
+                        <p>No indexed frames found.</p>
+                        {#if onscan}
+                          <button
+                            class="btn-primary"
+                            onclick={() => onscan?.()}
+                            disabled={indexRunning}
+                          >
+                            {indexRunning ? "Scanning…" : "Scan library"}
+                          </button>
+                        {:else}
+                          <p>Build the index from Settings to catalog your frames.</p>
+                        {/if}
+                      {:else if filtering}
+                        <p>No frames match the current filter.</p>
+                        <button class="btn-secondary" onclick={clearAllFilters}>
+                          Remove filters
+                        </button>
+                      {:else if showRejected}
+                        <p>No rejected frames.</p>
+                      {:else}
+                        <p>Every frame is rejected — see the Rejected tab.</p>
+                      {/if}
+                    </div>
                   </td>
-                {/each}
-              </tr>
-            {/each}
-          {/if}
-        {/each}
-      </tbody>
-    </table>
-  </div>
-{/if}
+                </tr>
+              {/if}
+              {#each groups as group (group.key)}
+                {@const expanded = isExpanded(group.key)}
+                <GroupHeaderRow
+                  {group}
+                  colspan={visibleColumns.length + 1}
+                  {expanded}
+                  ontoggle={() => toggleGroup(group.key)}
+                  {sirilAvailable}
+                  analyzing={analyzingGroup === group.key}
+                  analysisBusy={analyzingGroup !== null}
+                  {analysisProgress}
+                  onanalyze={(force) => analyzeGroup(group, force)}
+                  oncancelanalysis={cancelAnalysis}
+                />
+                {#if expanded}
+                  {@const limit = limitFor(group.key)}
+                  {#each group.frames.slice(0, limit) as frame (frame.nasPath)}
+                    <FrameRow
+                      {frame}
+                      columns={visibleColumns}
+                      current={previewPath === frame.nasPath}
+                      checked={selectedPaths.has(frame.nasPath)}
+                      onrowclick={(e) => onRowClick(e, frame)}
+                      onctxmenu={(e) => openCtxMenu(e, frame)}
+                      oncheck={() => onCheckbox(frame)}
+                      onchangetype={(t, el) => changeFrameType(frame.nasPath, t, el)}
+                    />
+                  {/each}
+                  {#if group.frames.length > limit}
+                    {@const remaining = group.frames.length - limit}
+                    <tr class="more-row">
+                      <td colspan={visibleColumns.length + 1}>
+                        <button
+                          class="btn-secondary"
+                          onclick={() => groupLimits.set(group.key, limit + CHUNK)}
+                        >
+                          Show {Math.min(CHUNK, remaining)} more
+                        </button>
+                        {#if remaining > CHUNK}
+                          <button
+                            class="btn-secondary"
+                            onclick={() => groupLimits.set(group.key, group.frames.length)}
+                          >
+                            Show all {remaining}
+                          </button>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/if}
+                {/if}
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    {/snippet}
+    {#snippet secondary()}
+      {#if previewEntry && previewFrame}
+        {@const path = previewFrame.nasPath}
+        <PreviewPane
+          entry={previewEntry}
+          qualityFrame={previewFrame}
+          onclose={() => (previewPath = null)}
+          onprev={prevPath ? () => setCursor(prevPath) : undefined}
+          onnext={nextPath ? () => setCursor(nextPath) : undefined}
+          onreject={() => applyReject([path], true)}
+          onrestore={() => applyReject([path], false)}
+          ondelete={() => askDelete([path])}
+          onreveal={() => reveal(path)}
+          prefetch={nextPath}
+        />
+      {/if}
+    {/snippet}
+  </SplitPane>
+</div>
 
 {#if typeFilterPos}
-  <div
-    class="type-filter-popup"
-    id="type-filter-popup"
-    style="left: {typeFilterPos.x}px; top: {typeFilterPos.y}px"
-  >
-    {#each Object.entries(FRAME_TYPE_META) as [type, meta] (type)}
-      <label class="filter-popup-item">
-        <input
-          type="checkbox"
-          checked={colFilters.frameType?.types?.includes(type as FrameType) ?? false}
-          onchange={() => toggleTypeFilter(type as FrameType)}
-        />
-        <span style="color:{meta.color}">{meta.label}</span>
-      </label>
-    {/each}
-  </div>
+  <TypeFilterPopup
+    x={typeFilterPos.x}
+    y={typeFilterPos.y}
+    selected={colFilters.frameType?.types ?? []}
+    ontoggle={toggleTypeFilter}
+    onclose={() => (typeFilterPos = null)}
+  />
 {/if}
 
 {#if ctxMenu}
   <ContextMenu
     menu={ctxMenu}
-    onclose={() => {
-      ctxMenu = null;
+    onclose={closeCtx}
+    onreject={() => {
+      closeCtx();
+      applyReject(ctxPaths, true);
     }}
-    onreject={onCtxReject}
-    onrestore={onCtxRestore}
-    onharddelete={onCtxHardDelete}
-    onopensiril={onCtxOpenWithSiril}
-    onchangetype={onCtxChangeType}
-    onrename={onCtxRename}
-    oneditmeta={onCtxEditMeta}
+    onrestore={() => {
+      closeCtx();
+      applyReject(ctxPaths, false);
+    }}
+    onharddelete={() => {
+      closeCtx();
+      askDelete(ctxPaths);
+    }}
+    onopensiril={(entry) => {
+      closeCtx();
+      openWithSiril(entry.path);
+    }}
+    onchangetype={(entry, t) => {
+      closeCtx();
+      changeFrameType(entry.path, t);
+    }}
+    onrename={(entry) => {
+      closeCtx();
+      renameTarget = { path: entry.path, name: entry.name };
+    }}
+    oneditmeta={(entry) => {
+      closeCtx();
+      editMeta(entry);
+    }}
     oncreateproject={oncreateproject
       ? () => {
-          ctxMenu = null;
-          cpModal = { paths: [...ctxPaths] };
-          cpName = "";
-          cpMode = "symlink";
-          cpError = "";
+          closeCtx();
+          openCreateProject(ctxPaths);
         }
       : undefined}
+    onreveal={(entry) => {
+      closeCtx();
+      reveal(entry.path);
+    }}
+    oncopypath={() => {
+      closeCtx();
+      copyPaths(ctxPaths);
+    }}
   />
 {/if}
 
-{#if cpModal}
-  <div
-    class="cp-backdrop"
-    onclick={() => {
-      cpModal = null;
-    }}
-    onkeydown={(e) => e.key === "Escape" && (cpModal = null)}
-    role="presentation"
-  >
-    <div
-      class="cp-modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <p class="cp-title">Create project</p>
-      <p class="cp-sub">
-        {cpEligibleCount} frame{cpEligibleCount !== 1 ? "s" : ""} will be added (lights, darks &amp; bias
-        only)
-        {#if cpModal.paths.length > cpEligibleCount}
-          <span class="cp-skipped"
-            >· {cpModal.paths.length - cpEligibleCount} other type{cpModal.paths.length -
-              cpEligibleCount !==
-            1
-              ? "s"
-              : ""} skipped</span
-          >
-        {/if}
-      </p>
-      <input
-        class="cp-input"
-        type="text"
-        placeholder="Project name"
-        bind:value={cpName}
-        spellcheck="false"
-        onkeydown={(e) => {
-          if (e.key === "Enter") doCreateProject();
-        }}
-      />
-      <div class="cp-mode">
-        <label class="cp-mode-opt"
-          ><input type="radio" name="cpMode" value="symlink" bind:group={cpMode} /> Symlink</label
-        >
-        <label class="cp-mode-opt"
-          ><input type="radio" name="cpMode" value="copy" bind:group={cpMode} /> Copy</label
-        >
-      </div>
-      {#if cpError}<p class="cp-error">{cpError}</p>{/if}
-      <div class="cp-btns">
-        <button
-          class="cp-btn-primary"
-          onclick={doCreateProject}
-          disabled={cpCreating || !cpName.trim()}
-        >
-          {cpCreating ? "Creating…" : "Create project"}
-        </button>
-        <button
-          class="cp-btn-ghost"
-          onclick={() => {
-            cpModal = null;
-          }}>Cancel</button
-        >
-      </div>
-    </div>
-  </div>
+{#if cpFrames}
+  <CreateProjectModal
+    frames={cpFrames}
+    onclose={() => (cpFrames = null)}
+    oncreated={(project) => oncreateproject?.(project)}
+  />
 {/if}
 
-{#if renameModal}
-  <div
-    class="modal-backdrop"
-    onclick={() => (renameModal = null)}
-    onkeydown={(e) => e.key === "Escape" && (renameModal = null)}
-    role="presentation"
-  >
-    <div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <h3 class="modal-title">Rename File</h3>
-      <p class="modal-desc">Enter a new filename (same directory).</p>
-      <input
-        class="modal-input"
-        type="text"
-        bind:value={renameValue}
-        onkeydown={(e) => e.key === "Enter" && doRename()}
-        spellcheck="false"
-        autofocus
-      />
-      {#if renameError}
-        <p class="modal-error">{renameError}</p>
-      {/if}
-      <div class="modal-actions">
-        <button
-          class="btn-primary"
-          onclick={doRename}
-          disabled={renameWorking || !renameValue.trim()}
-        >
-          {renameWorking ? "Renaming…" : "Rename"}
-        </button>
-        <button class="btn-ghost" onclick={() => (renameModal = null)} disabled={renameWorking}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
+{#if renameTarget}
+  <RenameModal
+    path={renameTarget.path}
+    name={renameTarget.name}
+    onclose={() => (renameTarget = null)}
+    onrenamed={onRenamed}
+  />
 {/if}
 
-{#if metaModal}
-  <div
-    class="modal-backdrop"
-    onclick={() => (metaModal = null)}
-    onkeydown={(e) => e.key === "Escape" && (metaModal = null)}
-    role="presentation"
-  >
-    <div class="modal-box" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <h3 class="modal-title">Edit Metadata</h3>
-      <p class="modal-desc">Override DB metadata. Empty fields are left unchanged.</p>
-      <div class="meta-fields">
-        <label class="meta-label">
-          Object
-          <input class="modal-input" type="text" bind:value={metaModal.object} spellcheck="false" />
-        </label>
-        <label class="meta-label">
-          Telescope
-          <input
-            class="modal-input"
-            type="text"
-            bind:value={metaModal.telescope}
-            spellcheck="false"
-          />
-        </label>
-        <label class="meta-label">
-          Filter
-          <input class="modal-input" type="text" bind:value={metaModal.filter} spellcheck="false" />
-        </label>
-        <label class="meta-label">
-          Date (ISO)
-          <input
-            class="modal-input"
-            type="text"
-            bind:value={metaModal.dateObs}
-            placeholder="2024-01-15T22:30:00"
-            spellcheck="false"
-          />
-        </label>
-      </div>
-      {#if metaError}
-        <p class="modal-error">{metaError}</p>
-      {/if}
-      <div class="modal-actions">
-        <button class="btn-primary" onclick={doSaveMeta} disabled={metaWorking}>
-          {metaWorking ? "Saving…" : "Save"}
-        </button>
-        <button class="btn-ghost" onclick={() => (metaModal = null)} disabled={metaWorking}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
+{#if metaTarget}
+  <EditMetaModal
+    path={metaTarget.path}
+    initial={metaTarget.initial}
+    onclose={() => (metaTarget = null)}
+    onsaved={onMetaSaved}
+  />
 {/if}
 
-{#if confirmDel}
-  <HardDeleteModal
-    target={confirmDel}
-    onconfirm={doHardDelete}
-    oncancel={() => {
-      confirmDel = null;
-    }}
+{#if showSuggest}
+  <SuggestRejectsModal
+    {rootFolder}
+    onclose={() => (showSuggest = false)}
+    onapply={(paths) => applyReject(paths, true)}
   />
 {/if}
 
@@ -1327,380 +1113,34 @@
   <BlinkModal
     frames={blinkFrames}
     onclose={() => (showBlink = false)}
-    onreject={blinkReject}
-    onharddelete={blinkHardDelete}
+    onreject={(p) => applyReject([p], true)}
+    onrestore={(p) => applyReject([p], false)}
+    onharddelete={(p) => hardDelete([p])}
   />
 {/if}
 
-{#if showSuggest}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="suggest-backdrop"
-    onmousedown={(e) => {
-      if (e.target === e.currentTarget) showSuggest = false;
-    }}
-  >
-    <div class="suggest-modal">
-      <div class="suggest-header">
-        <span class="suggest-title">Suggested Rejects</span>
-        <button class="suggest-close" onclick={() => (showSuggest = false)}>✕</button>
-      </div>
-      <div class="suggest-body">
-        {#if suggestLoading}
-          <p class="suggest-status">Analyzing quality metrics…</p>
-        {:else if suggestResults.length === 0}
-          <p class="suggest-status">
-            No outliers found. Either all frames are good quality, or not enough frames have been
-            analyzed (run ✦ Analyze first).
-          </p>
-        {:else}
-          <p class="suggest-desc">
-            {suggestResults.length} frame{suggestResults.length !== 1 ? "s" : ""} with FWHM &gt; 2σ above
-            their group median. Deselect any you want to keep.
-          </p>
-          <div class="suggest-list">
-            {#each suggestResults as r (r.frame.nasPath)}
-              <label class="suggest-row" class:deselected={!suggestSelected.has(r.frame.nasPath)}>
-                <input
-                  type="checkbox"
-                  checked={suggestSelected.has(r.frame.nasPath)}
-                  onchange={() => {
-                    const next = new Set(suggestSelected);
-                    if (next.has(r.frame.nasPath)) next.delete(r.frame.nasPath);
-                    else next.add(r.frame.nasPath);
-                    suggestSelected = next;
-                  }}
-                />
-                <span class="suggest-name">{r.frame.fileName}</span>
-                <span class="suggest-obj">{r.frame.object}</span>
-                <span
-                  class="suggest-fwhm"
-                  title="FWHM: {r.frame.fwhm.toFixed(2)} vs median {r.groupMedian.toFixed(
-                    2,
-                  )} (σ={r.groupSigma.toFixed(2)})"
-                >
-                  {r.frame.fwhm.toFixed(2)}
-                  {r.frame.fwhmUnit} · {r.sigmas.toFixed(1)}σ
-                </span>
-              </label>
-            {/each}
-          </div>
-        {/if}
-      </div>
-      {#if !suggestLoading && suggestResults.length > 0}
-        <div class="suggest-footer">
-          <span class="suggest-sel-count">{suggestSelected.size} selected</span>
-          <button class="cp-btn-ghost" onclick={() => (showSuggest = false)}>Cancel</button>
-          <button
-            class="cp-btn-primary"
-            disabled={suggestSelected.size === 0}
-            onclick={applySuggestRejects}
-          >
-            Reject {suggestSelected.size} frame{suggestSelected.size !== 1 ? "s" : ""}
-          </button>
-        </div>
-      {/if}
-    </div>
-  </div>
+{#if confirmDel}
+  <HardDeleteModal
+    target={confirmDel}
+    onconfirm={confirmHardDelete}
+    oncancel={() => (confirmDel = null)}
+  />
 {/if}
 
 <style>
-  /* ── Modals ──────────────────────────────────────────────────────────────── */
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-  }
-
-  .modal-box {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 8px;
-    padding: 24px;
-    min-width: 340px;
-    max-width: 480px;
-    width: 90%;
+  .library-view {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-  }
-
-  .modal-title {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .modal-desc {
-    margin: 0;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    line-height: 1.4;
-  }
-
-  .modal-input {
-    width: 100%;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-family: monospace;
-    font-size: 0.85rem;
-    padding: 6px 10px;
-    box-sizing: border-box;
-    outline: none;
-  }
-
-  .modal-input:focus {
-    border-color: var(--accent);
-  }
-
-  .modal-error {
-    margin: 0;
-    font-size: 0.78rem;
-    color: var(--danger);
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    margin-top: 4px;
-  }
-
-  .meta-fields {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .meta-label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-  }
-
-  /* ── Toolbar ─────────────────────────────────────────────────────────────── */
-
-  .toolbar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 5px 8px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .toolbar-sep {
-    width: 1px;
-    height: 16px;
-    background: var(--border);
-    flex-shrink: 0;
-    margin: 0 2px;
-  }
-
-  /* ── View tabs ───────────────────────────────────────────────────────────── */
-
-  .view-tabs {
-    display: flex;
-    gap: 2px;
-    flex-shrink: 0;
-  }
-
-  .view-tab {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 2px 10px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition:
-      color 0.15s,
-      border-color 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .view-tab:hover {
-    color: var(--text-primary);
-  }
-  .view-tab.active {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: var(--accent-dim);
-  }
-
-  .tab-badge {
-    background: var(--danger);
-    color: #fff;
-    border-radius: 8px;
-    padding: 0 5px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    line-height: 14px;
-  }
-
-  /* ── Group by ────────────────────────────────────────────────────────────── */
-
-  .group-by {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-
-  .segmented {
-    display: flex;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    min-height: 0;
+    min-width: 0;
     overflow: hidden;
   }
 
-  .seg-btn {
-    padding: 2px 8px;
-    font-size: 0.75rem;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    cursor: pointer;
-    border-right: 1px solid var(--border);
-    transition:
-      background 0.12s,
-      color 0.12s;
-  }
-
-  .seg-btn:last-child {
-    border-right: none;
-  }
-
-  .seg-btn:hover {
-    background: var(--bg-row-hover);
-    color: var(--text-primary);
-  }
-
-  .seg-btn.active {
-    background: var(--accent-dim);
-    color: var(--accent);
-  }
-
-  /* ── Right side toolbar ──────────────────────────────────────────────────── */
-
-  .search-input {
-    font-size: 0.8rem;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    padding: 3px 8px;
-    width: 150px;
-    outline: none;
-  }
-  .search-input:focus {
-    border-color: var(--accent);
-  }
-
-  .sort-clear {
-    color: var(--accent);
-    border-color: var(--accent);
-    font-size: 0.72rem;
-    white-space: nowrap;
-  }
-
-  /* ── Empty state inside table ────────────────────────────────────────────── */
-
-  .empty-row td {
-    padding: 32px 0;
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-  }
-
-  .empty-msg {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .btn-clear-filters-inline {
-    font-size: 0.78rem;
-    padding: 4px 14px;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    border-radius: 4px;
-    cursor: pointer;
-    transition:
-      background 0.12s,
-      color 0.12s;
-  }
-  .btn-clear-filters-inline:hover {
-    background: var(--accent);
-    color: var(--bg-base);
-  }
-
-  .sort-indicator {
-    font-size: 0.55rem;
-    color: var(--accent);
-    margin-left: 3px;
-    flex-shrink: 0;
-  }
-
-  th.sorted .th-text {
-    color: var(--accent);
-  }
-
-  .column-selector {
+  .popover-anchor {
     position: relative;
-    flex-shrink: 0;
-  }
-
-  .column-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 5px;
-    padding: 5px 0;
-    z-index: 200;
-    min-width: 130px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
-  }
-
-  .column-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 4px 10px;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-  }
-  .column-menu-item:hover {
-    background: var(--bg-row-hover);
-    color: var(--text-primary);
-  }
-  .column-menu-item input {
-    accent-color: var(--accent);
-    cursor: pointer;
+    height: 0;
+    z-index: 250;
   }
 
   /* ── Status ──────────────────────────────────────────────────────────────── */
@@ -1708,9 +1148,11 @@
   .status-row {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 0.875rem;
+    gap: 12px;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
   }
   .status-row.error {
@@ -1735,718 +1177,46 @@
 
   .table-scroll-wrapper {
     flex: 1;
+    min-height: 0;
     overflow: auto;
   }
   .table-scroll-wrapper::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   .table-scroll-wrapper::-webkit-scrollbar-track {
     background: var(--bg-base);
   }
   .table-scroll-wrapper::-webkit-scrollbar-thumb {
     background: var(--border-accent);
-    border-radius: 3px;
+    border-radius: 4px;
   }
 
   .lib-table {
     border-collapse: collapse;
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
     table-layout: fixed;
   }
 
-  .lib-table thead tr {
-    background: var(--bg-panel);
+  .empty-row td {
+    padding: 36px 0;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: var(--fs-md);
   }
 
-  .lib-table th {
-    padding: 7px 10px 7px 8px;
-    text-align: left;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-secondary);
+  .empty-msg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .more-row td {
+    padding: 6px 10px 8px 36px;
     border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg-panel);
-    overflow: hidden;
-    white-space: nowrap;
-    user-select: none;
   }
-
-  .lib-table th.drag-over {
-    border-left: 2px solid var(--accent);
-  }
-
-  .th-text {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding-right: 6px;
-  }
-
-  .resize-handle {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 5px;
-    cursor: col-resize;
-    background: transparent;
-    transition: background 0.1s;
-  }
-  .resize-handle:hover {
-    background: var(--accent);
-    opacity: 0.5;
-  }
-
-  /* ── Group header row ────────────────────────────────────────────────────── */
-
-  .group-header-row {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .group-header-row:hover td {
-    background: color-mix(in srgb, var(--bg-panel) 70%, var(--accent) 30%);
-  }
-
-  .group-header-row td {
-    background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent) 15%);
-    border-top: 1px solid var(--border-accent);
-    border-bottom: 1px solid var(--border-accent);
-    padding: 4px 10px;
-  }
-
-  .group-hdr-inner {
-    display: flex;
-    align-items: center;
-    width: 100%;
-  }
-
-  .group-chevron {
-    font-size: 0.62rem;
-    color: var(--text-secondary);
-    margin-right: 6px;
-    display: inline-block;
-    width: 10px;
-  }
-
-  .group-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .group-count {
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    margin-left: 8px;
-  }
-
-  .group-type-breakdown {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 10px;
-  }
-
-  .group-type-badge {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.66rem;
-    font-weight: 700;
-    font-family: monospace;
-    padding: 1px 6px;
-    border-radius: 3px;
-    letter-spacing: 0.04em;
-  }
-
-  .group-spacer {
-    flex: 1;
-  }
-
-  .quality-dot {
-    font-size: 0.6rem;
-    color: var(--accent);
-    margin-left: 6px;
-    opacity: 0.75;
-  }
-
-  .btn-analyze {
-    font-size: 0.68rem;
-    padding: 2px 8px;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    border-radius: 3px;
-    cursor: pointer;
-    transition:
-      background 0.12s,
-      color 0.12s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .btn-analyze:hover:not(:disabled) {
-    background: var(--accent);
-    color: var(--bg-base);
-  }
-
-  .btn-analyze:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  .btn-reanalyze {
-    border-color: var(--border-accent);
-    color: var(--text-secondary);
-    opacity: 0.75;
-  }
-  .btn-reanalyze:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 20%, transparent);
-    color: var(--text-primary);
-    border-color: var(--accent);
-    opacity: 1;
-  }
-
-  .analysis-status {
-    font-size: 0.68rem;
-    color: var(--accent);
-    white-space: nowrap;
-    flex-shrink: 0;
-    animation: pulse-opacity 1.2s ease-in-out infinite;
-  }
-
-  @keyframes pulse-opacity {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
-  }
-
-  .btn-cancel-analysis {
-    font-size: 0.65rem;
-    padding: 1px 5px;
-    background: transparent;
-    border: 1px solid var(--text-secondary);
-    color: var(--text-secondary);
-    border-radius: 3px;
-    cursor: pointer;
-    margin-left: 4px;
-    flex-shrink: 0;
-  }
-
-  .btn-cancel-analysis:hover {
-    border-color: #ef4444;
-    color: #ef4444;
-  }
-
-  /* ── Checkbox column ─────────────────────────────────────────────────────── */
-
-  .cb-th {
-    padding: 0 !important;
-    width: 28px;
-    text-align: center;
-  }
-
-  .cb-td {
-    padding: 0 !important;
-    text-align: center;
-    cursor: default;
-    width: 28px;
-  }
-
-  .cb-td input[type="checkbox"] {
-    accent-color: var(--accent);
-    cursor: pointer;
-    width: 13px;
-    height: 13px;
-    vertical-align: middle;
-  }
-
-  /* ── Frame rows ──────────────────────────────────────────────────────────── */
-
-  .frame-row {
-    cursor: pointer;
-  }
-
-  .frame-row td {
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .frame-row:hover td {
-    background: var(--bg-row-hover);
-  }
-
-  .frame-row.selected td {
-    background: var(--accent-dim) !important;
-  }
-
-  .frame-row.multi-selected td {
-    background: color-mix(in srgb, var(--accent-dim) 70%, var(--bg-base) 30%);
-  }
-
-  .frame-row.multi-selected:hover td {
-    background: var(--accent-dim);
-  }
-
-  /* ── Column-specific styles ──────────────────────────────────────────────── */
-
-  .col-frameType {
-    padding: 4px 6px !important;
-    width: 70px;
-  }
-
-  .col-expTime,
-  .col-size,
-  .col-gain,
-  .col-ccdTemp {
-    text-align: right;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .col-dateObs {
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .col-filter,
-  .col-object {
-    font-size: 0.83rem;
-  }
-
-  .file-icon {
-    margin-right: 6px;
-    font-size: 0.9em;
-  }
-
-  .file-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* ── Type select badge ───────────────────────────────────────────────────── */
-
-  .type-select {
-    appearance: none;
-    -webkit-appearance: none;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    font-family: "Consolas", "Fira Code", monospace;
-    padding: 2px 5px;
-    cursor: pointer;
-    width: 100%;
-    text-align: center;
-    outline: none;
-    transition: border-color 0.12s;
-  }
-
-  .type-select:hover {
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  .type-select option {
-    background: var(--bg-panel);
-    color: var(--text-primary);
-    font-weight: normal;
-  }
-
-  /* ── Filter row ──────────────────────────────────────────────────────────── */
-
-  .filter-row th {
-    padding: 2px 4px;
-    background: color-mix(in srgb, var(--bg-panel) 55%, var(--bg-base) 45%);
-    border-bottom: 2px solid var(--border-accent);
-    top: 31px;
-  }
-
-  .filter-text {
-    width: 100%;
-    font-size: 0.72rem;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-primary);
-    padding: 2px 4px;
-    outline: none;
-    box-sizing: border-box;
-  }
-  .filter-text:focus,
-  .filter-text.filter-active {
-    border-color: var(--accent);
-  }
-
-  .filter-num {
-    display: flex;
-    gap: 2px;
-    align-items: center;
-  }
-
-  .filter-num-op {
-    font-size: 0.72rem;
-    padding: 1px 4px;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    flex-shrink: 0;
-    font-family: monospace;
-    line-height: 1.5;
-  }
-  .filter-num-op:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .filter-num-val {
-    width: 100%;
-    min-width: 0;
-    font-size: 0.72rem;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-primary);
-    padding: 2px 3px;
-    outline: none;
-  }
-  .filter-num-val:focus,
-  .filter-num-val.filter-active {
-    border-color: var(--accent);
-  }
-
-  .filter-type-btn {
-    font-size: 0.68rem;
-    padding: 2px 5px;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    width: 100%;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-  }
-  .filter-type-btn.filter-active {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .filter-type-btn:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
-  }
-
-  .filter-indicator {
-    font-size: 0.5rem;
-    color: var(--accent);
-    margin-left: 2px;
-    flex-shrink: 0;
-    vertical-align: middle;
-  }
-
-  .filter-clear {
-    color: var(--accent);
-    border-color: var(--accent);
-    font-size: 0.72rem;
-    white-space: nowrap;
-  }
-
-  /* ── Type-filter popup (position: fixed, outside scroll wrapper) ─────────── */
-
-  .type-filter-popup {
-    position: fixed;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 5px;
-    padding: 4px 0;
-    z-index: 300;
-    min-width: 120px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
-  }
-
-  .filter-popup-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-  }
-  .filter-popup-item:hover {
-    background: var(--bg-row-hover);
-    color: var(--text-primary);
-  }
-  .filter-popup-item input {
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-
-  /* ── Create project modal ────────────────────────────────────────────────── */
-  .cp-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-  }
-  .cp-modal {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 8px;
-    padding: 22px 26px;
-    width: 340px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-  }
-  .cp-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-  }
-  .cp-sub {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin: 0;
-  }
-  .cp-input {
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 0.9rem;
-    padding: 6px 10px;
-    outline: none;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .cp-input:focus {
-    border-color: var(--accent);
-  }
-  .cp-mode {
-    display: flex;
-    gap: 16px;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-  }
-  .cp-mode-opt {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    cursor: pointer;
-  }
-  .cp-mode-opt input {
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-  .cp-skipped {
-    color: var(--text-secondary);
-    font-style: italic;
-  }
-  .cp-error {
-    font-size: 0.75rem;
-    color: var(--danger);
-    margin: 0;
-  }
-  .cp-btns {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-  }
-  .cp-btn-primary {
-    background: var(--accent);
-    color: var(--bg-base);
-    border: none;
-    border-radius: 4px;
-    padding: 6px 16px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    font-weight: 500;
-    transition: opacity 0.12s;
-  }
-  .cp-btn-primary:disabled {
-    opacity: 0.45;
-    cursor: default;
-  }
-  .cp-btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-secondary);
-    padding: 6px 14px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition:
-      background 0.1s,
-      color 0.1s;
-  }
-  .cp-btn-ghost:hover {
-    background: var(--bg-row-hover);
-    color: var(--text-primary);
-  }
-
-  /* ── Blink + Suggest toolbar buttons ─────────────────────────────────────── */
-  .blink-btn {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .blink-btn:disabled {
-    color: var(--text-secondary);
-    border-color: var(--border);
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .suggest-btn {
-    color: var(--accent);
-  }
-
-  /* ── Suggest rejects modal ─────────────────────────────────────────────── */
-  .suggest-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 500;
-  }
-  .suggest-modal {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    width: min(88vw, 680px);
-    max-height: 80vh;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
-    overflow: hidden;
-  }
-  .suggest-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .suggest-title {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .suggest-close {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
-  }
-  .suggest-close:hover {
-    background: var(--bg-row-hover);
-  }
-  .suggest-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .suggest-status {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-  }
-  .suggest-desc {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin: 0;
-  }
-  .suggest-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .suggest-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 5px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.82rem;
-    transition: background 0.1s;
-  }
-  .suggest-row:hover {
-    background: var(--bg-row-hover);
-  }
-  .suggest-row.deselected {
-    opacity: 0.45;
-  }
-  .suggest-row input {
-    accent-color: var(--accent);
-    flex-shrink: 0;
-  }
-  .suggest-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: "Consolas", monospace;
-    color: var(--text-primary);
-  }
-  .suggest-obj {
-    width: 90px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-secondary);
-  }
-  .suggest-fwhm {
-    width: 120px;
-    text-align: right;
-    color: var(--danger);
-    font-size: 0.78rem;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .suggest-footer {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .suggest-sel-count {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    margin-right: auto;
+  .more-row button {
+    font-size: var(--fs-xs);
   }
 </style>

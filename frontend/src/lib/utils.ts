@@ -69,6 +69,28 @@ export function getCellValue(entry: app.EnrichedFileEntry, colId: string): strin
   }
 }
 
+/** Maps a library frame to the file-entry shape PreviewPane expects. */
+export function libraryFrameToEntry(frame: app.LibraryFrame): app.EnrichedFileEntry {
+  return {
+    name: frame.fileName,
+    path: frame.nasPath,
+    isDir: false,
+    modTime: frame.dateObs || new Date().toISOString(),
+    size: frame.fileSize,
+    object: frame.object,
+    filter: frame.filter,
+    expTime: frame.expTime,
+    dateObs: frame.dateObs,
+    gain: frame.gain,
+    ccdTemp: frame.ccdTemp,
+    telescope: frame.telescope,
+    instrument: frame.instrument,
+    hasMeta: true,
+    isRejected: frame.isRejected,
+    rejectionReason: "",
+  } as app.EnrichedFileEntry;
+}
+
 export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): string {
   switch (colId) {
     case "name":
