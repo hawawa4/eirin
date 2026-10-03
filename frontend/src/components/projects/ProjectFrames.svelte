@@ -16,8 +16,10 @@
     onretry: () => void;
     onadd: (type: ProjectFrameType) => void;
     onremove: (paths: string[]) => Promise<void>;
+    onframecontextmenu: (e: MouseEvent, frame: app.LibraryFrame, paths: string[]) => void;
   }
-  let { projectId, frames, loading, error, onretry, onadd, onremove }: Props = $props();
+  let { projectId, frames, loading, error, onretry, onadd, onremove, onframecontextmenu }: Props =
+    $props();
 
   let sections = $derived(sectionsByType(frames));
   const collapsed = new SvelteSet<string>();
@@ -70,6 +72,7 @@
               <FrameTable
                 frames={s.frames}
                 {onremove}
+                onrowcontextmenu={onframecontextmenu}
                 removeDescription="The frames are removed from this project only. The files in your library are not touched."
                 hiddenColumns={["frameType"]}
                 resetKey={projectId}

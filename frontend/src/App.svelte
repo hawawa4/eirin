@@ -268,6 +268,7 @@
               {sirilAvailable}
               active={appMode === "projects"}
               onscan={() => startScan()}
+              onopeninlibrary={openInLibrary}
             />
           </div>
         {/if}

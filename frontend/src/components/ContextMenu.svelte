@@ -6,8 +6,9 @@
   interface Props {
     menu: CtxMenuState;
     onclose: () => void;
-    onreject: (entry: CtxEntry) => void;
-    onrestore: (entry: CtxEntry) => void;
+    /** Reject / Restore — the section is hidden when absent. */
+    onreject?: (entry: CtxEntry) => void;
+    onrestore?: (entry: CtxEntry) => void;
     onharddelete: (entry: CtxEntry) => void;
     onopensiril: (entry: CtxEntry) => void;
     /** Hides the "Set type" section when absent. */
@@ -19,6 +20,10 @@
     onreveal?: (entry: CtxEntry) => void;
     /** "Copy path" — hidden when absent. */
     oncopypath?: (entry: CtxEntry) => void;
+    /** "Open in Library" — hidden when absent. */
+    onopeninlibrary?: (entry: CtxEntry) => void;
+    /** "Remove from project" — hidden when absent. */
+    onremovefromproject?: (entry: CtxEntry) => void;
   }
 
   let {
@@ -34,6 +39,8 @@
     oncreateproject,
     onreveal,
     oncopypath,
+    onopeninlibrary,
+    onremovefromproject,
   }: Props = $props();
 
   const EDGE = 4;
@@ -148,7 +155,16 @@
   >
     Open with Siril
   </button>
-  {#if single && (onreveal || oncopypath)}
+  {#if single && (onreveal || oncopypath || onopeninlibrary)}
+    {#if onopeninlibrary}
+      <button
+        class="ctx-item"
+        role="menuitem"
+        onclick={() => run(() => onopeninlibrary?.(menu.entry))}
+      >
+        Open in Library
+      </button>
+    {/if}
     {#if onreveal}
       <button class="ctx-item" role="menuitem" onclick={() => run(() => onreveal?.(menu.entry))}>
         Show in folder
@@ -193,14 +209,28 @@
       </button>
     {/if}
   {/if}
-  <div class="ctx-sep" role="separator"></div>
-  {#if menu.entry.isRejected}
-    <button class="ctx-item" role="menuitem" onclick={() => onrestore(menu.entry)}>
-      {menu.selectionCount > 1 ? `Restore ${menu.selectionCount} frames` : "Restore"}
-    </button>
-  {:else}
-    <button class="ctx-item" role="menuitem" onclick={() => onreject(menu.entry)}>
-      {menu.selectionCount > 1 ? `Reject ${menu.selectionCount} frames` : "Reject"}
+  {#if onreject && onrestore}
+    <div class="ctx-sep" role="separator"></div>
+    {#if menu.entry.isRejected}
+      <button class="ctx-item" role="menuitem" onclick={() => onrestore(menu.entry)}>
+        {menu.selectionCount > 1 ? `Restore ${menu.selectionCount} frames` : "Restore"}
+      </button>
+    {:else}
+      <button class="ctx-item" role="menuitem" onclick={() => onreject(menu.entry)}>
+        {menu.selectionCount > 1 ? `Reject ${menu.selectionCount} frames` : "Reject"}
+      </button>
+    {/if}
+  {/if}
+  {#if onremovefromproject}
+    <div class="ctx-sep" role="separator"></div>
+    <button
+      class="ctx-item"
+      role="menuitem"
+      onclick={() => run(() => onremovefromproject?.(menu.entry))}
+    >
+      {menu.selectionCount > 1
+        ? `Remove ${menu.selectionCount} frames from project`
+        : "Remove from project"}
     </button>
   {/if}
   {#if oncreateproject}

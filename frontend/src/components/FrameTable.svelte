@@ -20,6 +20,11 @@
     /** Explanation shown in the remove confirmation. */
     removeDescription?: string;
     onrowclick?: (frame: app.LibraryFrame) => void;
+    /**
+     * Right-click on a row. `paths` is the selection when the row is part of a
+     * multi-selection, otherwise just that row (which becomes selected).
+     */
+    onrowcontextmenu?: (e: MouseEvent, frame: app.LibraryFrame, paths: string[]) => void;
     hasMore?: boolean;
     loadingMore?: boolean;
     onloadmore?: () => void;
@@ -40,6 +45,7 @@
     onremove,
     removeDescription = "The selected frames will be removed from this list.",
     onrowclick,
+    onrowcontextmenu,
     hasMore = false,
     loadingMore = false,
     onloadmore,
@@ -246,6 +252,20 @@
     pick(new SvelteSet<string>([frame.nasPath]));
     lastSelectedPath = frame.nasPath;
     onrowclick?.(frame);
+  }
+
+  function handleRowContextMenu(e: MouseEvent, frame: app.LibraryFrame) {
+    if (!onrowcontextmenu || isDisabled(frame.nasPath)) return;
+    e.preventDefault();
+    let paths: string[];
+    if (selectedPaths.has(frame.nasPath) && selectedPaths.size > 1) {
+      paths = [...selectedPaths];
+    } else {
+      pick(new SvelteSet<string>([frame.nasPath]));
+      lastSelectedPath = frame.nasPath;
+      paths = [frame.nasPath];
+    }
+    onrowcontextmenu(e, frame, paths);
   }
 
   function toggleCheckbox(frame: app.LibraryFrame) {
@@ -493,6 +513,7 @@
           class:ft-disabled={disabled}
           title={disabled ? disabledTitle : undefined}
           onclick={(e) => handleRowClick(e, frame)}
+          oncontextmenu={(e) => handleRowContextMenu(e, frame)}
         >
           <td
             class="ft-cb-td"

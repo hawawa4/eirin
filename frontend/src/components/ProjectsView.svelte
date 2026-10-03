@@ -20,6 +20,7 @@
   import RemoveProjectModal from "./projects/RemoveProjectModal.svelte";
   import AddFramesModal from "./projects/AddFramesModal.svelte";
   import SaveOutputsModal from "./projects/SaveOutputsModal.svelte";
+  import FrameContextMenu, { type FrameMenuTarget } from "./projects/FrameContextMenu.svelte";
 
   interface Props {
     rootFolder: string;
@@ -30,6 +31,8 @@
     onscan?: () => void;
     /** Siril CLI is available. */
     sirilAvailable?: boolean;
+    /** Switches to the Library focused on this frame. */
+    onopeninlibrary?: (nasPath: string) => void;
   }
 
   let {
@@ -38,6 +41,7 @@
     active = true,
     onscan,
     sirilAvailable = false,
+    onopeninlibrary,
   }: Props = $props();
 
   // ── Project list ──────────────────────────────────────────────────────────
@@ -112,6 +116,7 @@
       framesError = "";
     }
     selected = p;
+    frameMenu = null;
     ui.lastProjectId = p.id;
     return reloadFrames();
   }
@@ -158,6 +163,8 @@
       if (selected?.id === proj.id) await reloadFrames();
     }
   }
+
+  let frameMenu = $state<FrameMenuTarget | null>(null);
 
   // ── Outputs (polled while visible) ────────────────────────────────────────
   let outputs = $state<app.ProjectOutputFile[]>([]);
@@ -272,6 +279,8 @@
           onretry={() => void reloadFrames()}
           onadd={(t) => (pickerType = t)}
           onremove={removeFrames}
+          onframecontextmenu={(e, frame, paths) =>
+            (frameMenu = { x: e.clientX, y: e.clientY, frame, paths })}
         />
         <ProjectOutputs
           folder={selected.folder}
@@ -306,6 +315,18 @@
     onclose={() => (pickerType = null)}
     onadded={onAdded}
     {onscan}
+  />
+{/if}
+
+{#if selected}
+  <FrameContextMenu
+    target={frameMenu}
+    project={selected}
+    {sirilAvailable}
+    onclose={() => (frameMenu = null)}
+    onremove={removeFrames}
+    ondeleted={() => void reloadFrames()}
+    {onopeninlibrary}
   />
 {/if}
 
