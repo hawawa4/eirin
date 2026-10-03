@@ -692,6 +692,12 @@ export class ProjectOutputFile {
     "size": number;
     "modTime": string;
 
+    /**
+     * FrameType is the type the file gets when saved to the library ("" if it
+     * isn't a FITS or raster file and won't be indexed).
+     */
+    "frameType": string;
+
     /** Creates a new ProjectOutputFile instance. */
     constructor($$source: Partial<ProjectOutputFile> = {}) {
         if (!("name" in $$source)) {
@@ -705,6 +711,9 @@ export class ProjectOutputFile {
         }
         if (!("modTime" in $$source)) {
             this["modTime"] = "";
+        }
+        if (!("frameType" in $$source)) {
+            this["frameType"] = "";
         }
 
         Object.assign(this, $$source);

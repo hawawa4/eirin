@@ -11,6 +11,7 @@ import (
 	"log/slog"
 
 	"github.com/TaruDesigns/eirin/internal/importer"
+	"github.com/TaruDesigns/eirin/internal/indexer"
 	"github.com/TaruDesigns/eirin/internal/projectfs"
 	"github.com/TaruDesigns/eirin/internal/store"
 )
@@ -163,6 +164,10 @@ type ProjectOutputFile struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 	ModTime string `json:"modTime"`
+
+	// FrameType is the type the file gets when saved to the library ("" if it
+	// isn't a FITS or raster file and won't be indexed).
+	FrameType string `json:"frameType"`
 }
 
 // GetProjectOutputFiles lists files directly in the project root folder,
@@ -188,13 +193,25 @@ func (a *App) GetProjectOutputFiles(projectFolder string) ([]ProjectOutputFile, 
 			continue
 		}
 		files = append(files, ProjectOutputFile{
-			Name:    e.Name(),
-			Path:    filepath.Join(projectFolder, e.Name()),
-			Size:    info.Size(),
-			ModTime: info.ModTime().UTC().Format(time.RFC3339),
+			Name:      e.Name(),
+			Path:      filepath.Join(projectFolder, e.Name()),
+			Size:      info.Size(),
+			ModTime:   info.ModTime().UTC().Format(time.RFC3339),
+			FrameType: outputFrameType(e.Name()),
 		})
 	}
 	return files, nil
+}
+
+// outputFrameType predicts the library frame type of a project output file.
+func outputFrameType(name string) string {
+	switch {
+	case indexer.IsFitsFile(name):
+		return store.ClassifyFrameType(name)
+	case indexer.IsRasterFile(name):
+		return store.ClassifyRasterType(name)
+	}
+	return ""
 }
 
 // ImportOutputsResult is returned by ImportOutputFiles.

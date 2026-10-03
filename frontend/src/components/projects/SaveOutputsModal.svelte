@@ -6,6 +6,7 @@
   import { toast } from "../../lib/toast.svelte";
   import { joinPath, safeSubfolderName } from "../../lib/projects/frames";
   import { formatBytes, plural } from "../../lib/utils";
+  import { FRAME_TYPE_META, type FrameType } from "../../lib/types";
 
   interface Props {
     rootFolder: string;
@@ -29,6 +30,10 @@
   let subfolderInvalid = $derived(subfolder.split(/[\\/]/).some((seg) => seg.trim() === ".."));
   let dest = $derived(joinPath(rootFolder, subfolder));
   let allSelected = $derived(selected.size === initialFiles.length && initialFiles.length > 0);
+
+  function typeMeta(t: string) {
+    return t ? FRAME_TYPE_META[t as FrameType] : undefined;
+  }
 
   function toggle(path: string) {
     if (selected.has(path)) selected.delete(path);
@@ -76,6 +81,10 @@
     Copies the selected files from the project folder into your library and indexes them. Existing
     library files are never overwritten.
   </p>
+  <p class="intro hint">
+    Files with <strong>PROCESSED</strong>, <strong>FINAL</strong> or <strong>HERO</strong> in the name
+    are tagged as processed (PROC).
+  </p>
 
   <form id="save-outputs-form" class="form" onsubmit={submit}>
     <div class="list-toolbar">
@@ -90,6 +99,18 @@
         <label class="file-row" class:picked={selected.has(f.path)}>
           <input type="checkbox" checked={selected.has(f.path)} onchange={() => toggle(f.path)} />
           <span class="name" class:conflict={conflicts.includes(f.name)}>{f.name}</span>
+          {#if typeMeta(f.frameType)}
+            {@const meta = typeMeta(f.frameType)!}
+            <span
+              class="type-badge"
+              style="color:{meta.color};background:{meta.bg}"
+              title={meta.label}>{meta.short}</span
+            >
+          {:else}
+            <span class="type-badge none" title="Not a FITS or image file: copied but not indexed"
+              >—</span
+            >
+          {/if}
           <span class="dim">{formatBytes(f.size)}</span>
           <span class="dim">{f.modTime.slice(0, 10)}</span>
         </label>
@@ -174,7 +195,7 @@
   }
   .file-row {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto auto;
     gap: 10px;
     align-items: center;
     padding: 5px 10px;
@@ -202,6 +223,23 @@
   }
   .name.conflict {
     color: var(--danger);
+  }
+  .hint {
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+  }
+  .type-badge {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    font-family: monospace;
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    min-width: 3.5em;
+    text-align: center;
+  }
+  .type-badge.none {
+    color: var(--text-secondary);
   }
   .dim {
     color: var(--text-secondary);

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	sq "github.com/Masterminds/squirrel"
 )
@@ -69,9 +70,64 @@ type Frame struct {
 	Notes           string
 }
 
-// ClassifyFrameType determines the frame type from the file path.
+// processedWords mark a finished result when one appears as a word in a file
+// name ("M31_final.tif", "NGC7000-HERO.png", "M31Final.fit").
+var processedWords = map[string]bool{"processed": true, "final": true, "hero": true}
+
+// IsProcessedName reports whether the file name contains PROCESSED, FINAL or
+// HERO as a whole word (any case). Words are split on non-letters and at
+// camelCase boundaries, so "unprocessed" doesn't count.
+func IsProcessedName(path string) bool {
+	name := filepath.Base(path)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	for _, w := range nameWords(name) {
+		if processedWords[strings.ToLower(w)] {
+			return true
+		}
+	}
+	return false
+}
+
+// nameWords splits a file name into words at non-letters and lower→upper
+// transitions.
+func nameWords(s string) []string {
+	var words []string
+	var cur []rune
+	prevLower := false
+	flush := func() {
+		if len(cur) > 0 {
+			words = append(words, string(cur))
+			cur = cur[:0]
+		}
+	}
+	for _, r := range s {
+		switch {
+		case !unicode.IsLetter(r):
+			flush()
+			prevLower = false
+			continue
+		case unicode.IsUpper(r) && prevLower:
+			flush()
+		}
+		cur = append(cur, r)
+		prevLower = unicode.IsLower(r)
+	}
+	flush()
+	return words
+}
+
+// ClassifyRasterType is the frame type for a raster (PNG/JPEG/TIFF) file:
+// processed when its name says so, otherwise image.
+func ClassifyRasterType(path string) string {
+	if IsProcessedName(path) {
+		return FrameTypeProcessed
+	}
+	return FrameTypeImage
+}
+
+// ClassifyFrameType determines the frame type of a FITS file from its path.
 // The parent directory is checked first (folders ending in "_sub" indicate lights),
-// then the filename prefix is used.
+// then the filename prefix, then processed keywords (see IsProcessedName).
 func ClassifyFrameType(nasPath string) string {
 	name := filepath.Base(nasPath)
 	dir := filepath.Base(filepath.Dir(nasPath))
@@ -88,6 +144,8 @@ func ClassifyFrameType(nasPath string) string {
 		return FrameTypeFlat
 	case strings.HasPrefix(strings.ToLower(name), "bias"):
 		return FrameTypeBias
+	case IsProcessedName(name):
+		return FrameTypeProcessed
 	default:
 		return FrameTypeStacked
 	}

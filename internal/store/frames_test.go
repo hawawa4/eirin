@@ -22,15 +22,38 @@ func TestClassifyFrameType(t *testing.T) {
 		{"/data/Bias_001.fits", FrameTypeBias},
 		{"/data/bias_001.fits", FrameTypeBias}, // case-insensitive
 		{"/data/BIAS_001.fits", FrameTypeBias},
+		// PROCESSED / FINAL / HERO as a word in the name: processed.
+		{"/data/processed_output.fits", FrameTypeProcessed},
+		{"/data/M31_FINAL.fit", FrameTypeProcessed},
+		{"/data/NGC7000-hero-v2.fits", FrameTypeProcessed},
+		{"/data/M31Final.fit", FrameTypeProcessed},
+		{"/data/final/result.fits", FrameTypeStacked}, // only the file name counts
+		{"/data/m31_unprocessed.fits", FrameTypeStacked},
+		{"/data/finally.fits", FrameTypeStacked},
+		{"/data/Light_final_001.fits", FrameTypeLight}, // prefixes win
 		// Anything else defaults to stacked.
 		{"/data/result.fits", FrameTypeStacked},
-		{"/data/processed_output.fits", FrameTypeStacked},
 	}
 
 	for _, tt := range tests {
 		got := ClassifyFrameType(tt.path)
 		if got != tt.want {
 			t.Errorf("ClassifyFrameType(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestClassifyRasterType(t *testing.T) {
+	tests := map[string]string{
+		"/data/M31_final.png":     FrameTypeProcessed,
+		"/data/HERO.jpg":          FrameTypeProcessed,
+		"/data/m42 processed.tif": FrameTypeProcessed,
+		"/data/m42.png":           FrameTypeImage,
+		"/data/heron.jpg":         FrameTypeImage,
+	}
+	for path, want := range tests {
+		if got := ClassifyRasterType(path); got != want {
+			t.Errorf("ClassifyRasterType(%q) = %q, want %q", path, got, want)
 		}
 	}
 }

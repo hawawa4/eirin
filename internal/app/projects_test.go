@@ -260,3 +260,27 @@ func TestGetProjectOutputFilesSkipsFrameDirs(t *testing.T) {
 		t.Errorf("files = %+v err = %v", files, err)
 	}
 }
+
+func TestGetProjectOutputFilesFrameType(t *testing.T) {
+	a := newTestApp(t)
+	proj := t.TempDir()
+	want := map[string]string{
+		"result.fit":     store.FrameTypeStacked,
+		"M31_FINAL.fit":  store.FrameTypeProcessed,
+		"m31-hero.png":   store.FrameTypeProcessed,
+		"m31.tif":        store.FrameTypeImage,
+		"siril.log":      "",
+	}
+	for name := range want {
+		writeTestFile(t, filepath.Join(proj, name), "x")
+	}
+	files, err := a.GetProjectOutputFiles(proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if f.FrameType != want[f.Name] {
+			t.Errorf("%s: frameType = %q, want %q", f.Name, f.FrameType, want[f.Name])
+		}
+	}
+}

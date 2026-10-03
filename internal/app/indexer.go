@@ -280,7 +280,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			f := store.Frame{
 				FileSize:   fileSize,
 				LastSeen:   time.Now().Unix(),
-				FrameType:  store.FrameTypeImage,
+				FrameType:  store.ClassifyRasterType(p),
 				Object:     obj,
 				Telescope:  dm.Telescope,
 				Instrument: dm.Instrument,
