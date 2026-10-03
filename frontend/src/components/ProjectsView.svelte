@@ -1,77 +1,197 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { SvelteSet } from "svelte/reactivity";
+  import { untrack } from "svelte";
   import {
     ListProjects,
-    CreateProject,
-    DeleteProject,
-    AddFramesToProject,
-    OpenProjectInSiril,
-    GetLightObjects,
-    GetLightFramesPaged,
     GetProjectLibraryFrames,
-    RemoveFramesFromProject,
     GetProjectOutputFiles,
-    ImportOutputFiles,
+    RemoveFramesFromProject,
+    OpenFolder,
   } from "$app";
   import type * as app from "$models/app";
-  import type { Project, ProjectOutputFile } from "../lib/types";
-  import FrameTable from "./FrameTable.svelte";
+  import { ui } from "../lib/uiState.svelte";
+  import { toast } from "../lib/toast.svelte";
+  import { describeAddResult, plural, type ProjectFrameType } from "../lib/projects/frames";
+  import ProjectSidebar from "./projects/ProjectSidebar.svelte";
+  import ProjectHeader from "./projects/ProjectHeader.svelte";
+  import ProjectFrames from "./projects/ProjectFrames.svelte";
+  import ProjectOutputs from "./projects/ProjectOutputs.svelte";
+  import CreateProjectModal from "./projects/CreateProjectModal.svelte";
+  import RemoveProjectModal from "./projects/RemoveProjectModal.svelte";
+  import AddFramesModal from "./projects/AddFramesModal.svelte";
+  import SaveOutputsModal from "./projects/SaveOutputsModal.svelte";
 
   interface Props {
     rootFolder: string;
     projectsFolder: string;
+    /** @deprecated ignored; removed after merge — App calls selectProjectById instead. */
     initialProjectId?: number | null;
-    /** True while this view's tab is visible (Phase 2 contract). */
+    /** True while this view's tab is visible. */
     active?: boolean;
-    /** Request a library (re)scan/index (Phase 2 contract). */
+    /** Request a library (re)scan/index. */
     onscan?: () => void;
-    /** Siril CLI is available (Phase 2 contract). */
+    /** Siril CLI is available. */
     sirilAvailable?: boolean;
   }
 
-  // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
-  let { rootFolder, projectsFolder, initialProjectId = null }: Props = $props();
-
-  /** Select the project with the given id (Phase 2 contract). */
-  export function selectProjectById(id: number): void {
-    // TODO(phase 2): select once projects are loaded.
-    void id;
-  }
+  // eslint-disable-next-line svelte/no-unused-props -- initialProjectId is deprecated and ignored
+  let {
+    rootFolder,
+    projectsFolder,
+    active = true,
+    onscan,
+    sirilAvailable = false,
+  }: Props = $props();
 
   // ── Project list ──────────────────────────────────────────────────────────
-  let projects = $state<Project[]>([]);
-  let selected = $state<Project | null>(null);
+  let projects = $state<app.Project[]>([]);
   let loadingProjects = $state(false);
+  let projectsError = $state("");
+  let selected = $state<app.Project | null>(null);
 
-  // ── Lights (collapsible) ──────────────────────────────────────────────────
-  let lightsCollapsed = $state(false);
-  let projectLibraryFrames = $state<app.LibraryFrame[]>([]);
-  let loadingFrames = $state(false);
-  let removeFramesError = $state("");
+  /** Project to select once the list (re)loads — set by selectProjectById. */
+  let pendingSelectId: number | null = null;
+  let loadPromise: Promise<void> | null = null;
 
-  // ── Output files (polled) ─────────────────────────────────────────────────
-  let outputFiles = $state<ProjectOutputFile[]>([]);
+  function loadProjects(): Promise<void> {
+    if (loadPromise) return loadPromise;
+    loadPromise = (async () => {
+      loadingProjects = true;
+      projectsError = "";
+      try {
+        const list = (await ListProjects()) ?? [];
+        projects = list;
+        const wantId = pendingSelectId ?? selected?.id ?? ui.lastProjectId;
+        const p = wantId != null ? list.find((x) => x.id === wantId) : undefined;
+        if (p) {
+          if (pendingSelectId === p.id) pendingSelectId = null;
+          if (p.id !== selected?.id) void selectProject(p);
+          else selected = p;
+        } else if (selected) {
+          clearSelection();
+        }
+      } catch (e) {
+        projectsError = String(e);
+      } finally {
+        loadingProjects = false;
+        loadPromise = null;
+      }
+    })();
+    return loadPromise;
+  }
 
-  // Poll the project root for new output files while a project is selected.
-  // The poll runs every 3 s; the effect re-starts whenever `selected` changes.
+  // Load on mount, and again if the projects folder setting changes.
   $effect(() => {
-    const proj = selected;
-    if (!proj) {
-      outputFiles = [];
+    void projectsFolder;
+    untrack(() => void loadProjects());
+  });
+
+  /** Selects a project by id, (re)loading the list first if it isn't known yet. */
+  export function selectProjectById(id: number): void {
+    const p = projects.find((x) => x.id === id);
+    if (p) {
+      pendingSelectId = null;
+      void selectProject(p);
       return;
     }
+    pendingSelectId = id;
+    void (async () => {
+      if (loadPromise) await loadPromise;
+      if (pendingSelectId !== id) return;
+      await loadProjects();
+      if (pendingSelectId === id) pendingSelectId = null; // unknown id: give up quietly
+    })();
+  }
+
+  // ── Selected project's frames ─────────────────────────────────────────────
+  let frames = $state<app.LibraryFrame[]>([]);
+  let framesLoading = $state(false);
+  let framesError = $state("");
+  let framesReq = 0;
+
+  function selectProject(p: app.Project): Promise<void> {
+    if (selected?.id !== p.id) {
+      frames = [];
+      framesError = "";
+    }
+    selected = p;
+    ui.lastProjectId = p.id;
+    return reloadFrames();
+  }
+
+  function clearSelection() {
+    framesReq++;
+    selected = null;
+    frames = [];
+    framesError = "";
+    framesLoading = false;
+  }
+
+  /** Reloads the selected project's frames; responses for a previous selection are dropped. */
+  async function reloadFrames(): Promise<void> {
+    const proj = selected;
+    if (!proj) return;
+    const req = ++framesReq;
+    framesLoading = true;
+    framesError = "";
+    try {
+      const list = await GetProjectLibraryFrames(proj.folder);
+      if (req !== framesReq) return;
+      frames = list ?? [];
+    } catch (e) {
+      if (req !== framesReq) return;
+      framesError = String(e);
+    } finally {
+      if (req === framesReq) framesLoading = false;
+    }
+  }
+
+  let projectFramePaths = $derived(new Set(frames.map((f) => f.nasPath)));
+
+  async function removeFrames(paths: string[]) {
+    const proj = selected;
+    if (!proj) return;
+    try {
+      await RemoveFramesFromProject(proj.folder, paths);
+      toast.success(`Removed ${plural(paths.length, "frame")} from the project`);
+    } catch (e) {
+      toast.error(`Couldn't remove frames: ${String(e)}`);
+      throw e;
+    } finally {
+      if (selected?.id === proj.id) await reloadFrames();
+    }
+  }
+
+  // ── Outputs (polled while visible) ────────────────────────────────────────
+  let outputs = $state<app.ProjectOutputFile[]>([]);
+  let outputsLoaded = $state(false);
+  let outputsError = $state("");
+  let outputsFolder = "";
+
+  $effect(() => {
+    const folder = selected?.folder ?? "";
+    const visible = active !== false;
+    if (folder !== outputsFolder) {
+      outputsFolder = folder;
+      outputs = [];
+      outputsLoaded = false;
+      outputsError = "";
+    }
+    if (!folder || !visible) return;
     let cancelled = false;
     const poll = async () => {
-      if (cancelled) return;
       try {
-        const files = await GetProjectOutputFiles(proj.folder);
-        if (!cancelled) outputFiles = files;
-      } catch {
-        /* ignore transient errors */
+        const files = await GetProjectOutputFiles(folder);
+        if (cancelled) return;
+        outputs = files ?? [];
+        outputsError = "";
+      } catch (e) {
+        if (cancelled) return;
+        outputsError = String(e);
+      } finally {
+        if (!cancelled) outputsLoaded = true;
       }
     };
-    poll();
+    void poll();
     const id = setInterval(poll, 3000);
     return () => {
       cancelled = true;
@@ -79,787 +199,156 @@
     };
   });
 
-  // ── Create form ───────────────────────────────────────────────────────────
+  // ── Modals ────────────────────────────────────────────────────────────────
   let showCreate = $state(false);
-  let createName = $state("");
-  let createDesc = $state("");
-  let creating = $state(false);
-  let createError = $state("");
+  let removeTarget = $state<app.Project | null>(null);
+  let pickerType = $state<ProjectFrameType | null>(null);
+  let showSave = $state(false);
 
-  // ── Frame picker (Add lights) ─────────────────────────────────────────────
-  let showPicker = $state(false);
-  let pickerStep = $state<"objects" | "frames">("objects");
-  let availableObjects = $state<string[]>([]);
-  let pickerObjects = $state<Set<string>>(new Set());
-  let pickerFrames = $state<app.LibraryFrame[]>([]);
-  let pickerHasMore = $state(false);
-  let pickerOffset = $state(0);
-  let pickerLoading = $state(false);
-  let pickerLoadingMore = $state(false);
-  let pickerSelected = $state<Set<string>>(new Set());
-  let pickerResetKey = $state(0);
-  let addMode = $state<"symlink" | "copy">("symlink");
-  let adding = $state(false);
-  let addError = $state("");
-
-  // ── Import outputs to NAS ─────────────────────────────────────────────────
-  let showImport = $state(false);
-  let importSelected = $state<Set<string>>(new Set());
-  let importSubfolder = $state("");
-  let importing = $state(false);
-  let importError = $state("");
-
-  // ── Delete confirm ────────────────────────────────────────────────────────
-  let confirmDelete = $state<Project | null>(null);
-
-  onMount(async () => {
-    await loadProjects();
-  });
-
-  async function loadProjects() {
-    loadingProjects = true;
-    try {
-      projects = await ListProjects();
-      if (initialProjectId) {
-        const p = projects.find((x) => x.id === initialProjectId);
-        if (p) selectProject(p);
-      }
-    } finally {
-      loadingProjects = false;
-    }
+  function onCreated(p: app.Project) {
+    showCreate = false;
+    projects = [p, ...projects.filter((x) => x.id !== p.id)];
+    void selectProject(p);
+    toast.success(`Created project “${p.name}”`);
   }
 
-  $effect(() => {
-    const id = initialProjectId;
-    if (!id || !projects.length) return;
-    const p = projects.find((x) => x.id === id);
-    if (p) selectProject(p);
-  });
-
-  async function selectProject(p: Project) {
-    selected = p;
-    importSubfolder = p.name;
-    await reloadFrames();
-  }
-
-  async function reloadFrames() {
-    if (!selected) return;
-    loadingFrames = true;
-    removeFramesError = "";
-    try {
-      projectLibraryFrames = await GetProjectLibraryFrames(selected.folder);
-    } finally {
-      loadingFrames = false;
-    }
-  }
-
-  async function doRemoveFrames(paths: string[]) {
-    if (!selected) return;
-    removeFramesError = "";
-    try {
-      await RemoveFramesFromProject(selected.folder, paths);
-      await reloadFrames();
-    } catch (e) {
-      removeFramesError = String(e);
-    }
-  }
-
-  async function doCreate() {
-    if (!createName.trim()) return;
-    creating = true;
-    createError = "";
-    try {
-      const p = await CreateProject(createName.trim(), createDesc.trim());
-      projects = [p, ...projects];
-      showCreate = false;
-      createName = "";
-      createDesc = "";
-      await selectProject(p);
-    } catch (e) {
-      createError = String(e);
-    } finally {
-      creating = false;
-    }
-  }
-
-  async function doDelete(p: Project) {
-    confirmDelete = null;
-    await DeleteProject(p.id);
+  function onRemoved(p: app.Project) {
+    removeTarget = null;
     projects = projects.filter((x) => x.id !== p.id);
-    if (selected?.id === p.id) {
-      selected = null;
-      projectLibraryFrames = [];
-    }
+    if (selected?.id === p.id) clearSelection();
+    if (ui.lastProjectId === p.id) ui.lastProjectId = null;
+    toast.success(`Removed “${p.name}” from the list. Its folder is still on disk.`, {
+      action: { label: "Show folder", run: () => OpenFolder(p.folder) },
+      timeout: 8000,
+    });
   }
 
-  // ── Lights picker ─────────────────────────────────────────────────────────
-  async function openPicker() {
-    pickerStep = "objects";
-    pickerSelected = new Set();
-    pickerObjects = new Set();
-    pickerFrames = [];
-    pickerHasMore = false;
-    pickerOffset = 0;
-    addError = "";
-    showPicker = true;
-    if (!rootFolder) return;
-    pickerLoading = true;
-    try {
-      availableObjects = (await GetLightObjects(rootFolder)) ?? [];
-    } finally {
-      pickerLoading = false;
-    }
-  }
-
-  async function loadPickerFrames(reset: boolean) {
-    if (reset) {
-      pickerFrames = [];
-      pickerOffset = 0;
-      pickerHasMore = false;
-      pickerResetKey++;
-    }
-    pickerLoadingMore = true;
-    try {
-      const result = await GetLightFramesPaged(rootFolder, [...pickerObjects], pickerOffset);
-      pickerFrames = reset ? (result.frames ?? []) : [...pickerFrames, ...(result.frames ?? [])];
-      pickerHasMore = result.hasMore;
-      pickerOffset = pickerFrames.length;
-    } finally {
-      pickerLoadingMore = false;
-    }
-  }
-
-  async function goToFrameStep() {
-    pickerStep = "frames";
-    pickerSelected = new Set();
-    await loadPickerFrames(true);
-  }
-
-  function toggleObject(obj: string) {
-    const next = new SvelteSet(pickerObjects);
-    if (next.has(obj)) next.delete(obj);
-    else next.add(obj);
-    pickerObjects = next;
-  }
-
-  async function doAddFrames() {
-    if (!selected || pickerSelected.size === 0) return;
-    adding = true;
-    addError = "";
-    try {
-      await AddFramesToProject(selected.folder, [...pickerSelected], addMode);
-      showPicker = false;
-      await reloadFrames();
-    } catch (e) {
-      addError = String(e);
-    } finally {
-      adding = false;
-    }
-  }
-
-  // ── Import outputs ────────────────────────────────────────────────────────
-  function openImport() {
-    importSelected = new Set(outputFiles.map((f) => f.path));
-    importSubfolder = selected?.name ?? "";
-    importError = "";
-    showImport = true;
-  }
-
-  function toggleImportFile(path: string) {
-    const next = new SvelteSet(importSelected);
-    if (next.has(path)) next.delete(path);
-    else next.add(path);
-    importSelected = next;
-  }
-
-  function toggleAllImport() {
-    importSelected =
-      importSelected.size === outputFiles.length
-        ? new Set()
-        : new Set(outputFiles.map((f) => f.path));
-  }
-
-  async function doImportOutputs() {
-    if (!rootFolder || importSelected.size === 0) return;
-    importing = true;
-    importError = "";
-    try {
-      const destFolder = importSubfolder.trim()
-        ? `${rootFolder}/${importSubfolder.trim()}`
-        : rootFolder;
-      await ImportOutputFiles([...importSelected], destFolder);
-      showImport = false;
-    } catch (e) {
-      importError = String(e);
-    } finally {
-      importing = false;
-    }
-  }
-
-  // ── Misc ──────────────────────────────────────────────────────────────────
-  async function doOpenInSiril() {
-    if (!selected) return;
-    await OpenProjectInSiril(selected.folder);
-  }
-
-  function formatDate(iso: string) {
-    try {
-      return new Date(iso).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch {
-      return iso;
-    }
-  }
-
-  function formatSize(bytes: number) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  function onAdded(result: app.AddFramesResult) {
+    pickerType = null;
+    const msg = describeAddResult(result);
+    if (result.added > 0) toast.success(msg);
+    else toast.info(msg);
+    void reloadFrames();
   }
 </script>
 
 <div class="projects-layout">
-  <!-- ── Left: project list ────────────────────────────────────────────────── -->
-  <aside class="project-sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-title">Projects</span>
-      <button class="btn-icon" onclick={() => (showCreate = !showCreate)} title="New project"
-        >+</button
-      >
-    </div>
+  <ProjectSidebar
+    {projects}
+    selectedId={selected?.id ?? null}
+    loading={loadingProjects}
+    error={projectsError}
+    {projectsFolder}
+    onselect={(p) => void selectProject(p)}
+    oncreate={() => (showCreate = true)}
+    onretry={() => void loadProjects()}
+  />
 
-    {#if showCreate}
-      <div class="create-form">
-        <input
-          class="create-input"
-          type="text"
-          placeholder="Project name"
-          bind:value={createName}
-          spellcheck="false"
-        />
-        <input
-          class="create-input"
-          type="text"
-          placeholder="Description (optional)"
-          bind:value={createDesc}
-          spellcheck="false"
-        />
-        {#if createError}<p class="form-error">{createError}</p>{/if}
-        <div class="create-actions">
-          <button class="btn-primary" onclick={doCreate} disabled={creating || !createName.trim()}>
-            {creating ? "Creating…" : "Create"}
-          </button>
-          <button
-            class="btn-ghost"
-            onclick={() => {
-              showCreate = false;
-              createName = "";
-              createDesc = "";
-              createError = "";
-            }}>Cancel</button
-          >
-        </div>
-      </div>
-    {/if}
-
-    {#if !projectsFolder}
-      <p class="sidebar-hint">Configure a Projects folder in Settings first.</p>
-    {:else if loadingProjects}
-      <p class="sidebar-hint">Loading…</p>
-    {:else if projects.length === 0}
-      <p class="sidebar-hint">No projects yet. Click + to create one.</p>
-    {:else}
-      <ul class="project-list">
-        {#each projects as p (p.id)}
-          <li class="project-item" class:active={selected?.id === p.id}>
-            <button class="project-item-btn" onclick={() => selectProject(p)}>
-              <span class="project-name">{p.name}</span>
-              <span class="project-date">{formatDate(p.createdAt)}</span>
-            </button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </aside>
-
-  <!-- ── Right: project detail ─────────────────────────────────────────────── -->
   <main class="project-detail">
     {#if !selected}
       <div class="empty-detail">
-        <div class="empty-icon">◫</div>
-        <p class="empty-title">Select a project</p>
-        <p class="empty-sub">Choose a project from the list, or create a new one.</p>
+        <div class="empty-icon" aria-hidden="true">◫</div>
+        {#if !projectsFolder}
+          <p class="empty-title">No Projects folder</p>
+          <p class="empty-sub">Choose where Siril projects are created in Settings.</p>
+        {:else}
+          <p class="empty-title">Select a project</p>
+          <p class="empty-sub">Choose a project from the list, or create a new one.</p>
+          <button class="btn-secondary" onclick={() => (showCreate = true)}>New project…</button>
+        {/if}
       </div>
     {:else}
-      <!-- Header -->
-      <div class="detail-header">
-        <div class="detail-meta">
-          <h2 class="detail-name">{selected.name}</h2>
-          {#if selected.description}<p class="detail-desc">{selected.description}</p>{/if}
-          <p class="detail-folder" title={selected.folder}>{selected.folder}</p>
-        </div>
-        <div class="detail-actions">
-          <button class="btn-primary" onclick={doOpenInSiril}>Open in Siril</button>
-          <button
-            class="btn-ghost danger"
-            onclick={() => (confirmDelete = selected)}
-            title="Remove from list — does not delete files">Remove</button
-          >
-        </div>
-      </div>
+      <ProjectHeader
+        project={selected}
+        {sirilAvailable}
+        onremove={() => (removeTarget = selected)}
+      />
 
+      <!-- The one scroll area for the project: frames, then outputs. -->
       <div class="detail-body">
-        <!-- ── Lights section (collapsible) ─────────────────────────────── -->
-        <section class="detail-section">
-          <div class="section-hdr-row">
-            <button class="section-hdr" onclick={() => (lightsCollapsed = !lightsCollapsed)}>
-              <span class="section-chevron">{lightsCollapsed ? "▶" : "▼"}</span>
-              <span class="section-title">Lights</span>
-              <span class="section-count">{projectLibraryFrames.length}</span>
-            </button>
-            <button class="btn-secondary small" onclick={() => openPicker()}>Add frames…</button>
-          </div>
-
-          {#if !lightsCollapsed}
-            <div class="section-body lights-body">
-              {#if loadingFrames}
-                <p class="hint">Loading…</p>
-              {:else}
-                {#if removeFramesError}<p class="form-error">{removeFramesError}</p>{/if}
-                <FrameTable
-                  frames={projectLibraryFrames}
-                  onremove={doRemoveFrames}
-                  hiddenColumns={["frameType"]}
-                  resetKey={selected?.id}
-                />
-              {/if}
-            </div>
-          {/if}
-        </section>
-
-        <!-- ── Project outputs (auto-watched) ───────────────────────────── -->
-        <section class="detail-section">
-          <div class="section-hdr no-toggle">
-            <span class="section-title">Project Outputs</span>
-            <span class="section-count">{outputFiles.length}</span>
-            <span class="pulse-dot" title="Watching for new files"></span>
-            <span class="section-spacer"></span>
-            {#if outputFiles.length > 0}
-              <button class="btn-secondary small" onclick={openImport}>Import to NAS…</button>
-            {/if}
-          </div>
-
-          <div class="section-body">
-            {#if outputFiles.length === 0}
-              <p class="hint">
-                No output files yet. Process your lights in Siril and save the results to
-                <code>{selected.folder}</code>.
-              </p>
-            {:else}
-              <div class="file-scroll">
-                <table class="file-table">
-                  <thead>
-                    <tr>
-                      <th>Filename</th>
-                      <th class="col-size">Size</th>
-                      <th class="col-date">Modified</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each outputFiles as f (f.path)}
-                      <tr>
-                        <td class="mono-cell">{f.name}</td>
-                        <td class="col-size dim-cell">{formatSize(f.size)}</td>
-                        <td class="col-date dim-cell">{f.modTime.slice(0, 10)}</td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-            {/if}
-          </div>
-        </section>
+        <ProjectFrames
+          projectId={selected.id}
+          {frames}
+          loading={framesLoading}
+          error={framesError}
+          onretry={() => void reloadFrames()}
+          onadd={(t) => (pickerType = t)}
+          onremove={removeFrames}
+        />
+        <ProjectOutputs
+          folder={selected.folder}
+          files={outputs}
+          loaded={outputsLoaded}
+          error={outputsError}
+          onsave={() => (showSave = true)}
+        />
       </div>
     {/if}
   </main>
 </div>
 
-<!-- ── Delete confirm ─────────────────────────────────────────────────────── -->
-{#if confirmDelete}
-  <div
-    class="modal-backdrop"
-    onclick={() => (confirmDelete = null)}
-    onkeydown={(e) => e.key === "Escape" && (confirmDelete = null)}
-    role="presentation"
-  >
-    <div
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <p class="modal-title">Remove <strong>{confirmDelete.name}</strong>?</p>
-      <p class="modal-sub">The project folder and files will not be deleted from disk.</p>
-      <div class="modal-actions">
-        <button class="btn-danger" onclick={() => doDelete(confirmDelete!)}>Remove</button>
-        <button class="btn-ghost" onclick={() => (confirmDelete = null)}>Cancel</button>
-      </div>
-    </div>
-  </div>
+{#if showCreate}
+  <CreateProjectModal {projectsFolder} onclose={() => (showCreate = false)} oncreated={onCreated} />
 {/if}
 
-<!-- ── Add lights modal ───────────────────────────────────────────────────── -->
-{#if showPicker}
-  <div
-    class="modal-backdrop"
-    onclick={() => (showPicker = false)}
-    onkeydown={(e) => e.key === "Escape" && (showPicker = false)}
-    role="presentation"
-  >
-    <div
-      class="picker-modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <div class="picker-header">
-        <span class="picker-title">
-          {pickerStep === "objects" ? "Select objects" : "Add light frames"} — {selected?.name}
-        </span>
-        <button class="btn-ghost" onclick={() => (showPicker = false)}>✕</button>
-      </div>
-
-      {#if pickerStep === "objects"}
-        <!-- Step 1: Pick objects -->
-        <div class="picker-list-scroll">
-          {#if pickerLoading}
-            <p class="hint padded">Loading objects…</p>
-          {:else if availableObjects.length === 0}
-            <p class="hint padded">No indexed light frames found. Run Build Index first.</p>
-          {:else}
-            <div class="object-list">
-              {#each availableObjects as obj (obj)}
-                <label class="object-item">
-                  <input
-                    type="checkbox"
-                    checked={pickerObjects.has(obj)}
-                    onchange={() => toggleObject(obj)}
-                  />
-                  <span class="object-name">{obj || "(no object)"}</span>
-                </label>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        <div class="picker-footer">
-          <div class="picker-actions">
-            <button
-              class="btn-primary"
-              disabled={pickerObjects.size === 0 || pickerLoading}
-              onclick={goToFrameStep}
-            >
-              Continue ({pickerObjects.size} object{pickerObjects.size !== 1 ? "s" : ""})
-            </button>
-            <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
-          </div>
-        </div>
-      {:else}
-        <!-- Step 2: Pick frames (paginated) -->
-        <div class="picker-toolbar picker-toolbar-step2">
-          <button
-            class="btn-ghost small"
-            onclick={() => {
-              pickerStep = "objects";
-            }}>← Back</button
-          >
-          <span class="picker-count">{pickerSelected.size} selected</span>
-        </div>
-
-        <div class="picker-list-scroll">
-          {#if pickerLoadingMore && pickerFrames.length === 0}
-            <p class="hint padded">Loading frames…</p>
-          {:else}
-            <FrameTable
-              frames={pickerFrames}
-              hasMore={pickerHasMore}
-              loadingMore={pickerLoadingMore}
-              onloadmore={() => loadPickerFrames(false)}
-              onselectionchange={(s) => (pickerSelected = s)}
-              hiddenColumns={["frameType"]}
-              resetKey={pickerResetKey}
-            />
-          {/if}
-        </div>
-
-        <div class="picker-footer">
-          <div class="mode-toggle">
-            <label class="mode-opt"
-              ><input type="radio" name="addMode" value="symlink" bind:group={addMode} /> Symlink</label
-            >
-            <label class="mode-opt"
-              ><input type="radio" name="addMode" value="copy" bind:group={addMode} /> Copy</label
-            >
-          </div>
-          {#if addError}<p class="form-error">{addError}</p>{/if}
-          <div class="picker-actions">
-            <button
-              class="btn-primary"
-              onclick={doAddFrames}
-              disabled={adding || pickerSelected.size === 0}
-            >
-              {adding
-                ? "Adding…"
-                : `Add ${pickerSelected.size} frame${pickerSelected.size !== 1 ? "s" : ""}`}
-            </button>
-            <button class="btn-ghost" onclick={() => (showPicker = false)}>Cancel</button>
-          </div>
-        </div>
-      {/if}
-    </div>
-  </div>
+{#if removeTarget}
+  <RemoveProjectModal
+    project={removeTarget}
+    onclose={() => (removeTarget = null)}
+    onremoved={onRemoved}
+  />
 {/if}
 
-<!-- ── Import outputs modal ───────────────────────────────────────────────── -->
-{#if showImport}
-  <div
-    class="modal-backdrop"
-    onclick={() => (showImport = false)}
-    onkeydown={(e) => e.key === "Escape" && (showImport = false)}
-    role="presentation"
-  >
-    <div
-      class="picker-modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <div class="picker-header">
-        <span class="picker-title">Import outputs to NAS</span>
-        <button class="btn-ghost" onclick={() => (showImport = false)}>✕</button>
-      </div>
+{#if pickerType && selected}
+  <AddFramesModal
+    {rootFolder}
+    project={selected}
+    {projectFramePaths}
+    initialType={pickerType}
+    onclose={() => (pickerType = null)}
+    onadded={onAdded}
+    {onscan}
+  />
+{/if}
 
-      <div class="picker-toolbar">
-        <button class="btn-ghost small" onclick={toggleAllImport}>
-          {importSelected.size === outputFiles.length && outputFiles.length > 0
-            ? "Deselect all"
-            : "Select all"}
-        </button>
-        <span class="picker-count">{importSelected.size} selected</span>
-      </div>
-
-      <div class="picker-list-scroll">
-        <table class="picker-table">
-          <thead>
-            <tr>
-              <th class="col-check"></th>
-              <th>Filename</th>
-              <th class="col-size">Size</th>
-              <th class="col-date">Modified</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each outputFiles as f (f.path)}
-              <tr
-                class="picker-row"
-                class:picked={importSelected.has(f.path)}
-                onclick={() => toggleImportFile(f.path)}
-              >
-                <td class="col-check">
-                  <input
-                    type="checkbox"
-                    checked={importSelected.has(f.path)}
-                    onclick={(e) => e.stopPropagation()}
-                    onchange={() => toggleImportFile(f.path)}
-                  />
-                </td>
-                <td class="col-name mono-cell">{f.name}</td>
-                <td class="col-size dim-cell">{formatSize(f.size)}</td>
-                <td class="col-date dim-cell">{f.modTime.slice(0, 10)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="picker-footer">
-        <div class="dest-row">
-          <span class="dest-label">Destination</span>
-          <span class="dest-root">{rootFolder}/</span>
-          <input
-            class="dest-input"
-            type="text"
-            placeholder="subfolder (optional)"
-            bind:value={importSubfolder}
-            spellcheck="false"
-          />
-        </div>
-        {#if importError}<p class="form-error">{importError}</p>{/if}
-        <div class="picker-actions">
-          <button
-            class="btn-primary"
-            onclick={doImportOutputs}
-            disabled={importing || importSelected.size === 0 || !rootFolder}
-          >
-            {importing
-              ? "Copying…"
-              : `Copy ${importSelected.size} file${importSelected.size !== 1 ? "s" : ""} to NAS`}
-          </button>
-          <button class="btn-ghost" onclick={() => (showImport = false)}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  </div>
+{#if showSave && selected}
+  <SaveOutputsModal
+    {rootFolder}
+    project={selected}
+    files={outputs}
+    onclose={() => (showSave = false)}
+  />
 {/if}
 
 <style>
-  /* ── Layout ─────────────────────────────────────────────────────────────── */
-
   .projects-layout {
     flex: 1;
     display: flex;
     overflow: hidden;
+    min-height: 0;
   }
-
-  /* ── Sidebar ─────────────────────────────────────────────────────────────── */
-
-  .project-sidebar {
-    width: 220px;
-    flex-shrink: 0;
-    background: var(--bg-panel);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px 8px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .sidebar-title {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .sidebar-hint {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    padding: 16px 12px;
-    line-height: 1.5;
-    margin: 0;
-  }
-
-  .create-form {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .create-input {
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    padding: 4px 8px;
-    outline: none;
-    width: 100%;
-  }
-
-  .create-input:focus {
-    border-color: var(--accent);
-  }
-
-  .create-actions {
-    display: flex;
-    gap: 6px;
-  }
-
-  .project-list {
-    list-style: none;
-    margin: 0;
-    padding: 4px 0;
-    overflow-y: auto;
-    flex: 1;
-  }
-
-  .project-list::-webkit-scrollbar {
-    width: 4px;
-  }
-  .project-list::-webkit-scrollbar-thumb {
-    background: var(--border-accent);
-    border-radius: 2px;
-  }
-
-  .project-item {
-    border-left: 3px solid transparent;
-    transition: background 0.12s;
-  }
-
-  .project-item:hover {
-    background: var(--bg-row-hover);
-  }
-
-  .project-item.active {
-    background: var(--bg-row-hover);
-    border-left-color: var(--accent);
-  }
-
-  .project-item-btn {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    padding: 7px 12px;
-    cursor: pointer;
-    background: none;
-    border: none;
-    text-align: left;
-    color: inherit;
-    font: inherit;
-  }
-
-  .project-name {
-    font-size: 0.83rem;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .project-date {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    margin-top: 1px;
-  }
-
-  /* ── Detail panel ────────────────────────────────────────────────────────── */
 
   .project-detail {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: var(--bg-base);
+  }
+
+  .detail-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .detail-body::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .detail-body::-webkit-scrollbar-thumb {
+    background: var(--border-accent);
+    border-radius: 4px;
   }
 
   .empty-detail {
@@ -870,556 +359,20 @@
     justify-content: center;
     gap: 8px;
   }
-
   .empty-icon {
     font-size: 3rem;
-    color: var(--accent-dim);
+    color: var(--accent);
     margin-bottom: 8px;
   }
-
   .empty-title {
-    font-size: 1rem;
+    font-size: var(--fs-lg);
     font-weight: 500;
     color: var(--text-primary);
     margin: 0;
   }
-
   .empty-sub {
-    font-size: 0.82rem;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
-    margin: 0;
-  }
-
-  .detail-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: 18px 24px 14px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-panel);
-    flex-shrink: 0;
-    gap: 16px;
-  }
-
-  .detail-meta {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .detail-name {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 4px;
-  }
-
-  .detail-desc {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    margin: 0 0 4px;
-  }
-
-  .detail-folder {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    font-family: monospace;
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .detail-actions {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-    align-items: flex-start;
-  }
-
-  /* ── Detail body ─────────────────────────────────────────────────────────── */
-
-  .detail-body {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-
-  .detail-body::-webkit-scrollbar {
-    width: 6px;
-  }
-  .detail-body::-webkit-scrollbar-thumb {
-    background: var(--border-accent);
-    border-radius: 3px;
-  }
-
-  /* ── Collapsible sections ────────────────────────────────────────────────── */
-
-  .detail-section {
-    border-bottom: 1px solid var(--border);
-  }
-
-  .section-hdr-row {
-    display: flex;
-    align-items: center;
-    background: var(--bg-panel);
-    padding-right: 12px;
-  }
-
-  .section-hdr-row:hover > .section-hdr {
-    background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
-  }
-
-  .section-hdr {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    flex: 1;
-    padding: 10px 24px;
-    background: var(--bg-panel);
-    border: none;
-    cursor: pointer;
-    user-select: none;
-    text-align: left;
-    transition: background 0.12s;
-  }
-
-  .section-hdr:hover {
-    background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
-  }
-
-  .section-hdr.no-toggle {
-    cursor: default;
-  }
-
-  .section-hdr.no-toggle:hover {
-    background: var(--bg-panel);
-  }
-
-  .section-chevron {
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-    width: 10px;
-    flex-shrink: 0;
-  }
-
-  .section-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .section-count {
-    font-size: 0.75rem;
-    color: var(--accent);
-    font-weight: 400;
-  }
-
-  .section-spacer {
-    flex: 1;
-  }
-
-  /* Live-watch indicator */
-  .pulse-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    opacity: 0.7;
-    animation: pulse 2.5s ease-in-out infinite;
-    flex-shrink: 0;
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 0.3;
-    }
-    50% {
-      opacity: 0.9;
-    }
-  }
-
-  .section-body {
-    padding: 10px 24px 14px;
-  }
-
-  .section-body.lights-body {
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    max-height: 420px;
-    overflow: hidden;
-  }
-
-  .picker-toolbar-step2 {
-    justify-content: flex-start;
-  }
-
-  /* ── File tables ─────────────────────────────────────────────────────────── */
-
-  .hint {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .hint code {
-    font-family: monospace;
-    color: var(--accent);
-    font-size: 0.78rem;
-  }
-
-  .file-scroll {
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    overflow-y: auto;
-    max-height: 220px;
-  }
-
-  .file-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .file-scroll::-webkit-scrollbar-thumb {
-    background: var(--border-accent);
-    border-radius: 3px;
-  }
-
-  .file-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-
-  .file-table thead th {
-    padding: 5px 10px;
-    text-align: left;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-secondary);
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-  }
-
-  .file-table td {
-    padding: 5px 10px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-  }
-
-  .file-table tr:last-child td {
-    border-bottom: none;
-  }
-
-  .mono-cell {
-    font-family: monospace;
-  }
-
-  .dim-cell {
-    color: var(--text-secondary) !important;
-    font-size: 0.78rem;
-  }
-
-  .col-size {
-    text-align: right;
-    width: 72px;
-  }
-
-  .col-date {
-    width: 90px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* ── Modals (shared) ─────────────────────────────────────────────────────── */
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 500;
-  }
-
-  .modal {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 8px;
-    padding: 24px;
-    min-width: 320px;
-    max-width: 440px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-  }
-
-  .modal-title {
-    font-size: 0.95rem;
-    color: var(--text-primary);
-    margin: 0;
-  }
-
-  .modal-sub {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    margin: 0;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-  }
-
-  /* ── Picker modal ────────────────────────────────────────────────────────── */
-
-  .picker-modal {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-accent);
-    border-radius: 8px;
-    width: 700px;
-    max-width: 92vw;
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    overflow: hidden;
-  }
-
-  .picker-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px 10px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .picker-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .picker-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .picker-count {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-  }
-
-  .picker-list-scroll {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  .picker-list-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .picker-list-scroll::-webkit-scrollbar-thumb {
-    background: var(--border-accent);
-    border-radius: 3px;
-  }
-
-  .picker-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-
-  .picker-table thead th {
-    padding: 5px 8px;
-    text-align: left;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-  }
-
-  .picker-row {
-    cursor: pointer;
-    transition: background 0.1s;
-  }
-
-  .picker-row:hover {
-    background: var(--bg-row-hover);
-  }
-
-  .picker-row.picked {
-    background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
-  }
-
-  .picker-row td {
-    padding: 5px 8px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .col-check {
-    width: 32px;
-    text-align: center;
-  }
-
-  .col-check input {
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-
-  .col-name {
-    font-family: monospace;
-  }
-
-  .picker-footer {
-    padding: 10px 16px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .mode-toggle {
-    display: flex;
-    gap: 16px;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-  }
-
-  .mode-opt {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    cursor: pointer;
-  }
-
-  .mode-opt input {
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-
-  .picker-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  /* ── Destination row (import modal) ──────────────────────────────────────── */
-
-  .dest-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 0.82rem;
-  }
-
-  .dest-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-    margin-right: 4px;
-  }
-
-  .dest-root {
-    color: var(--text-secondary);
-    font-family: monospace;
-    flex-shrink: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 200px;
-  }
-
-  .dest-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-primary);
-    font-family: monospace;
-    font-size: 0.82rem;
-    min-width: 0;
-  }
-
-  /* ── Shared ──────────────────────────────────────────────────────────────── */
-
-  .form-error {
-    font-size: 0.75rem;
-    color: var(--danger);
-    margin: 0;
-  }
-
-  .small {
-    font-size: 0.75rem;
-    padding: 2px 8px;
-  }
-
-  .hint.padded {
-    padding: 16px;
-  }
-
-  /* ── Object picker step ──────────────────────────────────────────────────── */
-
-  .object-list {
-    display: flex;
-    flex-direction: column;
-    padding: 6px 0;
-  }
-
-  .object-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 16px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    transition: background 0.1s;
-  }
-
-  .object-item:hover {
-    background: var(--bg-row-hover);
-    color: var(--text-primary);
-  }
-
-  .object-item input[type="checkbox"] {
-    accent-color: var(--accent);
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .object-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin: 0 0 8px;
   }
 </style>
