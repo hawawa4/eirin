@@ -7,26 +7,49 @@
   }
 
   let { progress, oncancel }: Props = $props();
+
+  const CURRENT_MAX = 64;
+
+  let pct = $derived(
+    progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0,
+  );
+
+  // Keep the end of the path (the file name) visible: truncate from the start.
+  let currentShort = $derived(
+    progress.current.length > CURRENT_MAX
+      ? "…" + progress.current.slice(-(CURRENT_MAX - 1))
+      : progress.current,
+  );
 </script>
 
 <div class="index-bar">
   <span class="index-phase">
     {#if progress.phase === "scanning"}
-      Scanning directories…
+      Scanning folders…
     {:else}
-      Indexing {progress.done} / {progress.total}
-      {#if progress.indexed > 0}
-        <span class="index-new">+{progress.indexed} new</span>
-      {/if}
+      Reading files {progress.done} / {progress.total}
+      <span class="index-pct">{pct}%</span>
     {/if}
   </span>
-  <div class="index-track">
-    <div
-      class="index-fill"
-      style="width: {progress.total > 0 ? ((progress.done / progress.total) * 100).toFixed(1) : 0}%"
-    ></div>
+  <div
+    class="index-track"
+    role="progressbar"
+    aria-label="Library scan progress"
+    aria-valuemin={0}
+    aria-valuemax={100}
+    aria-valuenow={progress.phase === "scanning" ? undefined : pct}
+  >
+    <div class="index-fill" style="width: {pct}%"></div>
   </div>
-  <span class="index-file" title={progress.current}>{progress.current}</span>
+  {#if progress.indexed > 0}
+    <span class="index-new">+{progress.indexed} new</span>
+  {/if}
+  {#if progress.errors > 0}
+    <span class="index-errors" title="Files that couldn't be read"
+      >{progress.errors} error{progress.errors !== 1 ? "s" : ""}</span
+    >
+  {/if}
+  <span class="index-file" title={progress.current}>{currentShort}</span>
   <button class="tool-btn" onclick={oncancel}>Cancel</button>
 </div>
 
@@ -34,24 +57,35 @@
   .index-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     padding: 5px 14px;
     background: color-mix(in srgb, var(--bg-panel) 80%, var(--accent) 20%);
     border-bottom: 1px solid var(--border-accent);
     flex-shrink: 0;
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
   }
 
   .index-phase {
     color: var(--text-primary);
     white-space: nowrap;
-    min-width: 120px;
+    min-width: 150px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .index-pct {
+    color: var(--accent);
+    margin-left: 4px;
+    font-weight: 600;
   }
 
   .index-new {
     color: var(--success);
-    margin-left: 4px;
-    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  .index-errors {
+    color: var(--danger);
+    white-space: nowrap;
   }
 
   .index-track {
@@ -73,8 +107,7 @@
   .index-file {
     color: var(--text-secondary);
     font-family: "Consolas", "Fira Code", monospace;
-    font-size: 0.72rem;
-    max-width: 240px;
+    max-width: 320px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

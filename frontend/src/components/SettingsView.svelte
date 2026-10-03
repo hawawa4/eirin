@@ -1,14 +1,12 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import {
-    CheckSiril,
-    SelectSirilExecutable,
-    SetSirilPath,
-    SelectProjectsFolder,
-    SetProjectsFolder,
-    BackupDatabase,
-  } from "$app";
   import type { AppInfo, SirilInfo } from "../lib/types";
+  import { openFolder } from "../lib/shell/fileActions";
+  import RootFolderSection from "./settings/RootFolderSection.svelte";
+  import ProjectsFolderSection from "./settings/ProjectsFolderSection.svelte";
+  import SirilSection from "./settings/SirilSection.svelte";
+  import AppearanceSection from "./settings/AppearanceSection.svelte";
+  import DatabaseSection from "./settings/DatabaseSection.svelte";
+  import ApiServerSection from "./settings/ApiServerSection.svelte";
 
   interface Props {
     rootFolder: string;
@@ -16,7 +14,9 @@
     appInfo: AppInfo;
     indexRunning: boolean;
     onselectfolder: () => void;
+    /** Scan for new files (non-forced). */
     onbuildindex: () => void;
+    /** Re-read every file (forced). */
     onrebuildindex: () => void;
     onsirilchange: (info: SirilInfo) => void;
     onprojectsfolderset: (path: string) => void;
@@ -27,7 +27,6 @@
     projectsFolder,
     appInfo,
     indexRunning,
-
     onselectfolder,
     onbuildindex,
     onrebuildindex,
@@ -36,130 +35,19 @@
   }: Props = $props();
 
   let desktopMode = $derived(appInfo.capabilities.desktopMode);
-
-  // ── Projects folder ────────────────────────────────────────────────────────
-  async function browseProjectsFolder() {
-    const path = await SelectProjectsFolder();
-    if (!path) return;
-    await SetProjectsFolder(path);
-    onprojectsfolderset(path);
-  }
-
-  // ── Database backup ───────────────────────────────────────────────────────
-  let backingUp = $state(false);
-  let backupResult = $state<{ path: string; error: string } | null>(null);
-
-  async function doBackup() {
-    backingUp = true;
-    backupResult = null;
-    try {
-      const path = await BackupDatabase();
-      backupResult = { path, error: "" };
-    } catch (e) {
-      backupResult = { path: "", error: String(e) };
-    } finally {
-      backingUp = false;
-      setTimeout(() => (backupResult = null), 4000);
-    }
-  }
-
-  // ── Clipboard copy ────────────────────────────────────────────────────────
-  let copied = $state("");
-
-  async function copyToClipboard(text: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = key;
-      setTimeout(() => (copied = ""), 1500);
-    } catch {
-      /* clipboard not available */
-    }
-  }
-
-  // ── Siril ─────────────────────────────────────────────────────────────────
-  let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
-  let sirilChecking = $state(false);
-  let sirilPathInput = $state("");
-  let sirilPathDirty = $state(false);
-
-  onMount(async () => {
-    if (desktopMode) await refreshSiril();
-  });
-
-  async function refreshSiril() {
-    sirilChecking = true;
-    try {
-      sirilInfo = await CheckSiril();
-      sirilPathInput = sirilInfo.executable;
-      sirilPathDirty = false;
-      onsirilchange(sirilInfo);
-    } finally {
-      sirilChecking = false;
-    }
-  }
-
-  async function browseSiril() {
-    const path = await SelectSirilExecutable();
-    if (!path) return;
-    await SetSirilPath(path);
-    await refreshSiril();
-  }
-
-  async function saveSirilPath() {
-    await SetSirilPath(sirilPathInput);
-    sirilPathDirty = false;
-    await refreshSiril();
-  }
-
-  async function resetSirilPath() {
-    sirilPathInput = "siril";
-    await SetSirilPath("");
-    sirilPathDirty = false;
-    await refreshSiril();
-  }
 </script>
 
 <div class="settings-view">
   <div class="settings-body">
-    <!-- ── Root Folder ───────────────────────────────────────────────────── -->
-    <section class="card">
-      <h2 class="section-title">Root Folder</h2>
-      <p class="section-desc">
-        The NAS folder that Eirin treats as the root of your astrophotography library.
-      </p>
-
-      <div class="path-row">
-        <span class="path-value" title={rootFolder || "Not set"}>
-          {rootFolder || "No folder selected"}
-        </span>
-        <button class="btn-secondary" onclick={onselectfolder}>
-          {rootFolder ? "Change" : "Select"}
-        </button>
-      </div>
-
-      {#if rootFolder}
-        <div class="action-row">
-          <div class="btn-group">
-            <button class="btn-primary" onclick={onbuildindex} disabled={indexRunning}>
-              {indexRunning ? "Indexing…" : "Build Index"}
-            </button>
-            <button
-              class="btn-secondary"
-              onclick={onrebuildindex}
-              disabled={indexRunning}
-              title="Re-read all files, even already-indexed ones"
-            >
-              Force Reindex
-            </button>
-          </div>
-          <p class="action-hint">
-            Scans all subfolders and reads FITS headers for any files not yet in the database.
-            Re-run to pick up new files. Use <strong>Force Reindex</strong> to re-read every file from
-            scratch.
-          </p>
-        </div>
-      {/if}
-    </section>
+    <RootFolderSection
+      {rootFolder}
+      {desktopMode}
+      {indexRunning}
+      {onselectfolder}
+      onscan={() => onbuildindex()}
+      onrescanall={() => onrebuildindex()}
+      onreveal={desktopMode ? (p) => openFolder(p) : undefined}
+    />
 
     {#if !desktopMode}
       <section class="card">
@@ -172,161 +60,13 @@
     {/if}
 
     {#if desktopMode}
-      <!-- ── Projects Folder ─────────────────────────────────────────────────── -->
-      <section class="card">
-        <h2 class="section-title">Projects Folder</h2>
-        <p class="section-desc">
-          Local folder where Siril projects are stored. Each project gets its own subfolder
-          containing a <code>lights/</code> directory with symlinks or copies of your frames.
-        </p>
-
-        <div class="path-row">
-          <span class="path-value" title={projectsFolder || "Not set"}>
-            {projectsFolder || "No folder selected"}
-          </span>
-          <button class="btn-secondary" onclick={browseProjectsFolder}>
-            {projectsFolder ? "Change" : "Select"}
-          </button>
-        </div>
-      </section>
-
-      <!-- ── Siril ─────────────────────────────────────────────────────────── -->
-      <section class="card">
-        <h2 class="section-title">Siril</h2>
-        <p class="section-desc">
-          Siril is used for astrophotography processing. Eirin can open files directly in Siril from
-          the right-click context menu.
-        </p>
-
-        <div class="siril-status">
-          <span
-            class="status-dot"
-            class:dot-ok={sirilInfo.available}
-            class:dot-err={!sirilInfo.available}
-          ></span>
-          <span class="status-version">
-            {#if sirilChecking}
-              Checking…
-            {:else}
-              {sirilInfo.version}
-            {/if}
-          </span>
-          <button
-            class="btn-ghost"
-            onclick={refreshSiril}
-            disabled={sirilChecking}
-            title="Re-check"
-          >
-            ↺
-          </button>
-        </div>
-
-        <div class="path-row">
-          <input
-            class="path-input"
-            type="text"
-            bind:value={sirilPathInput}
-            oninput={() => (sirilPathDirty = true)}
-            placeholder="siril"
-            spellcheck="false"
-          />
-          <button class="btn-secondary" onclick={browseSiril}>Browse…</button>
-        </div>
-
-        {#if sirilPathDirty}
-          <div class="action-row">
-            <button class="btn-primary" onclick={saveSirilPath}>Save</button>
-            <button
-              class="btn-ghost"
-              onclick={() => {
-                sirilPathInput = sirilInfo.executable;
-                sirilPathDirty = false;
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        {:else if sirilInfo.executable !== "siril" && sirilInfo.executable !== ""}
-          <button class="btn-ghost reset-btn" onclick={resetSirilPath}>Reset to default</button>
-        {/if}
-
-        <p class="action-hint">
-          Leave blank or set to <code>siril</code> to use the system PATH. Use Browse to locate a custom
-          binary.
-        </p>
-      </section>
+      <ProjectsFolderSection {projectsFolder} {onprojectsfolderset} />
+      <SirilSection {onsirilchange} />
     {/if}
 
-    <!-- ── Database ──────────────────────────────────────────────────────── -->
-    <section class="card">
-      <h2 class="section-title">Database</h2>
-      <p class="section-desc">
-        SQLite database storing all indexed frame metadata and preferences.
-      </p>
-
-      <div class="info-row">
-        <span class="info-label">Path</span>
-        <span class="info-value mono" title={appInfo.dbPath}>{appInfo.dbPath}</span>
-        <button
-          class="btn-ghost"
-          onclick={() => copyToClipboard(appInfo.dbPath, "db")}
-          title="Copy path">{copied === "db" ? "✓" : "⎘"}</button
-        >
-      </div>
-      <div class="info-row">
-        <span class="info-label">Backup</span>
-        <button class="btn-ghost" onclick={doBackup} disabled={backingUp}>
-          {backingUp ? "Backing up…" : "Back up now"}
-        </button>
-        {#if backupResult}
-          {#if backupResult.error}
-            <span class="backup-error">{backupResult.error}</span>
-          {:else}
-            <span class="backup-ok">Saved to {backupResult.path}</span>
-          {/if}
-        {/if}
-      </div>
-      <p class="action-hint">A timestamped copy is also made automatically every 30 minutes.</p>
-    </section>
-
-    <!-- ── API Server ────────────────────────────────────────────────────── -->
-    <section class="card">
-      <h2 class="section-title">API Server</h2>
-      <p class="section-desc">
-        A local HTTP server that exposes the library over a REST API. Useful for scripting and
-        external tool integration.
-      </p>
-
-      <div class="info-row">
-        <span class="info-label">URL</span>
-        <span class="info-value mono">{appInfo.serverUrl}</span>
-        <button
-          class="btn-ghost"
-          onclick={() => copyToClipboard(appInfo.serverUrl, "url")}
-          title="Copy URL">{copied === "url" ? "✓" : "⎘"}</button
-        >
-      </div>
-
-      <div class="info-row">
-        <span class="info-label">Port</span>
-        <span class="info-value">{appInfo.serverPort}</span>
-      </div>
-
-      <div class="info-row">
-        <span class="info-label">Source</span>
-        <span class="info-value">{appInfo.portSource}</span>
-      </div>
-
-      <div class="endpoints">
-        <p class="endpoints-label">Endpoints</p>
-        <code>GET {appInfo.serverUrl}/api/status</code>
-        <code>GET {appInfo.serverUrl}/api/frames</code>
-      </div>
-
-      <p class="env-hint">
-        Set the <code>EIRIN_PORT</code> environment variable before launching to use a custom port.
-      </p>
-    </section>
+    <AppearanceSection />
+    <DatabaseSection dbPath={appInfo.dbPath} {desktopMode} />
+    <ApiServerSection {appInfo} />
   </div>
 </div>
 
@@ -346,14 +86,14 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    max-width: 720px;
+    max-width: 760px;
     width: 100%;
     margin: 0 auto;
   }
 
-  /* ── Card ────────────────────────────────────────────────────────────── */
+  /* ── Shared section styles (used by the components in ./settings/) ───── */
 
-  .card {
+  .settings-view :global(.card) {
     background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -363,23 +103,21 @@
     gap: 12px;
   }
 
-  .section-title {
-    font-size: 0.95rem;
+  .settings-view :global(.section-title) {
+    font-size: var(--fs-lg);
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
   }
 
-  .section-desc {
-    font-size: 0.82rem;
+  .settings-view :global(.section-desc) {
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     margin: 0;
     line-height: 1.5;
   }
 
-  /* ── Path rows ───────────────────────────────────────────────────────── */
-
-  .path-row {
+  .settings-view :global(.path-row) {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -388,208 +126,105 @@
     border-radius: 5px;
     padding: 6px 12px;
   }
+  .settings-view :global(.path-row .btn-secondary) {
+    margin-right: 0;
+  }
 
-  .path-value {
+  .settings-view :global(.path-value),
+  .settings-view :global(.path-input) {
     flex: 1;
+    min-width: 0;
     font-family: monospace;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     color: var(--text-primary);
+  }
+  .settings-view :global(.path-value) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    min-width: 0;
+    user-select: text;
   }
-
-  .path-input {
-    flex: 1;
+  .settings-view :global(.path-input) {
     background: transparent;
     border: none;
     outline: none;
-    font-family: monospace;
-    font-size: 0.82rem;
-    color: var(--text-primary);
-    min-width: 0;
   }
-
-  .path-input::placeholder {
+  .settings-view :global(.path-input::placeholder) {
     color: var(--text-secondary);
   }
+  .settings-view :global(.path-row:focus-within) {
+    border-color: var(--accent);
+  }
 
-  /* ── Action rows ─────────────────────────────────────────────────────── */
-
-  .action-row {
+  .settings-view :global(.action-row) {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
-  .btn-group {
+  .settings-view :global(.btn-group) {
     display: flex;
     gap: 6px;
     flex-shrink: 0;
   }
 
-  .action-hint {
-    font-size: 0.78rem;
+  .settings-view :global(.action-hint) {
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     margin: 0;
-    line-height: 1.4;
+    line-height: 1.5;
+  }
+  .settings-view :global(.action-hint strong) {
+    color: var(--text-primary);
+    font-weight: 600;
   }
 
-  .backup-ok {
-    font-size: 0.78rem;
-    color: var(--success, #4ade80);
-    word-break: break-all;
-  }
-  .backup-error {
-    font-size: 0.78rem;
-    color: var(--danger);
-  }
-
-  .action-hint code {
+  .settings-view :global(.card code) {
     font-family: monospace;
     background: var(--bg-base);
     border-radius: 3px;
     padding: 1px 4px;
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     color: var(--accent);
   }
 
-  /* ── Siril status ────────────────────────────────────────────────────── */
-
-  .siril-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .dot-ok {
-    background: #5fba7d;
-    box-shadow: 0 0 4px #5fba7d88;
-  }
-
-  .dot-err {
-    background: var(--danger, #e06c75);
-  }
-
-  .status-version {
-    flex: 1;
-    font-size: 0.82rem;
-    color: var(--text-primary);
-    font-family: monospace;
-  }
-
-  .reset-btn {
-    align-self: flex-start;
-    font-size: 0.75rem;
-  }
-
-  /* ── Info rows ───────────────────────────────────────────────────────── */
-
-  .info-row {
+  .settings-view :global(.info-row) {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 6px 0;
     border-bottom: 1px solid var(--border);
   }
-
-  .info-row:last-of-type {
+  .settings-view :global(.info-row:last-of-type) {
     border-bottom: none;
   }
 
-  .info-label {
-    font-size: 0.78rem;
+  .settings-view :global(.info-label) {
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     width: 56px;
     flex-shrink: 0;
   }
 
-  .info-value {
+  .settings-view :global(.info-value) {
     flex: 1;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    user-select: text;
   }
 
-  .mono {
+  .settings-view :global(.mono) {
     font-family: monospace;
   }
 
-  /* ── Endpoints ───────────────────────────────────────────────────────── */
-
-  .endpoints {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-top: 4px;
-  }
-
-  .endpoints-label {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    margin: 0 0 2px;
-  }
-
-  .endpoints code {
-    font-size: 0.78rem;
-    color: var(--accent);
-    font-family: monospace;
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 8px;
-  }
-
-  .env-hint {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    margin: 4px 0 0;
-    line-height: 1.4;
-  }
-
-  .env-hint code {
-    font-family: monospace;
-    color: var(--accent);
-    background: var(--bg-base);
-    border-radius: 3px;
-    padding: 1px 4px;
-    font-size: 0.78rem;
-  }
-
-  /* ── Buttons ─────────────────────────────────────────────────────────── */
-
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    padding: 3px 8px;
-    cursor: pointer;
+  .settings-view :global(.btn-ghost.small) {
+    padding: 3px 10px;
+    font-size: var(--fs-xs);
     flex-shrink: 0;
-    transition:
-      color 0.15s,
-      border-color 0.15s;
-  }
-
-  .btn-ghost:hover {
-    color: var(--text-primary);
-    border-color: var(--accent);
-  }
-
-  .btn-ghost:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+    white-space: nowrap;
   }
 </style>

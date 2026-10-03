@@ -1,13 +1,6 @@
 <script lang="ts">
   import type { AppMode } from "../lib/types";
-
-  interface ModeOption {
-    value: AppMode;
-    label: string;
-    icon: string;
-    requiresRoot: boolean;
-    requiresDesktop?: boolean;
-  }
+  import { MODES, modeUnavailableReason } from "../lib/shell/modes";
 
   interface Props {
     mode: AppMode;
@@ -17,38 +10,28 @@
   }
 
   let { mode, rootFolder, desktopMode, onmodechange }: Props = $props();
-
-  const modes: ModeOption[] = [
-    { value: "browser", label: "Browse", icon: "⊞", requiresRoot: true },
-    { value: "library", label: "Library", icon: "◈", requiresRoot: true },
-    { value: "atlas", label: "Sky Atlas", icon: "✦", requiresRoot: true },
-    { value: "import", label: "Import", icon: "⇪", requiresRoot: true, requiresDesktop: true },
-    { value: "projects", label: "Projects", icon: "◧", requiresRoot: false, requiresDesktop: true },
-    { value: "storage", label: "Storage", icon: "◉", requiresRoot: true },
-    { value: "settings", label: "Settings", icon: "⚙", requiresRoot: false },
-  ];
 </script>
 
-<div class="mode-selector">
-  {#each modes as m (m.value)}
-    {@const unavailable = m.requiresDesktop && !desktopMode}
-    {@const disabled = unavailable || (m.requiresRoot && !rootFolder)}
+<nav class="mode-selector" aria-label="Views">
+  {#each MODES as m (m.value)}
+    {@const reason = modeUnavailableReason(m, rootFolder, desktopMode)}
+    <!-- aria-disabled (not `disabled`) so the explanatory tooltip still shows on hover. -->
     <button
       class="mode-btn"
       class:active={mode === m.value}
-      onclick={() => !disabled && onmodechange(m.value)}
-      {disabled}
-      title={unavailable
-        ? "Not available in server mode"
-        : disabled
-          ? "Select a root folder first"
-          : m.label}
+      class:unavailable={reason !== null}
+      aria-disabled={reason !== null}
+      aria-current={mode === m.value ? "page" : undefined}
+      onclick={() => {
+        if (reason === null) onmodechange(m.value);
+      }}
+      title={reason ?? m.label}
     >
-      <span class="mode-icon">{m.icon}</span>
+      <span class="mode-icon" aria-hidden="true">{m.icon}</span>
       <span class="mode-label">{m.label}</span>
     </button>
   {/each}
-</div>
+</nav>
 
 <style>
   .mode-selector {
@@ -63,40 +46,39 @@
   .mode-btn {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
+    gap: 6px;
+    padding: 5px 12px;
     border-radius: 4px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 500;
     cursor: pointer;
     transition:
       background 0.15s,
-      color 0.15s,
-      opacity 0.15s;
+      color 0.15s;
     white-space: nowrap;
   }
 
-  .mode-btn:disabled {
-    opacity: 0.35;
+  .mode-btn.unavailable {
+    color: var(--text-dim);
     cursor: not-allowed;
   }
 
-  .mode-btn:not(:disabled):hover {
+  .mode-btn:not(.unavailable):not(.active):hover {
     color: var(--text-primary);
     background: var(--bg-row-hover);
   }
 
   .mode-btn.active {
-    background: var(--bg-panel);
-    color: var(--accent);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-weight: 600;
   }
 
   .mode-icon {
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
     line-height: 1;
   }
 
