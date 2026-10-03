@@ -20,6 +20,7 @@
   import { drawScene } from "../lib/atlas/draw";
   import { framesNeedingSize, hitTest, type AtlasScene } from "../lib/atlas/scene";
   import { SizeQueue } from "../lib/atlas/sizeQueue";
+  import { DragTracker, STOP_SPEED, coastStep } from "../lib/atlas/inertia";
   import { PreviewCache } from "../lib/atlas/previews";
   import {
     buildObjectGroups,
@@ -195,6 +196,24 @@
     anim = requestAnimationFrame(step);
   }
 
+  /** Keeps the view gliding after a fast drag, slowing down until it stops. */
+  function coast(v0: [number, number]) {
+    stopAnim();
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    let v = v0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const r = coastStep(v, Math.min(now - last, 50));
+      last = now;
+      v = r.v;
+      const c = panFrom(viewRA, viewDec, pixPerDeg, r.dx, r.dy);
+      viewRA = c.ra;
+      viewDec = c.dec;
+      anim = Math.hypot(v[0], v[1]) > STOP_SPEED ? requestAnimationFrame(step) : null;
+    };
+    anim = requestAnimationFrame(step);
+  }
+
   function targetsOf(entries: app.AtlasIndexEntry[]): FitTarget[] {
     return entries.map((e) => ({
       ra: e.ra,
@@ -317,6 +336,7 @@
   let isPanning = $state(false);
   let dragMoved = $state(false);
   let panStart = { x: 0, y: 0, ra: 0, dec: 0 };
+  const drag = new DragTracker();
 
   function localXY(e: MouseEvent): [number, number] {
     const rect = canvas.getBoundingClientRect();
@@ -336,6 +356,18 @@
     isPanning = true;
     dragMoved = false;
     panStart = { x: e.clientX, y: e.clientY, ra: viewRA, dec: viewDec };
+    drag.reset(performance.now(), e.clientX, e.clientY);
+  }
+
+  /** Ends a drag; a fast release keeps the view gliding. */
+  function endPan(): boolean {
+    if (!isPanning) return false;
+    isPanning = false;
+    if (dragMoved) {
+      const v = drag.velocity(performance.now());
+      if (v) coast(v);
+    }
+    return true;
   }
 
   function onMouseMove(e: MouseEvent) {
@@ -345,6 +377,7 @@
       const dy = e.clientY - panStart.y;
       if (!dragMoved && Math.hypot(dx, dy) <= 4) return;
       dragMoved = true;
+      drag.add(performance.now(), e.clientX, e.clientY);
       const c = panFrom(panStart.ra, panStart.dec, pixPerDeg, dx, dy);
       viewRA = c.ra;
       viewDec = c.dec;
@@ -357,9 +390,7 @@
   }
 
   function onMouseUp(e: MouseEvent) {
-    if (!isPanning) return;
-    isPanning = false;
-    if (dragMoved) return;
+    if (!endPan() || dragMoved) return;
     const [mx, my] = localXY(e);
     const hit = hitTest(scene, mx, my);
     if (!hit) clearSelection();
@@ -516,7 +547,7 @@
     onmousemove={onMouseMove}
     onmouseup={onMouseUp}
     onmouseleave={() => {
-      isPanning = false;
+      endPan();
       hoveredEntry = null;
     }}
   ></canvas>
