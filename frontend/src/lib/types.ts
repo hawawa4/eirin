@@ -78,8 +78,6 @@ export interface ColFilter {
 
 export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
 
-export type ImportState = "idle" | "scanning" | "scanned" | "importing" | "done" | "error";
-
 export interface Capabilities {
   desktopMode: boolean;
 }
@@ -90,23 +88,6 @@ export interface AppInfo {
   serverUrl: string;
   portSource: string;
   capabilities: Capabilities;
-}
-
-export interface ImportCandidate {
-  sourcePath: string;
-  relativePath: string;
-  destPath: string;
-  fileSize: number;
-}
-
-export interface ImportProgress {
-  phase: "copying" | "done" | "error";
-  current: number;
-  total: number;
-  currentFile: string;
-  copied: number;
-  skipped: number;
-  error?: string;
 }
 
 export interface Project {

@@ -77,17 +77,8 @@
     onscan?: () => void;
     /** True while a library index build is running. */
     indexRunning?: boolean;
-    /** @deprecated ignored; removed after merge */
-    selectedNasPath?: string | null;
-    /** @deprecated ignored; removed after merge */
-    initialFilter?: string;
-    /** @deprecated ignored; removed after merge */
-    onfileclick?: (frame: app.LibraryFrame) => void;
-    /** @deprecated ignored; removed after merge */
-    onframesreloaded?: (frames: app.LibraryFrame[]) => void;
   }
 
-  // eslint-disable-next-line svelte/no-unused-props -- deprecated props kept until App stops passing them
   let {
     rootFolder,
     columns,

@@ -23,8 +23,6 @@
   interface Props {
     rootFolder: string;
     projectsFolder: string;
-    /** @deprecated ignored; removed after merge — App calls selectProjectById instead. */
-    initialProjectId?: number | null;
     /** True while this view's tab is visible. */
     active?: boolean;
     /** Request a library (re)scan/index. */
@@ -33,7 +31,6 @@
     sirilAvailable?: boolean;
   }
 
-  // eslint-disable-next-line svelte/no-unused-props -- initialProjectId is deprecated and ignored
   let {
     rootFolder,
     projectsFolder,
