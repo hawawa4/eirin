@@ -150,7 +150,8 @@ export function DeleteProject(id: number): $CancellablePromise<void> {
 }
 
 /**
- * GeneratePreview returns a PNG preview as a base64 data URL, scaled to 1024 px.
+ * GeneratePreview returns a JPEG preview as a base64 data URL, scaled to
+ * 1024 px and cached in memory (Blink loops over the same frames).
  * stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong
  */
 export function GeneratePreview(path: string, stretchLevel: number): $CancellablePromise<string> {
