@@ -5,7 +5,7 @@
   import type * as catalog from "$models/catalog";
   import { LoadRasterImage, GetAnnotations } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
-  import { mtfMidtone } from "../lib/stretchPreview";
+  import { computeStretch } from "../lib/stretchPreview";
   import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
   import {
     loadPreview,
@@ -68,6 +68,9 @@
   let showAnnotations = $state(false);
   let annotations = $state<catalog.Annotation[]>([]);
   let annotationsLoading = $state(false);
+  // Plain flag, not state: an empty result must not look like "not fetched yet",
+  // or the fetch effect re-runs on every assignment and floods the backend.
+  let annotationsFetched = false;
 
   // ── Viewport size tracking ─────────────────────────────────────────────────
   let viewportEl = $state<HTMLElement | null>(null);
@@ -115,8 +118,9 @@
   let glTex: WebGLTexture | null = null;
   let glU: {
     uTex: WebGLUniformLocation;
-    uShadows: WebGLUniformLocation;
-    uMidtones: WebGLUniformLocation;
+    uGain: WebGLUniformLocation;
+    uShadow: WebGLUniformLocation;
+    uMidtone: WebGLUniformLocation;
     uLinear: WebGLUniformLocation;
     uChannels: WebGLUniformLocation;
     uChannelMode: WebGLUniformLocation;
@@ -126,6 +130,7 @@
     height: number;
     channels: number;
     stats: fits.ChannelStats[];
+    balance: number[];
   } | null>(null);
 
   let displayCanvas: HTMLCanvasElement;
@@ -144,8 +149,9 @@ void main() {
   const FS = `#version 300 es
 precision highp float;
 uniform sampler2D uTex;
-uniform vec3  uShadows;
-uniform vec3  uMidtones;
+uniform vec3  uGain;
+uniform float uShadow;
+uniform float uMidtone;
 uniform bool  uLinear;
 uniform int   uChannels;
 uniform int   uChannelMode;
@@ -159,63 +165,35 @@ float mtf(float m, float x) {
   if (m >= 1.0) return 1.0;
   return (m - 1.0) * x / ((2.0 * m - 1.0) * x - m);
 }
-float applyStretch(float shadow, float midtone, float v) {
-  float scale = 1.0 - shadow;
+// Linked stretch (see lib/stretchPreview.ts): per-channel balance gain, then
+// the same black point and midtone for every channel.
+float applyStretch(float gain, float v) {
+  float scale = 1.0 - uShadow;
   if (scale <= 0.0) return 0.0;
-  float x = clamp((v - shadow) / scale, 0.0, 1.0);
+  float x = clamp((v * gain - uShadow) / scale, 0.0, 1.0);
   if (uLinear) return x;
-  return clamp(mtf(midtone, x), 0.0, 1.0);
+  return clamp(mtf(uMidtone, x), 0.0, 1.0);
 }
 void main() {
   vec4 raw = texture(uTex, vUv);
-  if (uChannels == 1) {
-    float v = applyStretch(uShadows.x, uMidtones.x, raw.r);
-    fragColor = vec4(v, v, v, 1.0);
-  } else if (uChannelMode == 1) {
-    float v = applyStretch(uShadows.x, uMidtones.x, raw.r);
+  if (uChannels == 1 || uChannelMode == 1) {
+    float v = applyStretch(uGain.x, raw.r);
     fragColor = vec4(v, v, v, 1.0);
   } else if (uChannelMode == 2) {
-    float v = applyStretch(uShadows.y, uMidtones.y, raw.g);
+    float v = applyStretch(uGain.y, raw.g);
     fragColor = vec4(v, v, v, 1.0);
   } else if (uChannelMode == 3) {
-    float v = applyStretch(uShadows.z, uMidtones.z, raw.b);
+    float v = applyStretch(uGain.z, raw.b);
     fragColor = vec4(v, v, v, 1.0);
   } else {
-    float r = applyStretch(uShadows.x, uMidtones.x, raw.r);
-    float g = applyStretch(uShadows.y, uMidtones.y, raw.g);
-    float b = applyStretch(uShadows.z, uMidtones.z, raw.b);
-    fragColor = vec4(r, g, b, 1.0);
+    fragColor = vec4(
+      applyStretch(uGain.x, raw.r),
+      applyStretch(uGain.y, raw.g),
+      applyStretch(uGain.z, raw.b),
+      1.0
+    );
   }
 }`;
-
-  interface StretchUniforms {
-    shadows: number;
-    midtone: number;
-    linear: boolean;
-  }
-
-  function computeUniforms(
-    stats: fits.ChannelStats[],
-    enabled: boolean,
-    level: number,
-  ): StretchUniforms[] {
-    const presets = [
-      { shadowsFactor: -1.25, targetBG: 0.1 },
-      { shadowsFactor: -2.8, targetBG: 0.25 },
-      { shadowsFactor: -4.0, targetBG: 0.4 },
-    ];
-    return stats.map((s) => {
-      const { median: med, sigma: sig } = s;
-      if (!enabled) return { shadows: Math.max(0, med - 2.8 * sig), midtone: 0.5, linear: true };
-      const preset = presets[Math.max(0, Math.min(level - 1, presets.length - 1))];
-      const shadows = Math.max(0, med + preset.shadowsFactor * sig);
-      const scale = 1.0 - shadows;
-      if (scale <= 0) return { shadows: 0, midtone: 0.25, linear: false };
-      const newMedian = Math.max(0, med - shadows) / scale;
-      const midtone = mtfMidtone(preset.targetBG, newMedian);
-      return { shadows, midtone, linear: false };
-    });
-  }
 
   // ── 2D canvas display ─────────────────────────────────────────────────────
 
@@ -255,22 +233,21 @@ void main() {
     chMode?: 0 | 1 | 2 | 3,
   ) {
     if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
-    const uniforms = computeUniforms(
+    const on = enabled ?? (pp.stretchEnabled && !isProcessed);
+    const st = computeStretch(
       stats ?? rawInfo.stats,
-      enabled ?? (pp.stretchEnabled && !isProcessed),
-      level ?? pp.stretchLevel,
+      rawInfo.balance,
+      on ? (level ?? pp.stretchLevel) : 0,
     );
-    const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
-    const u1 = uniforms[1] ?? u0;
-    const u2 = uniforms[2] ?? u0;
     gl.viewport(0, 0, glCanvas.width, glCanvas.height);
     gl.useProgram(program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, glTex);
     gl.uniform1i(glU.uTex, 0);
-    gl.uniform3fv(glU.uShadows, [u0.shadows, u1.shadows, u2.shadows]);
-    gl.uniform3fv(glU.uMidtones, [u0.midtone, u1.midtone, u2.midtone]);
-    gl.uniform1i(glU.uLinear, u0.linear ? 1 : 0);
+    gl.uniform3fv(glU.uGain, st.gains);
+    gl.uniform1f(glU.uShadow, st.shadows);
+    gl.uniform1f(glU.uMidtone, st.midtone);
+    gl.uniform1i(glU.uLinear, st.linear ? 1 : 0);
     gl.uniform1i(glU.uChannels, rawInfo.channels);
     gl.uniform1i(glU.uChannelMode, chMode ?? channelMode);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -316,8 +293,9 @@ void main() {
     glTex = gl.createTexture();
     glU = {
       uTex: gl.getUniformLocation(program, "uTex")!,
-      uShadows: gl.getUniformLocation(program, "uShadows")!,
-      uMidtones: gl.getUniformLocation(program, "uMidtones")!,
+      uGain: gl.getUniformLocation(program, "uGain")!,
+      uShadow: gl.getUniformLocation(program, "uShadow")!,
+      uMidtone: gl.getUniformLocation(program, "uMidtone")!,
       uLinear: gl.getUniformLocation(program, "uLinear")!,
       uChannels: gl.getUniformLocation(program, "uChannels")!,
       uChannelMode: gl.getUniformLocation(program, "uChannelMode")!,
@@ -407,6 +385,8 @@ void main() {
     rasterDataUrl = "";
     histBins = null;
     annotations = [];
+    annotationsFetched = false;
+    annotationsLoading = false;
     showAnnotations = false;
     resetView();
 
@@ -455,7 +435,13 @@ void main() {
   function showPreview(p: DecodedPreview, id: number) {
     previewLoading = false;
     fitsHeader = p.header;
-    rawInfo = { width: p.width, height: p.height, channels: p.channels, stats: p.stats };
+    rawInfo = {
+      width: p.width,
+      height: p.height,
+      channels: p.channels,
+      stats: p.stats,
+      balance: p.balance,
+    };
     if (!createGLCanvas(p.width, p.height)) return;
     uploadTexture(p.pixels, p.width, p.height, false);
     renderGL();
@@ -525,13 +511,14 @@ void main() {
     const ri = rawInfo;
     if (!showHistogram || !hb || !hc || !ri) return;
     const ctx2 = hc.getContext("2d");
-    if (ctx2) drawHistogram(ctx2, hb, ri.stats, se, sl);
+    if (ctx2) drawHistogram(ctx2, hb, ri.stats, ri.balance, se, sl);
   });
 
   function drawHistogram(
     ctx2: CanvasRenderingContext2D,
     hb: HistBins,
     stats: fits.ChannelStats[],
+    balance: number[],
     enabled: boolean,
     level: number,
   ) {
@@ -560,9 +547,10 @@ void main() {
     }
 
     if (stats.length > 0) {
-      const u0 = computeUniforms(stats, enabled, level)[0];
-      if (u0 && u0.shadows > 0) {
-        const sx = u0.shadows * W;
+      // Black point in the brightest channel's units (its balance gain is 1).
+      const { shadows } = computeStretch(stats, balance, enabled ? level : 0);
+      if (shadows > 0 && shadows < 1) {
+        const sx = shadows * W;
         ctx2.strokeStyle = "rgba(255,200,50,0.85)";
         ctx2.lineWidth = 1;
         ctx2.setLineDash([2, 2]);
@@ -587,18 +575,22 @@ void main() {
 
   $effect(() => {
     if (!showAnnotations || !canAnnotate || !rawInfo) return;
-    if (annotations.length > 0) return;
+    if (annotationsFetched) return;
+    annotationsFetched = true;
     annotationsLoading = true;
+    const id = previewReqId;
     const ra = qualityFrame?.wcsSolved ? qualityFrame.ra : (fitsHeader?.ra ?? 0);
     const dec = qualityFrame?.wcsSolved ? qualityFrame.dec : (fitsHeader?.dec ?? 0);
     const scale = qualityFrame?.wcsSolved ? qualityFrame.pixelScale : (fitsHeader?.pixelScale ?? 0);
     const rot = qualityFrame?.wcsSolved ? qualityFrame.rotation : (fitsHeader?.rotation ?? 0);
     GetAnnotations(ra, dec, scale, rot, rawInfo.width, rawInfo.height)
       .then((res) => {
+        if (id !== previewReqId) return;
         annotations = res ?? [];
         annotationsLoading = false;
       })
       .catch(() => {
+        if (id !== previewReqId) return;
         annotationsLoading = false;
       });
   });

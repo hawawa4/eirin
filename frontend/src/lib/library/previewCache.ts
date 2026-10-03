@@ -25,6 +25,8 @@ export interface DecodedPreview {
   height: number;
   channels: number;
   stats: fits.ChannelStats[];
+  /** Background-balance gains per channel (see lib/stretchPreview.ts). */
+  balance: number[];
   /** Filled lazily by the consumer the first time the histogram is needed. */
   hist: HistBins | null;
 }
@@ -83,6 +85,7 @@ export function loadPreview(path: string): Promise<DecodedPreview> {
       height: r.height,
       channels: r.channels,
       stats: r.stats ?? [],
+      balance: r.balance ?? [],
       hist: null,
     };
     touch(entry);

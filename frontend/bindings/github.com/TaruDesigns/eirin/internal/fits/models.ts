@@ -6,8 +6,8 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * ChannelStats holds per-channel statistics needed by the frontend to compute
- * MTF stretch uniforms without a second backend round-trip.
+ * ChannelStats holds per-channel statistics of the normalised preview data,
+ * used to compute the autostretch (here and in the frontend).
  */
 export class ChannelStats {
     "median": number;
@@ -164,9 +164,10 @@ export class FITSHeader {
 /**
  * RawPreviewData is returned by GeneratePreviewRawSized. The pixel data is a
  * base64-encoded little-endian float32 array in RGBA interleaved order
- * (R,G,B,1.0 per pixel, row-major, top-left origin). All channels are
- * globally normalised to [0,1] so colour balance is preserved; the
- * frontend applies MTF stretch using the Stats.
+ * (R,G,B,1.0 per pixel, row-major, top-left origin). All channels share one
+ * [0,1] normalisation (black at 0), so the camera's raw colour is kept; the
+ * frontend multiplies by Balance and applies the linked stretch from Stats
+ * (see stretch.go and frontend/src/lib/stretchPreview.ts).
  */
 export class RawPreviewData {
     "data": string;
@@ -178,6 +179,12 @@ export class RawPreviewData {
      */
     "channels": number;
     "stats": ChannelStats[];
+
+    /**
+     * Balance holds per-channel gains that neutralise the sky background
+     * (all 1 for mono). Applied only when stretching.
+     */
+    "balance": number[];
 
     /** Creates a new RawPreviewData instance. */
     constructor($$source: Partial<RawPreviewData> = {}) {
@@ -196,6 +203,9 @@ export class RawPreviewData {
         if (!("stats" in $$source)) {
             this["stats"] = [];
         }
+        if (!("balance" in $$source)) {
+            this["balance"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -205,9 +215,13 @@ export class RawPreviewData {
      */
     static createFrom($$source: any = {}): RawPreviewData {
         const $$createField4_0 = $$createType2;
+        const $$createField5_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField4_0($$parsedSource["stats"]);
+        }
+        if ("balance" in $$parsedSource) {
+            $$parsedSource["balance"] = $$createField5_0($$parsedSource["balance"]);
         }
         return new RawPreviewData($$parsedSource as Partial<RawPreviewData>);
     }
@@ -217,3 +231,4 @@ export class RawPreviewData {
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = ChannelStats.createFrom;
 const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $Create.Array($Create.Any);
