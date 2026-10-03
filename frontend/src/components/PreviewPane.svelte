@@ -27,6 +27,8 @@
     onrestore?: () => void;
     ondelete?: () => void;
     onreveal?: () => void;
+    onblink?: () => void;
+    blinkTitle?: string;
     /** Path of the frame likely to be shown next; warmed into the preview cache. */
     prefetch?: string | null;
   }
@@ -41,6 +43,8 @@
     onrestore,
     ondelete,
     onreveal,
+    onblink,
+    blinkTitle = "Blink (b)",
     prefetch = null,
   }: Props = $props();
 
@@ -674,6 +678,9 @@ void main() {
           onclick={ondelete}
           title="Delete this file from disk (Delete)">Delete…</button
         >
+      {/if}
+      {#if onblink}
+        <button class="pv-btn" onclick={onblink} title={blinkTitle}>▶ Blink</button>
       {/if}
       {#if onreveal}
         <button class="pv-btn" onclick={onreveal} title="Show in the system file manager"

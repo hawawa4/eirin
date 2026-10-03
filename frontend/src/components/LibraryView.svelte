@@ -51,6 +51,7 @@
   } from "../lib/library/groups";
   import { flattenGroups, itemOffsets, visibleRange, type TableItem } from "../lib/library/virtual";
   import { forgetPreview } from "../lib/library/previewCache";
+  import { planBlink, type BlinkPlan } from "../lib/library/blink";
   import { isProjectFrameType, suggestProjectName } from "../lib/projects/frames";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
@@ -840,19 +841,41 @@
 
   // ── Blink ────────────────────────────────────────────────────────────────
   let blinkFrames = $state.raw<app.LibraryFrame[]>([]);
+  let blinkStart = $state<string | null>(null);
   let showBlink = $state(false);
 
+  /**
+   * 2+ checked frames blink those; otherwise the previewed (or single checked)
+   * frame's whole object — same object and type — within the current view.
+   */
+  let blinkPlan = $derived.by((): BlinkPlan | null => {
+    const ordered = groups.flatMap((g) => g.frames);
+    let checked: app.LibraryFrame[] = [];
+    if (selectedPaths.size >= 2) {
+      // Display order first, then any checked frames hidden by the current filters.
+      const inView = ordered.filter((f) => selectedPaths.has(f.nasPath));
+      const seen = new Set(inView.map((f) => f.nasPath));
+      const rest = frames.filter((f) => selectedPaths.has(f.nasPath) && !seen.has(f.nasPath));
+      checked = [...inView, ...rest];
+    }
+    const anchorPath = previewPath ?? (selectedPaths.size === 1 ? [...selectedPaths][0] : null);
+    const anchor = anchorPath ? frameByPath.get(anchorPath) : undefined;
+    return planBlink(ordered, checked, anchor);
+  });
+
   function openBlink() {
-    if (selectedPaths.size < 2) {
-      toast.info("Check at least 2 frames to blink");
+    const plan = blinkPlan;
+    if (!plan) {
+      toast.info(
+        previewPath || selectedPaths.size === 1
+          ? "No other frames of this object and type in the current view"
+          : "Preview a frame to blink its object, or check 2 or more frames",
+      );
       return;
     }
-    // Display order first, then any checked frames hidden by the current filters.
-    const inView = groups.flatMap((g) => g.frames).filter((f) => selectedPaths.has(f.nasPath));
-    const seen = new Set(inView.map((f) => f.nasPath));
-    const rest = frames.filter((f) => selectedPaths.has(f.nasPath) && !seen.has(f.nasPath));
-    blinkFrames = [...inView, ...rest];
-    showBlink = blinkFrames.length >= 2;
+    blinkFrames = plan.frames;
+    blinkStart = plan.start;
+    showBlink = true;
   }
 
   // ── Keyboard ─────────────────────────────────────────────────────────────
@@ -963,6 +986,7 @@
       onrestore={() => applyReject([...selectedPaths], false)}
       ondelete={() => askDelete([...selectedPaths])}
       onblink={openBlink}
+      blinkLabel={blinkPlan?.label ?? null}
       oncreateproject={oncreateproject ? () => openCreateProject([...selectedPaths]) : undefined}
       onclear={clearSelection}
     />
@@ -1100,6 +1124,8 @@
           onrestore={() => applyReject([path], false)}
           ondelete={() => askDelete([path])}
           onreveal={() => reveal(path)}
+          onblink={blinkPlan ? openBlink : undefined}
+          blinkTitle={blinkPlan ? `Blink ${blinkPlan.label} (b)` : undefined}
           prefetch={nextPath}
         />
       {/if}
@@ -1218,6 +1244,7 @@
 {#if showBlink && blinkFrames.length >= 2}
   <BlinkModal
     frames={blinkFrames}
+    startPath={blinkStart}
     onclose={() => (showBlink = false)}
     onreject={(p) => applyReject([p], true)}
     onrestore={(p) => applyReject([p], false)}

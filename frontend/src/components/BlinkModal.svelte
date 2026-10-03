@@ -14,12 +14,20 @@
      * must not confirm again; the parent removes the frame from `frames` on success.
      */
     onharddelete?: (nasPath: string, name: string) => void;
+    /** Frame to start on (defaults to the first). */
+    startPath?: string | null;
   }
 
-  let { frames, onclose, onreject, onrestore, onharddelete }: Props = $props();
+  let { frames, onclose, onreject, onrestore, onharddelete, startPath = null }: Props = $props();
 
   // ── State ─────────────────────────────────────────────────────────────────
-  let currentIndex = $state(0);
+  // svelte-ignore state_referenced_locally
+  let currentIndex = $state(
+    Math.max(
+      0,
+      frames.findIndex((f) => f.nasPath === startPath),
+    ),
+  );
   let intervalMs = $state(500);
   let playing = $state(false);
   let stretchLevel = $state(2);
