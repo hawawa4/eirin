@@ -3,6 +3,7 @@
 // sampled, so the grid stays cheap at any zoom level.
 
 import { LABEL_FONT_SMALL, type LabelPlacer } from "./labels";
+import { rgba, type AtlasPalette } from "./palette";
 import { DEG, normRA, project, unproject, type Viewport } from "./projection";
 
 /** Candidate RA steps in degrees (multiples of time units: 2h, 1h, 30m, 20m, 10m, 5m, 2m, 1m, 30s). */
@@ -96,6 +97,7 @@ export function drawGrid(
   vp: Viewport,
   labels: LabelPlacer,
   showLabels: boolean,
+  pal: AtlasPalette,
 ): void {
   const r = visibleRange(vp);
   const cosDec = Math.max(0.05, Math.cos(vp.dec * DEG));
@@ -122,7 +124,7 @@ export function drawGrid(
     for (let i = 0; i <= SAMPLES; i++) {
       pts.push(project(vp, vp.ra + raLo + ((raHi - raLo) * i) / SAMPLES, dec));
     }
-    ctx.strokeStyle = Math.abs(dec) < 1e-9 ? "rgba(130,155,210,0.5)" : "rgba(90,115,165,0.34)";
+    ctx.strokeStyle = Math.abs(dec) < 1e-9 ? rgba(pal.gridZero, 0.5) : rgba(pal.grid, 0.34);
     strokePolyline(ctx, pts);
   }
 
@@ -138,7 +140,7 @@ export function drawGrid(
       );
     }
     const isZero = Math.abs(wrap180(ra)) < 1e-6;
-    ctx.strokeStyle = isZero ? "rgba(130,155,210,0.5)" : "rgba(90,115,165,0.34)";
+    ctx.strokeStyle = isZero ? rgba(pal.gridZero, 0.5) : rgba(pal.grid, 0.34);
     strokePolyline(ctx, pts);
   }
   ctx.setLineDash([]);
@@ -150,7 +152,7 @@ export function drawGrid(
       if (lp && lp[0] >= 20 && lp[0] <= vp.w - 40 && lp[1] >= 16 && lp[1] <= vp.h - 4) {
         labels.place(ctx, fmtRA(ra, raStep), lp[0] + 5, lp[1] - 3, {
           font: LABEL_FONT_SMALL,
-          color: "rgba(170,195,240,0.95)",
+          color: rgba(pal.raLabel, 0.95),
           bg: true,
         });
       }
@@ -161,7 +163,7 @@ export function drawGrid(
       if (lp && lp[1] >= 16 && lp[1] <= vp.h - 4 && lp[0] >= 4 && lp[0] <= vp.w - 40) {
         labels.place(ctx, fmtDec(dec, decStep), lp[0] + 6, lp[1] - 3, {
           font: LABEL_FONT_SMALL,
-          color: "rgba(130,225,200,0.95)",
+          color: rgba(pal.decLabel, 0.95),
           bg: true,
         });
       }

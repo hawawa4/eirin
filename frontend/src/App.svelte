@@ -287,6 +287,7 @@
             <SkyAtlas
               rootPath={rootFolder}
               active={appMode === "atlas"}
+              {theme}
               onscan={() => startScan()}
               onframeopen={openInLibrary}
             />

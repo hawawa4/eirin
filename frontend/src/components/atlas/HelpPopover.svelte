@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { ATLAS_COLORS } from "../../lib/atlas/draw";
-
   interface Props {
     open: boolean;
   }
@@ -27,11 +25,12 @@
   ];
 
   const LEGEND: { color: string; label: string; shape: "box" | "dot" | "ring" }[] = [
-    { color: ATLAS_COLORS.frame, label: "Your frames", shape: "box" },
-    { color: ATLAS_COLORS.selected, label: "Selected / overlaid", shape: "box" },
-    { color: ATLAS_COLORS.hovered, label: "Hovered", shape: "box" },
-    { color: ATLAS_COLORS.star, label: "Catalog stars", shape: "dot" },
-    { color: ATLAS_COLORS.dso, label: "Deep-sky objects", shape: "ring" },
+    // Colours come from the theme palette's CSS variables on .atlas-root.
+    { color: "var(--atlas-frame)", label: "Your frames", shape: "box" },
+    { color: "var(--atlas-selected)", label: "Selected / overlaid", shape: "box" },
+    { color: "var(--atlas-hovered)", label: "Hovered", shape: "box" },
+    { color: "var(--atlas-star)", label: "Catalog stars", shape: "dot" },
+    { color: "var(--atlas-dso)", label: "Deep-sky objects", shape: "ring" },
   ];
 </script>
 

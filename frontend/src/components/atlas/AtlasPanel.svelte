@@ -284,7 +284,7 @@
     border-left: 3px solid transparent;
   }
   .ap-overlay li.top {
-    border-left-color: rgb(255, 210, 80);
+    border-left-color: var(--atlas-selected);
     background: var(--bg-row);
   }
   .ap-ov-name {

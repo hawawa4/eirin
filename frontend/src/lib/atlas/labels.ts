@@ -8,8 +8,6 @@ export const LABEL_FONT = "600 12px system-ui, sans-serif";
 export const LABEL_FONT_SMALL = "500 12px system-ui, sans-serif";
 export const LABEL_FONT_EMPHASIS = "700 13px system-ui, sans-serif";
 
-const LABEL_BG = "rgba(6,8,18,0.82)";
-
 export interface LabelOptions {
   font?: string;
   color: string;
@@ -21,9 +19,12 @@ export interface LabelOptions {
 
 export class LabelPlacer {
   private placed: { x: number; y: number; w: number; h: number }[] = [];
+  private background = "rgba(6,8,18,0.82)";
 
-  reset(): void {
+  /** Starts a redraw; `background` is the backdrop colour for `bg: true` labels. */
+  reset(background: string): void {
     this.placed.length = 0;
+    this.background = background;
   }
 
   private overlaps(x: number, y: number, w: number, h: number): boolean {
@@ -56,7 +57,7 @@ export class LabelPlacer {
     this.placed.push({ x: boxX, y: boxY, w: boxW, h: boxH });
 
     if (opts.bg) {
-      ctx.fillStyle = LABEL_BG;
+      ctx.fillStyle = this.background;
       roundRect(ctx, boxX - 4, boxY, boxW + 8, boxH, 3);
       ctx.fill();
     }

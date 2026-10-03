@@ -248,12 +248,12 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: rgb(230, 238, 255);
+    background: var(--atlas-star);
     flex-shrink: 0;
   }
   .obj-kind.dso {
     background: none;
-    border: 1.5px solid rgb(255, 195, 90);
+    border: 1.5px solid var(--atlas-dso);
   }
   .obj-empty {
     padding: 4px 10px 6px;

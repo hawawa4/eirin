@@ -9,6 +9,7 @@ import {
   polygonSpan,
   type FrameSize,
 } from "./footprint";
+import type { AtlasPalette } from "./palette";
 import { project, type Viewport } from "./projection";
 
 /** Footprints smaller than this (canvas px, long side) are drawn as markers instead. */
@@ -28,6 +29,7 @@ export interface AtlasScene {
   hoveredPath: string | null;
   catalog: app.CatalogObject[];
   showLabels: boolean;
+  palette: AtlasPalette;
   /** Pulsing target ring after flying to a catalog object. */
   focus: { ra: number; dec: number } | null;
   size(path: string): FrameSize | undefined;

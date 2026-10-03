@@ -21,6 +21,8 @@
   import { framesNeedingSize, hitTest, type AtlasScene } from "../lib/atlas/scene";
   import { SizeQueue } from "../lib/atlas/sizeQueue";
   import { DragTracker, STOP_SPEED, coastStep } from "../lib/atlas/inertia";
+  import { atlasPalette, paletteCssVars } from "../lib/atlas/palette";
+  import type { Theme } from "../lib/types";
   import { PreviewCache } from "../lib/atlas/previews";
   import {
     buildObjectGroups,
@@ -43,9 +45,13 @@
     active?: boolean;
     /** Request a library (re)scan/index — offered when nothing is indexed yet. */
     onscan?: () => void;
+    /** App theme; the sky is drawn in a matching palette. */
+    theme?: Theme;
   }
 
-  let { rootPath, onframeopen, active = true, onscan }: Props = $props();
+  let { rootPath, onframeopen, active = true, onscan, theme = "blue" }: Props = $props();
+
+  let palette = $derived(atlasPalette(theme));
 
   // ── Canvas & camera ───────────────────────────────────────────────────────
   let canvas: HTMLCanvasElement;
@@ -119,6 +125,7 @@
       hoveredPath: hoveredEntry?.nasPath ?? null,
       catalog,
       showLabels,
+      palette,
       focus,
       size: (p) => sizeQueue.get(p),
       preview: (p) => previews.get(p),
@@ -532,7 +539,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="atlas-root" bind:this={container}>
+<div class="atlas-root" bind:this={container} style={paletteCssVars(palette)}>
   <canvas
     bind:this={canvas}
     class="atlas-canvas"
@@ -681,7 +688,7 @@
     flex: 1;
     position: relative;
     overflow: hidden;
-    background: #050610;
+    background: var(--atlas-bg);
     display: flex;
     align-items: stretch;
   }

@@ -81,7 +81,7 @@
     justify-content: center;
     z-index: 15;
     pointer-events: none;
-    background: rgba(5, 6, 16, 0.55);
+    background: var(--atlas-backdrop);
   }
   .status-card {
     pointer-events: auto;

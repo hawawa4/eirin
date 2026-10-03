@@ -5,16 +5,8 @@ import { polygonOnScreen } from "./footprint";
 import { drawGrid } from "./grid";
 import { LABEL_FONT, LABEL_FONT_EMPHASIS, LABEL_FONT_SMALL, LabelPlacer } from "./labels";
 import { project, type Viewport } from "./projection";
+import { rgba, type AtlasPalette } from "./palette";
 import { frameShape, type AtlasScene, type FrameShape } from "./scene";
-
-/** Canvas palette — also used for the help popover's colour legend. */
-export const ATLAS_COLORS = {
-  frame: "rgb(100,165,255)",
-  selected: "rgb(255,210,80)",
-  hovered: "rgb(120,215,255)",
-  star: "rgb(230,238,255)",
-  dso: "rgb(255,195,90)",
-} as const;
 
 /** Frames whose footprint is smaller than this get an extra centre marker so they stay findable. */
 const SMALL_FOOTPRINT_PX = 16;
@@ -44,20 +36,20 @@ function ensureDust(w: number, h: number) {
 }
 
 export function drawScene(ctx: CanvasRenderingContext2D, scene: AtlasScene): void {
-  const { vp } = scene;
+  const { vp, palette: pal } = scene;
   ctx.clearRect(0, 0, vp.w, vp.h);
-  labels.reset();
-  drawBackground(ctx, vp);
-  drawGrid(ctx, vp, labels, scene.showLabels);
+  labels.reset(rgba(pal.ink, 0.82));
+  drawBackground(ctx, vp, pal);
+  drawGrid(ctx, vp, labels, scene.showLabels, pal);
   // Frame labels are placed before catalog labels so they win collisions —
   // the user's own data takes priority over background star/DSO names.
   drawFrames(ctx, scene);
   drawCatalog(ctx, scene);
   drawFocus(ctx, scene);
-  drawCompass(ctx, vp);
+  drawCompass(ctx, vp, pal);
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, vp: Viewport) {
+function drawBackground(ctx: CanvasRenderingContext2D, vp: Viewport, pal: AtlasPalette) {
   const grad = ctx.createRadialGradient(
     vp.w / 2,
     vp.h * 0.4,
@@ -66,9 +58,9 @@ function drawBackground(ctx: CanvasRenderingContext2D, vp: Viewport) {
     vp.h * 0.4,
     Math.max(vp.w, vp.h) * 0.75,
   );
-  grad.addColorStop(0, "#0c1024");
-  grad.addColorStop(0.55, "#070912");
-  grad.addColorStop(1, "#04050a");
+  grad.addColorStop(0, pal.bg[0]);
+  grad.addColorStop(0.55, pal.bg[1]);
+  grad.addColorStop(1, pal.bg[2]);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, vp.w, vp.h);
 
@@ -76,13 +68,13 @@ function drawBackground(ctx: CanvasRenderingContext2D, vp: Viewport) {
   for (const d of dust) {
     ctx.beginPath();
     ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(210,220,255,${d.a})`;
+    ctx.fillStyle = rgba(pal.dust, d.a);
     ctx.fill();
   }
 }
 
 function drawCatalog(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
-  const { vp } = scene;
+  const { vp, palette: pal } = scene;
   ctx.save();
   for (const obj of scene.catalog) {
     const p = project(vp, obj.ra, obj.dec);
@@ -94,8 +86,8 @@ function drawCatalog(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
       const r = Math.max(0.8, Math.min(3.5, (4 - obj.mag) * 0.6));
       if (obj.mag < 3.5) {
         const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
-        glow.addColorStop(0, "rgba(200,215,255,0.35)");
-        glow.addColorStop(1, "rgba(200,215,255,0)");
+        glow.addColorStop(0, rgba(pal.star, 0.35));
+        glow.addColorStop(1, rgba(pal.star, 0));
         ctx.fillStyle = glow;
         ctx.beginPath();
         ctx.arc(x, y, r * 4, 0, Math.PI * 2);
@@ -103,18 +95,18 @@ function drawCatalog(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
       }
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(230,238,255,0.92)";
+      ctx.fillStyle = rgba(pal.star, 0.92);
       ctx.fill();
       if (scene.showLabels && (obj.mag < 2.5 || vp.ppd > 60)) {
         labels.place(ctx, obj.name, x + r + 4, y + 4, {
           font: LABEL_FONT_SMALL,
-          color: "rgba(205,218,255,0.95)",
+          color: rgba(pal.starLabel, 0.95),
           bg: true,
         });
       }
     } else {
       const size = vp.ppd > 20 ? 5 : 3;
-      ctx.strokeStyle = "rgba(255,195,90,0.75)";
+      ctx.strokeStyle = rgba(pal.dso, 0.75);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x - size, y);
@@ -124,13 +116,13 @@ function drawCatalog(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(x, y, size * 1.6, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255,195,90,0.3)";
+      ctx.strokeStyle = rgba(pal.dso, 0.3);
       ctx.lineWidth = 0.8;
       ctx.stroke();
       if (scene.showLabels && vp.ppd > 8) {
         labels.place(ctx, obj.name, x + size + 4, y + 4, {
           font: LABEL_FONT_SMALL,
-          color: "rgba(255,215,135,0.95)",
+          color: rgba(pal.dsoLabel, 0.95),
           bg: true,
         });
       }
@@ -166,20 +158,26 @@ function drawFrames(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
 
 type FrameState = "normal" | "selected" | "hovered";
 
-function strokeFor(state: FrameState): string {
-  return state === "hovered"
-    ? "rgba(120,215,255,0.95)"
-    : state === "selected"
-      ? "rgba(255,210,80,0.85)"
-      : "rgba(100,165,255,0.6)";
+function stateColor(pal: AtlasPalette, state: FrameState) {
+  return state === "hovered" ? pal.hovered : state === "selected" ? pal.selected : pal.frame;
 }
 
-function fillFor(state: FrameState): string {
+function strokeFor(pal: AtlasPalette, state: FrameState): string {
+  const a = state === "hovered" ? 0.95 : state === "selected" ? 0.85 : 0.6;
+  return rgba(stateColor(pal, state), a);
+}
+
+function fillFor(pal: AtlasPalette, state: FrameState): string {
+  const a = state === "hovered" ? 0.22 : state === "selected" ? 0.12 : 0.1;
+  return rgba(stateColor(pal, state), a);
+}
+
+function labelFor(pal: AtlasPalette, state: FrameState): string {
   return state === "hovered"
-    ? "rgba(100,190,255,0.22)"
+    ? rgba(pal.hoveredLabel)
     : state === "selected"
-      ? "rgba(255,190,70,0.12)"
-      : "rgba(80,140,220,0.10)";
+      ? rgba(pal.selectedLabel)
+      : rgba(pal.frameLabel, 0.95);
 }
 
 function tracePoly(ctx: CanvasRenderingContext2D, pts: [number, number][]) {
@@ -197,16 +195,16 @@ function drawFrame(
 ) {
   const shape = frameShape(scene, entry);
   if (!shape) return;
-  const { vp } = scene;
+  const { vp, palette: pal } = scene;
   const name = entry.object || entry.name;
   const emphasis = state !== "normal";
 
   if (shape.kind === "dot") {
-    drawMarker(ctx, shape, state);
+    drawMarker(ctx, pal, shape, state);
     if (scene.showLabels && (emphasis || vp.ppd >= 3)) {
       labels.place(ctx, name, shape.cx + 9, shape.cy + 4, {
         font: emphasis ? LABEL_FONT_EMPHASIS : LABEL_FONT_SMALL,
-        color: emphasis ? "rgba(255,228,140,1)" : "rgba(195,222,255,0.95)",
+        color: labelFor(pal, emphasis ? "selected" : "normal"),
         force: emphasis,
         bg: emphasis,
       });
@@ -221,7 +219,7 @@ function drawFrame(
   if (img) {
     drawImageInFootprint(ctx, img, pts);
     tracePoly(ctx, pts);
-    ctx.strokeStyle = strokeFor(state);
+    ctx.strokeStyle = strokeFor(pal, state);
     ctx.lineWidth = 1.5;
     ctx.stroke();
     return;
@@ -229,20 +227,20 @@ function drawFrame(
 
   const loading = state === "selected" && scene.previewLoading(entry.nasPath);
   tracePoly(ctx, pts);
-  ctx.fillStyle = fillFor(state);
+  ctx.fillStyle = fillFor(pal, state);
   ctx.fill();
-  ctx.strokeStyle = strokeFor(state);
+  ctx.strokeStyle = strokeFor(pal, state);
   ctx.lineWidth = state === "hovered" ? 2 : state === "selected" ? 1.8 : 1.2;
   if (loading) ctx.setLineDash([6, 4]);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  if (shape.span < SMALL_FOOTPRINT_PX) drawMarker(ctx, shape, state, 2.5);
+  if (shape.span < SMALL_FOOTPRINT_PX) drawMarker(ctx, pal, shape, state, 2.5);
 
   // Corner ticks give footprints a "finder chart" feel instead of a flat box
   if (emphasis && shape.span >= 40) {
     const tick = Math.min(14, shape.span / 6);
-    ctx.strokeStyle = strokeFor(state);
+    ctx.strokeStyle = strokeFor(pal, state);
     ctx.lineWidth = 2;
     for (const [vx, vy] of pts) {
       const dx = vx < shape.cx ? 1 : -1;
@@ -260,12 +258,7 @@ function drawFrame(
     const big = shape.span >= 60;
     labels.place(ctx, text, big ? shape.cx : shape.cx + shape.span / 2 + 6, shape.cy + 5, {
       font: emphasis ? LABEL_FONT_EMPHASIS : LABEL_FONT,
-      color:
-        state === "hovered"
-          ? "rgba(215,238,255,1)"
-          : state === "selected"
-            ? "rgba(255,228,140,1)"
-            : "rgba(185,218,255,0.95)",
+      color: labelFor(pal, state),
       align: big ? "center" : "left",
       force: emphasis,
       bg: emphasis,
@@ -275,6 +268,7 @@ function drawFrame(
 
 function drawMarker(
   ctx: CanvasRenderingContext2D,
+  pal: AtlasPalette,
   shape: FrameShape,
   state: FrameState,
   radius?: number,
@@ -283,8 +277,9 @@ function drawMarker(
   const { cx, cy } = shape;
   if (state !== "normal") {
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2);
-    glow.addColorStop(0, state === "selected" ? "rgba(255,210,80,0.4)" : "rgba(120,210,255,0.4)");
-    glow.addColorStop(1, "rgba(120,210,255,0)");
+    const c = stateColor(pal, state);
+    glow.addColorStop(0, rgba(c, 0.4));
+    glow.addColorStop(1, rgba(c, 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(cx, cy, r * 3.2, 0, Math.PI * 2);
@@ -292,14 +287,9 @@ function drawMarker(
   }
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle =
-    state === "selected"
-      ? "rgba(255,210,80,0.95)"
-      : state === "hovered"
-        ? "rgba(120,215,255,0.95)"
-        : "rgba(100,165,255,0.8)";
+  ctx.fillStyle = rgba(stateColor(pal, state), state === "normal" ? 0.8 : 0.95);
   ctx.fill();
-  ctx.strokeStyle = "rgba(6,8,18,0.8)";
+  ctx.strokeStyle = rgba(pal.ink, 0.8);
   ctx.lineWidth = 1;
   ctx.stroke();
 }
@@ -334,7 +324,7 @@ function drawFocus(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
   const p = project(scene.vp, scene.focus.ra, scene.focus.dec);
   if (!p) return;
   ctx.save();
-  ctx.strokeStyle = "rgba(255,195,90,0.9)";
+  ctx.strokeStyle = rgba(scene.palette.dso, 0.9);
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
@@ -344,7 +334,7 @@ function drawFocus(ctx: CanvasRenderingContext2D, scene: AtlasScene) {
   ctx.restore();
 }
 
-function drawCompass(ctx: CanvasRenderingContext2D, vp: Viewport) {
+function drawCompass(ctx: CanvasRenderingContext2D, vp: Viewport, pal: AtlasPalette) {
   // Bottom-left; North is up and East is LEFT (sky as seen from the ground).
   const cx = 36;
   const cy = vp.h - 40;
@@ -352,13 +342,13 @@ function drawCompass(ctx: CanvasRenderingContext2D, vp: Viewport) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(10,12,24,0.7)";
+  ctx.fillStyle = rgba(pal.ink, 0.7);
   ctx.fill();
-  ctx.strokeStyle = "rgba(110,140,195,0.5)";
+  ctx.strokeStyle = rgba(pal.compass, 0.45);
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  ctx.strokeStyle = "rgba(150,180,235,0.75)";
+  ctx.strokeStyle = rgba(pal.compass, 0.75);
   ctx.lineWidth = 1.3;
   ctx.beginPath();
   ctx.moveTo(cx, cy - r + 6);
@@ -369,7 +359,7 @@ function drawCompass(ctx: CanvasRenderingContext2D, vp: Viewport) {
 
   ctx.font = LABEL_FONT_EMPHASIS;
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(205,222,255,1)";
+  ctx.fillStyle = rgba(pal.compassText);
   ctx.fillText("N", cx, cy - r + 14);
   ctx.fillText("E", cx - r + 10, cy + 5);
   ctx.textAlign = "left";
