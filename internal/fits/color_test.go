@@ -8,7 +8,7 @@ import (
 // ── Global normalisation ──────────────────────────────────────────────────────
 
 func TestGlobalNormalizeEmpty(t *testing.T) {
-	if got := globalNormalize(nil, nil); got != nil {
+	if got, _ := globalNormalize(nil, nil); got != nil {
 		t.Error("globalNormalize(nil) should return nil")
 	}
 }
@@ -19,7 +19,7 @@ func TestGlobalNormalizePreservesColorBalance(t *testing.T) {
 	// global normalisation must not do that.
 	bright := []float64{0, 1.0}
 	dim := []float64{0, 0.5}
-	out := globalNormalize([][]float64{bright, dim}, nil)
+	out, _ := globalNormalize([][]float64{bright, dim}, nil)
 
 	// Bright channel: max maps to 1.0.
 	if math.Abs(out[0][1]-1.0) > 1e-9 {
@@ -110,7 +110,7 @@ func TestDebayerBlocksOutputDimensions(t *testing.T) {
 func TestGlobalNormalizeKeepsBlackAtZero(t *testing.T) {
 	// A bright-sky frame never reaches 0, but its black level still is 0:
 	// subtracting the minimum would break the channel ratios.
-	out := globalNormalize([][]float64{{100, 200, 400}}, nil)
+	out, _ := globalNormalize([][]float64{{100, 200, 400}}, nil)
 	if math.Abs(out[0][0]-0.25) > 1e-9 || math.Abs(out[0][1]-0.5) > 1e-9 {
 		t.Errorf("out = %v, want ratios kept (0.25, 0.5, 1)", out[0])
 	}
@@ -119,12 +119,23 @@ func TestGlobalNormalizeKeepsBlackAtZero(t *testing.T) {
 func TestGlobalNormalizeWhitePointAfterBalance(t *testing.T) {
 	// Unbalanced values are returned, but the white point is the balanced
 	// peak: with gain 4 the dim channel reaches white exactly when balanced.
-	out := globalNormalize([][]float64{{0, 0.5}, {0, 0.5}}, []float64{1, 4})
+	out, _ := globalNormalize([][]float64{{0, 0.5}, {0, 0.5}}, []float64{1, 4})
 	if math.Abs(out[1][1]*4-1) > 1e-9 {
 		t.Errorf("balanced peak = %f, want 1 (white point taken after balance)", out[1][1]*4)
 	}
 	if math.Abs(out[0][1]-0.25) > 1e-9 {
 		t.Errorf("unbalanced value = %f, want 0.25", out[0][1])
+	}
+}
+
+func TestNormRangeStatsMatchNormalisedData(t *testing.T) {
+	ch := []float64{10, 20, 30, 40, 50, 60, 70, 80, 90, 1000}
+	med, sig := channelMedianSigma(ch)
+	out, nr := globalNormalize([][]float64{ch}, nil)
+	gotMed, gotSig := channelMedianSigma(out[0])
+	want := nr.stats(ChannelStats{Median: med, Sigma: sig})
+	if math.Abs(want.Median-gotMed) > 1e-12 || math.Abs(want.Sigma-gotSig) > 1e-12 {
+		t.Errorf("carried stats %+v, measured median %f sigma %f", want, gotMed, gotSig)
 	}
 }
 

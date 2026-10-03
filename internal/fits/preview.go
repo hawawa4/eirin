@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
+	"image/jpeg"
+	"math"
 	"strings"
 
 	fitsio "codeberg.org/astrogo/fitsio"
 )
+
+const previewJPEGQuality = 90
 
 // previewImage is a FITS image prepared for display: debayered, chroma-
 // smoothed (raw subs), sized to fit and normalised to [0,1] with one shared
@@ -56,10 +59,11 @@ func loadPreviewImage(path string, maxSize int) (previewImage, error) {
 
 	var channels [][]float64
 	bayerpat := strings.ToUpper(strings.TrimSpace(cardStr(hdr, "BAYERPAT", "COLORTYP")))
-	if bayerpat != "" && nch == 1 {
+	isRawSub := bayerpat != "" && nch == 1
+	if isRawSub {
 		r, g, b, dw, dh := debayerBlocks(pixels, w, h, bayerpat)
 		w, h = dw, dh
-		channels = reduceChroma([][]float64{r, g, b}, w, h, chromaRadius)
+		channels = [][]float64{r, g, b}
 	} else {
 		planeSize := w * h
 		channels = make([][]float64, nch)
@@ -72,18 +76,23 @@ func loadPreviewImage(path string, maxSize int) (previewImage, error) {
 	for c := range channels {
 		channels[c] = downsampleArea(channels[c], w, h, outW, outH)
 	}
+	if isRawSub {
+		// Smoothing after downscaling is ~4× cheaper; scale the radius so it
+		// covers the same patch of sky.
+		radius := max(1, int(math.Round(float64(chromaRadius)*float64(outW)/float64(w))))
+		channels = reduceChroma(channels, outW, outH, radius)
+	}
+
 	// Balance gains are ratios of the sky medians, so they can be taken before
-	// normalising; normalising is linear with black at 0 and keeps them.
+	// normalising; normalising is linear, so the stats carry over too.
 	raw := make([]ChannelStats, len(channels))
 	for c, ch := range channels {
 		raw[c].Median, raw[c].Sigma = channelMedianSigma(ch)
 	}
-	channels = globalNormalize(channels, balanceGains(raw))
-
+	channels, nr := globalNormalize(channels, balanceGains(raw))
 	stats := make([]ChannelStats, len(channels))
-	for c, ch := range channels {
-		med, sig := channelMedianSigma(ch)
-		stats[c] = ChannelStats{Median: med, Sigma: sig}
+	for c := range raw {
+		stats[c] = nr.stats(raw[c])
 	}
 	return previewImage{
 		channels: channels,
@@ -94,8 +103,10 @@ func loadPreviewImage(path string, maxSize int) (previewImage, error) {
 	}, nil
 }
 
-// GeneratePreview renders a stretched PNG preview (data URL) at most maxSize
+// GeneratePreview renders a stretched JPEG preview (data URL) at most maxSize
 // pixels on its longest side. stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong.
+// JPEG rather than PNG: ~4× faster to encode and ~5× smaller to send, which
+// matters when blinking; quality 90 is indistinguishable for culling.
 func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 	pi, err := loadPreviewImage(path, maxSize)
 	if err != nil {
@@ -133,10 +144,10 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 	}
 
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, outImg); err != nil {
-		return "", fmt.Errorf("encode PNG: %w", err)
+	if err := jpeg.Encode(&buf, outImg, &jpeg.Options{Quality: previewJPEGQuality}); err != nil {
+		return "", fmt.Errorf("encode JPEG: %w", err)
 	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 // GeneratePreviewRaw returns the normalised (unstretched) preview pixels plus

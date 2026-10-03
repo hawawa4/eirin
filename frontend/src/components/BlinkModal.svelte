@@ -3,6 +3,7 @@
   import type * as app from "$models/app";
   import { GeneratePreview } from "$app";
   import { pushModal, popModal, isTopModal } from "../lib/modalStack";
+  import { BlinkLoader, preloadOrder } from "../lib/library/blinkLoader";
 
   interface Props {
     frames: app.LibraryFrame[];
@@ -33,35 +34,45 @@
   let stretchLevel = $state(2);
   let confirmDelete = $state(false);
 
-  // Cache: nasPath → data-URL. Only a sliding window of entries is kept.
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
-  const cache = new Map<string, string>();
-  // Tracks in-flight fetches so we don't double-fetch.
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
-  const fetching = new Set<string>();
-
-  // How many frames to preload ahead and behind the current index.
-  const AHEAD = 2;
-  const BEHIND = 1;
-  const WINDOW = AHEAD + BEHIND + 1;
+  // Frames ahead/behind the current one to preload (nearest first).
+  const AHEAD = 8;
+  const BEHIND = 3;
 
   let timerId: ReturnType<typeof setInterval> | null = null;
 
-  // Derive the URL for the current frame from the cache (reactive via version bump).
-  let cacheVersion = $state(0);
-  const currentPreview = $derived(
-    (() => {
-      void cacheVersion; // depend on version so this re-evaluates after fetches
-      return cache.get(frames[currentIndex]?.nasPath ?? "") ?? null;
-    })(),
+  // The loader isn't reactive; bump a version so the derived values re-read it.
+  let loadVersion = $state(0);
+  const loader = new BlinkLoader(
+    (path, level) => GeneratePreview(path, level),
+    () => loadVersion++,
   );
-  const currentLoading = $derived(
-    (() => {
-      void cacheVersion;
-      const path = frames[currentIndex]?.nasPath ?? "";
-      return !cache.has(path) && fetching.has(path);
-    })(),
-  );
+
+  const currentPreview = $derived.by(() => {
+    void loadVersion;
+    const path = frames[currentIndex]?.nasPath;
+    return path ? (loader.get(path, stretchLevel) ?? null) : null;
+  });
+  const currentLoading = $derived.by(() => {
+    void loadVersion;
+    const path = frames[currentIndex]?.nasPath;
+    return !!path && !loader.settled(path, stretchLevel);
+  });
+  /** Reactive wrapper: re-evaluates in templates whenever a frame loads. */
+  function isSettled(path: string): boolean {
+    void loadVersion;
+    return loader.settled(path, stretchLevel);
+  }
+
+  /** How many of the next AHEAD frames are ready (for the preload badge). */
+  const readyAhead = $derived.by(() => {
+    void loadVersion;
+    const n = frames.length;
+    let ready = 0;
+    for (let k = 1; k <= Math.min(AHEAD, n - 1); k++) {
+      if (loader.settled(frames[(currentIndex + k) % n].nasPath, stretchLevel)) ready++;
+    }
+    return ready;
+  });
 
   // Keep pointing at the same frame when the parent updates `frames` (reject flag
   // flips, deletions). If the current frame was removed, the next one slides into
@@ -91,41 +102,20 @@
   function updateWindow() {
     const n = frames.length;
     if (n === 0) return;
-
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
-    const wanted = new Set<string>();
-    for (let d = -BEHIND; d <= AHEAD; d++) {
-      wanted.add(frames[(((currentIndex + d) % n) + n) % n].nasPath);
-    }
-
-    // Evict entries outside the window.
-    for (const [path] of cache) {
-      if (!wanted.has(path)) cache.delete(path);
-    }
-
-    // Fetch missing entries.
-    for (const path of wanted) {
-      if (!cache.has(path) && !fetching.has(path)) {
-        fetching.add(path);
-        GeneratePreview(path, stretchLevel)
-          .then((url) => {
-            cache.set(path, url);
-          })
-          .catch(() => {
-            cache.set(path, ""); // empty = failed, don't retry
-          })
-          .finally(() => {
-            fetching.delete(path);
-            cacheVersion++;
-          });
-      }
-    }
+    const order = preloadOrder(currentIndex, n, AHEAD, BEHIND);
+    loader.want(
+      order.map((i) => frames[i].nasPath),
+      stretchLevel,
+    );
   }
 
   function startBlink() {
     if (timerId || frames.length < 2) return;
     timerId = setInterval(() => {
-      currentIndex = (currentIndex + 1) % frames.length;
+      // Hold on the current frame until the next one is ready, rather than
+      // flashing "Loading…" mid-blink.
+      const next = (currentIndex + 1) % frames.length;
+      if (loader.settled(frames[next].nasPath, stretchLevel)) currentIndex = next;
     }, intervalMs);
     playing = true;
   }
@@ -298,15 +288,10 @@
         <div class="blink-rejected-badge">REJECTED</div>
       {/if}
       <!-- Preload indicator: how many of the window are ready -->
-      {#if frames.length > WINDOW}
-        {@const ready = [
-          currentIndex,
-          ...Array.from({ length: AHEAD }, (_, i) => (currentIndex + i + 1) % frames.length),
-        ].filter((i) => cache.has(frames[i]?.nasPath ?? "")).length}
-        {@const total = Math.min(WINDOW, frames.length)}
-        {#if ready < total}
-          <div class="blink-preload-badge">⟳ {ready}/{total}</div>
-        {/if}
+      {#if readyAhead < Math.min(AHEAD, frames.length - 1)}
+        <div class="blink-preload-badge" title="Frames ahead that are ready">
+          ⟳ {readyAhead}/{Math.min(AHEAD, frames.length - 1)}
+        </div>
       {/if}
     </div>
 
@@ -400,7 +385,7 @@
               class="blink-dot"
               class:active={offset === 0}
               class:rejected={frame.isRejected}
-              class:pending={!cache.has(frame.nasPath)}
+              class:pending={!isSettled(frame.nasPath)}
               onclick={() => {
                 stopBlink();
                 currentIndex = idx;

@@ -3,7 +3,7 @@ package fits
 import (
 	"encoding/base64"
 	"encoding/binary"
-	"image/png"
+	"image/jpeg"
 	"math"
 	"os"
 	"path/filepath"
@@ -111,21 +111,21 @@ func TestGeneratePreviewRawNeutralisesSkyCast(t *testing.T) {
 	}
 }
 
-func TestGeneratePreviewPNG(t *testing.T) {
+func TestGeneratePreviewJPEG(t *testing.T) {
 	path := writeBayerSky(t, 64, 48)
 	url, err := GeneratePreview(path, 16, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const prefix = "data:image/png;base64,"
+	const prefix = "data:image/jpeg;base64,"
 	if !strings.HasPrefix(url, prefix) {
-		t.Fatalf("not a PNG data URL: %.40s", url)
+		t.Fatalf("not a JPEG data URL: %.40s", url)
 	}
 	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, prefix))
 	if err != nil {
 		t.Fatal(err)
 	}
-	img, err := png.Decode(strings.NewReader(string(b)))
+	img, err := jpeg.Decode(strings.NewReader(string(b)))
 	if err != nil {
 		t.Fatal(err)
 	}

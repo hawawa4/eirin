@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/TaruDesigns/eirin/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -15,6 +16,8 @@ type App struct {
 	indexer appIndexer
 	server  *http.Server
 	imports importJob
+	// previews caches Blink previews across calls (see fits.PreviewCache).
+	previews fits.PreviewCache
 }
 
 func NewApp() *App {

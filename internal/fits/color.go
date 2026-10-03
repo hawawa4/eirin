@@ -2,7 +2,7 @@ package fits
 
 import (
 	"math"
-	"sort"
+	"slices"
 )
 
 // ── Colour & resampling for previews ─────────────────────────────────────────
@@ -195,10 +195,12 @@ func downsampleArea(src []float64, w, h, outW, outH int) []float64 {
 // background neutralisation in balanceGains. The white point is the 99.9th
 // percentile across all channels *after* multiplying by gains (nil = 1), so
 // balanced channels reach white together and star cores stay white instead of
-// one channel clipping early.
-func globalNormalize(channels [][]float64, gains []float64) [][]float64 {
+// one channel clipping early. The returned range maps an original value v to
+// (v - lo) / scale, so statistics taken before normalising can be carried over.
+func globalNormalize(channels [][]float64, gains []float64) ([][]float64, normRange) {
+	identity := normRange{lo: 0, scale: 1}
 	if len(channels) == 0 {
-		return channels
+		return channels, identity
 	}
 
 	totalLen := 0
@@ -226,11 +228,11 @@ func globalNormalize(channels [][]float64, gains []float64) [][]float64 {
 		}
 	}
 
-	sort.Float64s(sample)
+	slices.Sort(sample)
 	hi := sample[int(float64(len(sample))*0.999)]
 
 	if hi <= lo {
-		return channels
+		return channels, identity
 	}
 	rng := hi - lo
 
@@ -242,7 +244,17 @@ func globalNormalize(channels [][]float64, gains []float64) [][]float64 {
 		}
 		out[c] = norm
 	}
-	return out
+	return out, normRange{lo: lo, scale: rng}
+}
+
+// normRange is the linear map globalNormalize applied: v → (v - lo) / scale.
+type normRange struct{ lo, scale float64 }
+
+// stats maps statistics of the original values onto the normalised ones.
+// Exact for unclipped values; the median and MAD of sky-dominated frames
+// are far from both clip points.
+func (r normRange) stats(s ChannelStats) ChannelStats {
+	return ChannelStats{Median: (s.Median - r.lo) / r.scale, Sigma: s.Sigma / r.scale}
 }
 
 // channelMedianSigma returns the median and MAD-based sigma for a pixel array.
@@ -257,16 +269,15 @@ func channelMedianSigma(pixels []float64) (median, sigma float64) {
 		sample = s
 	}
 
-	sorted := make([]float64, len(sample))
-	copy(sorted, sample)
-	sort.Float64s(sorted)
+	sorted := slices.Clone(sample)
+	slices.Sort(sorted)
 	median = sorted[len(sorted)/2]
 
 	devs := make([]float64, len(sorted))
 	for i, v := range sorted {
 		devs[i] = math.Abs(v - median)
 	}
-	sort.Float64s(devs)
+	slices.Sort(devs)
 	sigma = devs[len(devs)/2] * 1.4826
 	return
 }
