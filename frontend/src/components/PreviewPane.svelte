@@ -6,26 +6,15 @@
   import { GeneratePreviewRawSized, LoadRasterImage, ReadFITSHeader, GetAnnotations } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
   import { mtfMidtone } from "../lib/stretchPreview";
+  import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
 
   interface Props {
     entry: app.EnrichedFileEntry;
-    stretchEnabled: boolean;
-    stretchLevel: number;
-    basicCollapsed: boolean;
-    advancedCollapsed: boolean;
     qualityFrame?: app.LibraryFrame | null;
     onclose: () => void;
   }
 
-  let {
-    entry,
-    stretchEnabled = $bindable(),
-    stretchLevel = $bindable(),
-    basicCollapsed = $bindable(),
-    advancedCollapsed = $bindable(),
-    qualityFrame = null,
-    onclose,
-  }: Props = $props();
+  let { entry, qualityFrame = null, onclose }: Props = $props();
 
   function isRasterFile(path: string): boolean {
     return path.toLowerCase().endsWith(".png");
@@ -242,8 +231,8 @@ void main() {
     if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
     const uniforms = computeUniforms(
       stats ?? rawInfo.stats,
-      enabled ?? (stretchEnabled && !isProcessed),
-      level ?? stretchLevel,
+      enabled ?? (pp.stretchEnabled && !isProcessed),
+      level ?? pp.stretchLevel,
     );
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
@@ -397,8 +386,8 @@ void main() {
       return;
     }
 
-    const se = untrack(() => stretchEnabled);
-    const sl = untrack(() => stretchLevel);
+    const se = untrack(() => pp.stretchEnabled);
+    const sl = untrack(() => pp.stretchLevel);
 
     Promise.allSettled([ReadFITSHeader(e.path), GeneratePreviewRawSized(e.path, 2048)]).then(
       ([hdrResult, rawResult]) => {
@@ -444,7 +433,7 @@ void main() {
     renderGL();
   }
   function setStretch(l: number) {
-    stretchLevel = l;
+    pp.stretchLevel = l;
     renderGL();
   }
   function setChannelMode(m: 0 | 1 | 2 | 3) {
@@ -480,8 +469,8 @@ void main() {
   $effect(() => {
     const hb = histBins;
     const hc = histCanvas;
-    const se = stretchEnabled;
-    const sl = stretchLevel;
+    const se = pp.stretchEnabled;
+    const sl = pp.stretchLevel;
     const ri = rawInfo;
     if (!showHistogram || !hb || !hc || !ri) return;
     const ctx2 = hc.getContext("2d");
@@ -619,27 +608,27 @@ void main() {
         <div class="stretch-group">
           <button
             class="tool-btn"
-            class:active={stretchEnabled}
+            class:active={pp.stretchEnabled}
             onclick={() => {
-              stretchEnabled = !stretchEnabled;
+              pp.stretchEnabled = !pp.stretchEnabled;
               applyStretch();
             }}
             title="Toggle autostretch">Stretch</button
           >
-          {#if stretchEnabled}
+          {#if pp.stretchEnabled}
             <button
               class="tool-btn preset"
-              class:active={stretchLevel === 1}
+              class:active={pp.stretchLevel === 1}
               onclick={() => setStretch(1)}>Gentle</button
             >
             <button
               class="tool-btn preset"
-              class:active={stretchLevel === 2}
+              class:active={pp.stretchLevel === 2}
               onclick={() => setStretch(2)}>Normal</button
             >
             <button
               class="tool-btn preset"
-              class:active={stretchLevel === 3}
+              class:active={pp.stretchLevel === 3}
               onclick={() => setStretch(3)}>Strong</button
             >
           {/if}
@@ -815,11 +804,11 @@ void main() {
   {#if fitsHeader || (isRaster && qualityFrame)}
     <div class="preview-meta">
       <div class="meta-section">
-        <button class="meta-section-hdr" onclick={() => (basicCollapsed = !basicCollapsed)}>
+        <button class="meta-section-hdr" onclick={() => (pp.basicCollapsed = !pp.basicCollapsed)}>
           <span>Basic</span>
-          <span class="meta-caret">{basicCollapsed ? "›" : "⌄"}</span>
+          <span class="meta-caret">{pp.basicCollapsed ? "›" : "⌄"}</span>
         </button>
-        {#if !basicCollapsed}
+        {#if !pp.basicCollapsed}
           {#if fitsHeader}
             {#each basicRows(fitsHeader) as row (row.key)}
               <div class="meta-row">
@@ -909,11 +898,14 @@ void main() {
       {/if}
       {#if fitsHeader}
         <div class="meta-section">
-          <button class="meta-section-hdr" onclick={() => (advancedCollapsed = !advancedCollapsed)}>
+          <button
+            class="meta-section-hdr"
+            onclick={() => (pp.advancedCollapsed = !pp.advancedCollapsed)}
+          >
             <span>Advanced</span>
-            <span class="meta-caret">{advancedCollapsed ? "›" : "⌄"}</span>
+            <span class="meta-caret">{pp.advancedCollapsed ? "›" : "⌄"}</span>
           </button>
-          {#if !advancedCollapsed}
+          {#if !pp.advancedCollapsed}
             {#each advancedRows(fitsHeader) as row (row.key)}
               <div class="meta-row">
                 <span class="meta-key">{row.key}</span>

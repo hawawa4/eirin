@@ -48,12 +48,9 @@
   import Toaster from "./components/Toaster.svelte";
   import { loadUiState } from "./lib/uiState.svelte";
   import { installUiScaleShortcuts } from "./lib/uiScale.svelte";
+  import { loadPreviewPrefs } from "./lib/previewPrefs.svelte";
 
   const PREF_ROOT_FOLDER = "root_folder";
-  const PREF_BASIC_COLLAPSED = "basic_collapsed";
-  const PREF_ADVANCED_COLLAPSED = "advanced_collapsed";
-  const PREF_STRETCH_ENABLED = "stretch_enabled";
-  const PREF_STRETCH_LEVEL = "stretch_level";
   const PREF_COLUMN_CONFIG = "column_config";
   const PREF_LIBRARY_COLUMN_CONFIG = "library_column_config";
   const PREF_THEME = "theme";
@@ -108,12 +105,6 @@
   let selectedEntry = $state<app.EnrichedFileEntry | null>(null);
   let librarySelectedFrame = $state<app.LibraryFrame | null>(null);
 
-  // ── Stretch / section collapse (persisted) ────────────────────────────────
-  let stretchEnabled = $state(true);
-  let stretchLevel = $state(2);
-  let basicCollapsed = $state(false);
-  let advancedCollapsed = $state(true);
-
   // ── Pref persistence guard ────────────────────────────────────────────────
   let prefsLoaded = $state(false);
 
@@ -159,10 +150,7 @@
     sirilInfo = siril;
     projectsFolder = pf;
 
-    stretchEnabled = p.stretchEnabled;
-    stretchLevel = p.stretchLevel;
-    basicCollapsed = p.basicCollapsed;
-    advancedCollapsed = p.advancedCollapsed;
+    loadPreviewPrefs(p);
     if (p.theme === "red" || p.theme === "grey") theme = p.theme;
     loadUiState(p.uiState);
 
@@ -213,19 +201,6 @@
       document.documentElement.setAttribute("data-theme", theme);
     }
     if (prefsLoaded) SetPref(PREF_THEME, theme);
-  });
-
-  $effect(() => {
-    if (prefsLoaded) SetPref(PREF_STRETCH_ENABLED, String(stretchEnabled));
-  });
-  $effect(() => {
-    if (prefsLoaded) SetPref(PREF_STRETCH_LEVEL, String(stretchLevel));
-  });
-  $effect(() => {
-    if (prefsLoaded) SetPref(PREF_BASIC_COLLAPSED, String(basicCollapsed));
-  });
-  $effect(() => {
-    if (prefsLoaded) SetPref(PREF_ADVANCED_COLLAPSED, String(advancedCollapsed));
   });
 
   function saveColumnConfig() {
@@ -424,14 +399,7 @@
       {/snippet}
       {#snippet secondary()}
         {#if selectedEntry}
-          <PreviewPane
-            entry={selectedEntry}
-            bind:stretchEnabled
-            bind:stretchLevel
-            bind:basicCollapsed
-            bind:advancedCollapsed
-            onclose={clearPreview}
-          />
+          <PreviewPane entry={selectedEntry} onclose={clearPreview} />
         {/if}
       {/snippet}
     </SplitPane>
@@ -468,10 +436,6 @@
           <PreviewPane
             entry={selectedEntry}
             qualityFrame={librarySelectedFrame}
-            bind:stretchEnabled
-            bind:stretchLevel
-            bind:basicCollapsed
-            bind:advancedCollapsed
             onclose={clearPreview}
           />
         {/if}
