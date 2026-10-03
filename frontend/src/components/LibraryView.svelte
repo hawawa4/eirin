@@ -50,6 +50,7 @@
   } from "../lib/library/groups";
   import { flattenGroups, itemOffsets, visibleRange, type TableItem } from "../lib/library/virtual";
   import { forgetPreview } from "../lib/library/previewCache";
+  import { isProjectFrameType, suggestProjectName } from "../lib/projects/frames";
   import ContextMenu from "./ContextMenu.svelte";
   import HardDeleteModal from "./HardDeleteModal.svelte";
   import BlinkModal from "./BlinkModal.svelte";
@@ -221,6 +222,8 @@
   );
   let sorted = $derived(sortFrames(filtered, sort));
   let groups = $derived<LibGroup[]>(buildGroups(sorted, groupBy));
+  /** Frames in the view that can go into a project (no stacks or processed images). */
+  let projectFrames = $derived(sorted.filter((f) => isProjectFrameType(f.frameType)));
 
   // ── Group expansion ───────────────────────────────────────────────────────
   // Explicit choices only; without one, a group is expanded while filtering (so
@@ -805,6 +808,10 @@
     });
   }
 
+  function createProjectFromView() {
+    cpFrames = projectFrames;
+  }
+
   // ── Blink ────────────────────────────────────────────────────────────────
   let blinkFrames = $state.raw<app.LibraryFrame[]>([]);
   let showBlink = $state(false);
@@ -908,6 +915,8 @@
     visibleCount={sorted.length}
     onselectall={selectAll}
     onsuggest={sirilAvailable ? () => (showSuggest = true) : undefined}
+    oncreateproject={oncreateproject ? createProjectFromView : undefined}
+    projectFrameCount={projectFrames.length}
     {columns}
     ontogglecolumn={toggleColumn}
     shortcutsOpen={showShortcuts}
@@ -1132,6 +1141,7 @@
 {#if cpFrames}
   <CreateProjectModal
     frames={cpFrames}
+    suggestedName={suggestProjectName(cpFrames)}
     onclose={() => (cpFrames = null)}
     oncreated={(project) => oncreateproject?.(project)}
   />

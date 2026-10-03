@@ -3,19 +3,22 @@
   import { AddFramesToProjectDetailed, CreateProject } from "$app";
   import type { Project } from "../../lib/types";
   import { toast } from "../../lib/toast.svelte";
-  import { isProjectFrameType } from "../../lib/projects/frames";
+  import { describeTypeCounts, isProjectFrameType } from "../../lib/projects/frames";
   import { plural } from "../../lib/utils";
   import Modal from "../Modal.svelte";
 
   interface Props {
     frames: app.LibraryFrame[];
+    /** Prefills the name field. */
+    suggestedName?: string;
     onclose: () => void;
     oncreated: (project: Project) => void;
   }
 
-  let { frames, onclose, oncreated }: Props = $props();
+  let { frames, suggestedName = "", onclose, oncreated }: Props = $props();
 
-  let name = $state("");
+  // svelte-ignore state_referenced_locally
+  let name = $state(suggestedName);
   let mode = $state<"symlink" | "copy">("symlink");
   let error = $state("");
   let creating = $state(false);
@@ -61,7 +64,9 @@
 
 <Modal title="Create project" {onclose} busy={creating}>
   <p class="desc">
-    {plural(eligible.length, "frame")} will be added (lights, darks, flats &amp; bias).
+    {plural(eligible.length, "frame")} will be added{eligible.length
+      ? `: ${describeTypeCounts(eligible)}`
+      : ""}.
     {#if ineligibleCount > 0}
       <span class="skipped">{ineligibleCount} of another type will be skipped.</span>
     {/if}

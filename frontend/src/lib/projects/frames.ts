@@ -45,6 +45,38 @@ export function sectionsByType(frames: app.LibraryFrame[]): FrameSection[] {
   return sections;
 }
 
+/** Frame count per project type, in folder order, e.g. "120 lights · 30 darks". */
+export function describeTypeCounts(frames: app.LibraryFrame[]): string {
+  return sectionsByType(frames)
+    .filter((s) => s.frames.length > 0 && s.type !== "other")
+    .map((s) => {
+      const t = s.type as ProjectFrameType;
+      return plural(
+        s.frames.length,
+        PROJECT_TYPE_LABEL[t].one,
+        PROJECT_TYPE_LABEL[t].many.toLowerCase(),
+      );
+    })
+    .join(" · ");
+}
+
+/**
+ * A default project name from what the lights have in common: the object, plus
+ * the telescope when there's a single one ("M 31 Seestar S50"). Empty when the
+ * lights span several objects.
+ */
+export function suggestProjectName(frames: app.LibraryFrame[]): string {
+  const lights = frames.filter((f) => f.frameType === "light");
+  const only = (vals: string[]) => {
+    const set = new Set(vals.map((v) => v.trim()).filter(Boolean));
+    return set.size === 1 ? [...set][0] : "";
+  };
+  const object = only(lights.map((f) => f.object));
+  if (!object) return "";
+  const telescope = only(lights.map((f) => f.telescope));
+  return telescope ? `${object} ${telescope}` : object;
+}
+
 /** One-line summary of an AddFramesToProjectDetailed result. */
 export function describeAddResult(r: app.AddFramesResult): string {
   const parts: string[] = [];

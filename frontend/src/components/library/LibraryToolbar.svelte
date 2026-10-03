@@ -21,6 +21,10 @@
     onselectall: () => void;
     /** Shown only when provided (Siril available, Frames tab). */
     onsuggest?: () => void;
+    /** Shown only when provided (desktop mode). Creates a project from the filtered view. */
+    oncreateproject?: () => void;
+    /** Lights, darks, flats and biases in the current view. */
+    projectFrameCount: number;
     columns: ColumnDef[];
     ontogglecolumn: (colId: string) => void;
     shortcutsOpen: boolean;
@@ -44,6 +48,8 @@
     visibleCount,
     onselectall,
     onsuggest,
+    oncreateproject,
+    projectFrameCount,
     columns,
     ontogglecolumn,
     shortcutsOpen,
@@ -144,6 +150,18 @@
   {#if onsuggest && !showRejected}
     <button class="tool-btn" onclick={onsuggest} title="Suggest statistical outliers for rejection">
       ✦ Suggest rejects
+    </button>
+  {/if}
+  {#if oncreateproject && !showRejected}
+    <button
+      class="tool-btn"
+      onclick={oncreateproject}
+      disabled={projectFrameCount === 0}
+      title={projectFrameCount === 0
+        ? "No light, dark, flat or bias frames in this view"
+        : `Create a project from the ${projectFrameCount} light, dark, flat and bias frames in this view (stacks and processed images are left out)`}
+    >
+      ＋ Project from view
     </button>
   {/if}
   <button
