@@ -5,6 +5,7 @@
   import {
     NUMERIC_FILTER_COLS,
     TEXT_FILTER_COLS,
+    VALUE_PICK_COLS,
     isColFilterActive,
     type ColFilters,
   } from "../../lib/library/filters";
@@ -22,6 +23,10 @@
     ontogglenumop: (colId: string) => void;
     /** Opens/closes the frame-type filter popup anchored at `rect`. */
     ontypefilter: (rect: DOMRect) => void;
+    /** Opens/closes the value list for a column, anchored under its filter cell. */
+    onpickvalues: (colId: string, rect: DOMRect) => void;
+    /** Column whose value list is open. */
+    pickerCol: string | null;
   }
 
   let {
@@ -36,6 +41,8 @@
     onnumfilter,
     ontogglenumop,
     ontypefilter,
+    onpickvalues,
+    pickerCol,
   }: Props = $props();
 
   const textTimers: Record<string, ReturnType<typeof setTimeout>> = {};
@@ -115,16 +122,40 @@
             {typeCount > 0 ? `${typeCount} ✓` : "All ▽"}
           </button>
         {:else if TEXT_FILTER_COLS.has(col.id)}
-          <input
-            class="filter-text"
-            class:filter-active={isColFilterActive(colFilters, col.id)}
-            type="text"
-            placeholder="Filter…"
-            aria-label="Filter {col.label}"
-            spellcheck="false"
-            value={colFilters[col.id]?.text ?? ""}
-            oninput={(e) => onTextInput(col.id, (e.target as HTMLInputElement).value)}
-          />
+          <div class="filter-text-wrap">
+            <input
+              class="filter-text"
+              class:filter-active={isColFilterActive(colFilters, col.id)}
+              class:has-picker={VALUE_PICK_COLS.has(col.id)}
+              type="text"
+              placeholder="Filter…"
+              aria-label="Filter {col.label}"
+              spellcheck="false"
+              value={colFilters[col.id]?.text ?? ""}
+              oninput={(e) => onTextInput(col.id, (e.target as HTMLInputElement).value)}
+              onkeydown={(e) => {
+                if (e.key === "ArrowDown" && e.altKey && VALUE_PICK_COLS.has(col.id)) {
+                  e.preventDefault();
+                  const th = (e.currentTarget as HTMLElement).closest("th");
+                  if (th) onpickvalues(col.id, th.getBoundingClientRect());
+                }
+              }}
+            />
+            {#if VALUE_PICK_COLS.has(col.id)}
+              <button
+                class="filter-pick-btn"
+                class:open={pickerCol === col.id}
+                data-value-picker-toggle
+                aria-label="Choose {col.label.toLowerCase()} from the library"
+                aria-expanded={pickerCol === col.id}
+                title="Choose from the {col.label.toLowerCase()} values in the library (Alt+↓)"
+                onclick={(e) => {
+                  const th = (e.currentTarget as HTMLElement).closest("th");
+                  if (th) onpickvalues(col.id, th.getBoundingClientRect());
+                }}>▾</button
+              >
+            {/if}
+          </div>
         {:else if NUMERIC_FILTER_COLS.has(col.id)}
           <div class="filter-num">
             <button
@@ -270,6 +301,34 @@
   .filter-num-val:focus,
   .filter-num-val.filter-active {
     border-color: var(--accent);
+  }
+
+  .filter-text-wrap {
+    position: relative;
+  }
+  .filter-text.has-picker {
+    padding-right: 18px;
+  }
+  .filter-pick-btn {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    width: 16px;
+    padding: 0;
+    font-size: var(--fs-xs);
+    line-height: 1;
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border);
+    border-radius: 0 2px 2px 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .filter-pick-btn:hover,
+  .filter-pick-btn.open {
+    background: var(--bg-row-hover);
+    color: var(--accent);
   }
 
   .filter-num {

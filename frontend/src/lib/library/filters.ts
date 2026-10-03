@@ -16,6 +16,9 @@ export const TEXT_FILTER_COLS: ReadonlySet<string> = new Set([
   "dateObs",
 ]);
 
+/** Text columns that also offer a list of the values in the library. */
+export const VALUE_PICK_COLS: ReadonlySet<string> = new Set(["object", "filter", "telescope"]);
+
 export const NUMERIC_FILTER_COLS: ReadonlySet<string> = new Set([
   "expTime",
   "size",
@@ -79,7 +82,9 @@ export function matchesColFilters(f: app.LibraryFrame, filters: ColFilters): boo
       if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType))
         return false;
     } else if (TEXT_FILTER_COLS.has(colId) && cf.text) {
-      if (!getFrameTextVal(f, colId).toLowerCase().includes(cf.text.toLowerCase())) return false;
+      const val = getFrameTextVal(f, colId).toLowerCase();
+      const want = cf.text.toLowerCase();
+      if (cf.exact ? val.trim() !== want : !val.includes(want)) return false;
     } else if (NUMERIC_FILTER_COLS.has(colId) && cf.numOp && cf.numVal != null) {
       // While a numeric filter is active, frames without a value never match.
       const val = numericValue(f, colId);
@@ -89,4 +94,33 @@ export function matchesColFilters(f: app.LibraryFrame, filters: ColFilters): boo
     }
   }
   return true;
+}
+
+export interface ValueCount {
+  value: string;
+  count: number;
+}
+
+/**
+ * Distinct non-empty values of a text column, with frame counts, among the
+ * frames that pass the search and every *other* column filter, so picking an
+ * object narrows the telescope list to what that object was shot with.
+ */
+export function distinctValues(
+  frames: app.LibraryFrame[],
+  colId: string,
+  search: string,
+  filters: ColFilters,
+): ValueCount[] {
+  const others: ColFilters = { ...filters };
+  delete others[colId];
+  const counts = new Map<string, number>();
+  for (const f of frames) {
+    if (!matchesSearch(f, search) || !matchesColFilters(f, others)) continue;
+    const v = getFrameTextVal(f, colId).trim();
+    if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true }));
 }

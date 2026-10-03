@@ -71,6 +71,8 @@ export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "proces
 
 export interface ColFilter {
   text?: string;
+  /** `text` was picked from the value list: match the whole value, not a substring. */
+  exact?: boolean;
   numOp?: "<" | ">";
   numVal?: number | null;
   types?: FrameType[];

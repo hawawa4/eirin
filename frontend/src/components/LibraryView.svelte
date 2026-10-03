@@ -34,6 +34,7 @@
   import { isModalOpen, isTypingTarget } from "../lib/keys";
   import {
     anyColFilterActive,
+    distinctValues,
     matchesColFilters,
     matchesSearch,
     type ColFilters,
@@ -62,6 +63,7 @@
   import GroupHeaderRow from "./library/GroupHeaderRow.svelte";
   import FrameRow from "./library/FrameRow.svelte";
   import TypeFilterPopup from "./library/TypeFilterPopup.svelte";
+  import ValuePickerPopup from "./library/ValuePickerPopup.svelte";
   import ShortcutsPopover from "./library/ShortcutsPopover.svelte";
   import CreateProjectModal from "./library/CreateProjectModal.svelte";
   import RenameModal from "./library/RenameModal.svelte";
@@ -132,6 +134,7 @@
 
   let colFilters = $state<ColFilters>({});
   let typeFilterPos = $state<{ x: number; y: number } | null>(null);
+  let valuePicker = $state<{ colId: string; x: number; y: number; width: number } | null>(null);
   let showShortcuts = $state(false);
 
   let colFiltersActive = $derived(anyColFilterActive(colFilters));
@@ -161,6 +164,7 @@
   function clearColFilters() {
     colFilters = {};
     typeFilterPos = null;
+    valuePicker = null;
   }
 
   function clearAllFilters() {
@@ -170,7 +174,26 @@
   }
 
   function setTextFilter(colId: string, text: string) {
-    colFilters = { ...colFilters, [colId]: { ...colFilters[colId], text: text || undefined } };
+    colFilters = {
+      ...colFilters,
+      [colId]: { ...colFilters[colId], text: text || undefined, exact: false },
+    };
+  }
+
+  /** A value picked from a column's list matches exactly; null clears the filter. */
+  function pickValue(colId: string, value: string | null) {
+    colFilters = {
+      ...colFilters,
+      [colId]: { ...colFilters[colId], text: value ?? undefined, exact: value !== null },
+    };
+    valuePicker = null;
+  }
+
+  function toggleValuePicker(colId: string, rect: DOMRect) {
+    valuePicker =
+      valuePicker?.colId === colId
+        ? null
+        : { colId, x: rect.left, y: rect.bottom + 2, width: rect.width };
   }
 
   function setNumFilter(colId: string, val: number | null) {
@@ -221,6 +244,9 @@
       : tabFrames,
   );
   let sorted = $derived(sortFrames(filtered, sort));
+  let pickerOptions = $derived(
+    valuePicker ? distinctValues(tabFrames, valuePicker.colId, search, colFilters) : [],
+  );
   let groups = $derived<LibGroup[]>(buildGroups(sorted, groupBy));
   /** Frames in the view that can go into a project (no stacks or processed images). */
   let projectFrames = $derived(sorted.filter((f) => isProjectFrameType(f.frameType)));
@@ -982,6 +1008,8 @@
               ontypefilter={(rect) => {
                 typeFilterPos = typeFilterPos ? null : { x: rect.left, y: rect.bottom + 2 };
               }}
+              onpickvalues={toggleValuePicker}
+              pickerCol={valuePicker?.colId ?? null}
             />
             <tbody>
               {#if groups.length === 0}
@@ -1078,6 +1106,20 @@
     {/snippet}
   </SplitPane>
 </div>
+
+{#if valuePicker}
+  {@const cf = colFilters[valuePicker.colId]}
+  <ValuePickerPopup
+    x={valuePicker.x}
+    y={valuePicker.y}
+    minWidth={Math.max(valuePicker.width, 180)}
+    label={columns.find((c) => c.id === valuePicker?.colId)?.label ?? "Value"}
+    options={pickerOptions}
+    selected={cf?.exact && cf.text ? cf.text : null}
+    onpick={(v) => valuePicker && pickValue(valuePicker.colId, v)}
+    onclose={() => (valuePicker = null)}
+  />
+{/if}
 
 {#if typeFilterPos}
   <TypeFilterPopup
