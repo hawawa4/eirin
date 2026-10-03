@@ -473,6 +473,12 @@ void main() {
   function applyStretch() {
     renderGL();
   }
+  // The stretch prefs are shared (Blink changes them too): re-render on any change.
+  $effect(() => {
+    void pp.stretchEnabled;
+    void pp.stretchLevel;
+    scheduleRender();
+  });
   function setStretch(l: number) {
     pp.stretchLevel = l;
     renderGL();

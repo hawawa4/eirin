@@ -4,6 +4,7 @@
   import { GeneratePreview } from "$app";
   import { pushModal, popModal, isTopModal } from "../lib/modalStack";
   import { BlinkLoader, preloadOrder } from "../lib/library/blinkLoader";
+  import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
 
   interface Props {
     frames: app.LibraryFrame[];
@@ -31,7 +32,13 @@
   );
   let intervalMs = $state(500);
   let playing = $state(false);
-  let stretchLevel = $state(2);
+  // Same stretch as the preview pane (shared, persisted prefs); 0 = off.
+  const stretchLevel = $derived(pp.stretchEnabled ? pp.stretchLevel : 0);
+  const STRETCH_PRESETS = [
+    { level: 1, label: "Gentle" },
+    { level: 2, label: "Normal" },
+    { level: 3, label: "Strong" },
+  ] as const;
   let confirmDelete = $state(false);
 
   // Frames ahead/behind the current one to preload (nearest first).
@@ -238,6 +245,18 @@
           doHardDelete();
         }
         return;
+      case "s":
+        e.preventDefault();
+        pp.stretchEnabled = !pp.stretchEnabled;
+        return;
+      case "1":
+      case "2":
+      case "3":
+        if (inInput) return;
+        e.preventDefault();
+        pp.stretchEnabled = true;
+        pp.stretchLevel = Number(e.key);
+        return;
     }
   }
 
@@ -376,6 +395,27 @@
         <span class="blink-speed-val">{intervalMs}ms</span>
       </label>
 
+      <div class="blink-stretch" role="group" aria-label="Autostretch">
+        <button
+          class="tool-btn"
+          class:active={pp.stretchEnabled}
+          aria-pressed={pp.stretchEnabled}
+          onclick={() => (pp.stretchEnabled = !pp.stretchEnabled)}
+          title="Toggle autostretch (s)">Stretch</button
+        >
+        {#if pp.stretchEnabled}
+          {#each STRETCH_PRESETS as p (p.level)}
+            <button
+              class="tool-btn preset"
+              class:active={pp.stretchLevel === p.level}
+              aria-pressed={pp.stretchLevel === p.level}
+              onclick={() => (pp.stretchLevel = p.level)}
+              title="{p.label} stretch ({p.level})">{p.label}</button
+            >
+          {/each}
+        {/if}
+      </div>
+
       <div class="blink-dots">
         {#each [-2, -1, 0, 1, 2] as offset (offset)}
           {@const idx = (((currentIndex + offset) % frames.length) + frames.length) % frames.length}
@@ -401,6 +441,8 @@
     <div class="blink-legend" aria-label="Keyboard shortcuts">
       <span><kbd>←</kbd><kbd>→</kbd> step</span>
       <span><kbd>Space</kbd> play/pause</span>
+      <span><kbd>s</kbd> stretch on/off</span>
+      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> gentle/normal/strong</span>
       {#if onreject}<span><kbd>r</kbd> reject</span>{/if}
       {#if onrestore}<span><kbd>u</kbd> restore</span>{/if}
       {#if onharddelete}<span><kbd>Del</kbd> delete</span>{/if}
@@ -590,6 +632,12 @@
     border-color: var(--accent);
   }
 
+  .blink-stretch {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 8px;
+  }
   .blink-speed {
     display: flex;
     align-items: center;
