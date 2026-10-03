@@ -11,6 +11,8 @@
     active?: boolean;
     /** Request a library (re)scan/index (Phase 2 contract). */
     onscan?: () => void;
+    /** Switch to the Library tab, e.g. from the import-done screen (Phase 2 contract). */
+    onviewlibrary?: () => void;
   }
 
   // eslint-disable-next-line svelte/no-unused-props -- Phase 2 contract props, not wired yet
