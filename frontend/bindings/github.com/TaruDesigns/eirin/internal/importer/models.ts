@@ -53,3 +53,101 @@ export class Candidate {
         return new Candidate($$parsedSource as Partial<Candidate>);
     }
 }
+
+/**
+ * Progress is emitted during an import run.
+ */
+export class Progress {
+    /**
+     * see Phase* constants
+     */
+    "phase": string;
+
+    /**
+     * files fully processed so far (reaches Total at the end)
+     */
+    "current": number;
+    "total": number;
+    "currentFile": string;
+    "copied": number;
+
+    /**
+     * already in the library (by content or destination path)
+     */
+    "skipped": number;
+
+    /**
+     * Kept counts source files NOT deleted from the device although
+     * deleteAfterCopy was on, because the library copy could not be verified
+     * identical (size + full SHA-256).
+     */
+    "kept": number;
+
+    /**
+     * Errors lists per-file failures ("relative/path: reason"); the run
+     * continues past them.
+     */
+    "errors": string[];
+
+    /**
+     * Notes lists per-file informational messages, e.g. why a file was kept.
+     */
+    "notes": string[];
+
+    /**
+     * fatal error (Phase == "error")
+     */
+    "error"?: string;
+
+    /** Creates a new Progress instance. */
+    constructor($$source: Partial<Progress> = {}) {
+        if (!("phase" in $$source)) {
+            this["phase"] = "";
+        }
+        if (!("current" in $$source)) {
+            this["current"] = 0;
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("currentFile" in $$source)) {
+            this["currentFile"] = "";
+        }
+        if (!("copied" in $$source)) {
+            this["copied"] = 0;
+        }
+        if (!("skipped" in $$source)) {
+            this["skipped"] = 0;
+        }
+        if (!("kept" in $$source)) {
+            this["kept"] = 0;
+        }
+        if (!("errors" in $$source)) {
+            this["errors"] = [];
+        }
+        if (!("notes" in $$source)) {
+            this["notes"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Progress instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Progress {
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("errors" in $$parsedSource) {
+            $$parsedSource["errors"] = $$createField7_0($$parsedSource["errors"]);
+        }
+        if ("notes" in $$parsedSource) {
+            $$parsedSource["notes"] = $$createField8_0($$parsedSource["notes"]);
+        }
+        return new Progress($$parsedSource as Partial<Progress>);
+    }
+}
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);

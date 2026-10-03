@@ -8,7 +8,17 @@
     "allowJs": true,
     "checkJs": true,
     "isolatedModules": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    "baseUrl": ".",
+    "paths": {
+      "$app": ["./bindings/github.com/TaruDesigns/eirin/internal/app/app.ts"],
+      "$models/app": ["./bindings/github.com/TaruDesigns/eirin/internal/app/models.ts"],
+      "$models/fits": ["./bindings/github.com/TaruDesigns/eirin/internal/fits/models.ts"],
+      "$models/catalog": ["./bindings/github.com/TaruDesigns/eirin/internal/catalog/models.ts"],
+      "$models/store": ["./bindings/github.com/TaruDesigns/eirin/internal/store/models.ts"],
+      "$models/importer": ["./bindings/github.com/TaruDesigns/eirin/internal/importer/models.ts"],
+      "$models/siril": ["./bindings/github.com/TaruDesigns/eirin/internal/siril/models.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "wailsjs/**/*.ts"]
 }

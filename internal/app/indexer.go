@@ -14,7 +14,6 @@ import (
 	"github.com/TaruDesigns/eirin/internal/importer"
 	"github.com/TaruDesigns/eirin/internal/indexer"
 	"github.com/TaruDesigns/eirin/internal/store"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type indexProgressEvent = indexer.ProgressEvent
@@ -22,12 +21,25 @@ type indexProgressEvent = indexer.ProgressEvent
 type appIndexer struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
+	gen    uint64 // incremented per BuildIndex call; identifies the current run
+}
+
+// isCurrent reports whether gen is still the latest BuildIndex run.
+func (ix *appIndexer) isCurrent(gen uint64) bool {
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	return ix.gen == gen
 }
 
 // BuildIndex traverses every subdirectory under rootPath, reads FITS headers
 // for files not yet in the cache, and stores them. Progress is reported via
 // "index:progress" Wails events. When force is true, already-indexed files are
 // re-read and overwritten (WCS plate-solve results are preserved).
+//
+// Starting a new run supersedes (cancels) any run in progress; the superseded
+// run stops emitting events so it can't overwrite the new run's progress.
+// Every run ends with a "done" or "cancelled" event — if rootPath is empty or
+// not an accessible directory, a "done" event carrying Error is emitted.
 func (a *App) BuildIndex(rootPath string, force bool) {
 	a.indexer.mu.Lock()
 	if a.indexer.cancel != nil {
@@ -35,16 +47,50 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.indexer.cancel = cancel
+	a.indexer.gen++
+	gen := a.indexer.gen
 	a.indexer.mu.Unlock()
 
 	go func() {
 		defer func() {
 			a.indexer.mu.Lock()
-			a.indexer.cancel = nil
+			if a.indexer.gen == gen {
+				a.indexer.cancel = nil
+			}
 			a.indexer.mu.Unlock()
+			cancel()
 		}()
 
-		a.emitIndexProgress(indexProgressEvent{Phase: "scanning", Current: "Scanning directories…"})
+		// Drop events from a run that has been superseded by a newer one.
+		emitIndexProgress := func(evt indexProgressEvent) {
+			if a.indexer.isCurrent(gen) {
+				a.emitIndexProgress(evt)
+			}
+		}
+
+		if rootPath == "" {
+			emitIndexProgress(indexProgressEvent{Phase: "done", Error: "no root folder configured"})
+			return
+		}
+		// Stat on its own goroutine: on a stalled NAS mount it may never
+		// return, and CancelIndex must still be able to end the run.
+		rootOK := make(chan bool, 1)
+		go func() {
+			info, err := os.Stat(rootPath)
+			rootOK <- err == nil && info.IsDir()
+		}()
+		select {
+		case ok := <-rootOK:
+			if !ok {
+				emitIndexProgress(indexProgressEvent{Phase: "done", Error: "root folder is not accessible: " + rootPath})
+				return
+			}
+		case <-ctx.Done():
+			emitIndexProgress(indexProgressEvent{Phase: "cancelled"})
+			return
+		}
+
+		emitIndexProgress(indexProgressEvent{Phase: "scanning", Current: "Scanning directories…"})
 
 		// ── Phase 1: collect all indexable paths under rootPath ─────────────
 		// fitsPaths need header parsing; rasterPaths are indexed as-is.
@@ -76,7 +122,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 				}
 				scanned++
 				if time.Since(lastScanEmit) >= 80*time.Millisecond {
-					a.emitIndexProgress(indexProgressEvent{
+					emitIndexProgress(indexProgressEvent{
 						Phase:   "scanning",
 						Current: "Scanning directories… (" + filepath.Base(path) + ")",
 						Total:   scanned,
@@ -93,20 +139,20 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 		case res := <-scanDone:
 			fitsPaths, rasterPaths = res.fitsPaths, res.rasterPaths
 		case <-ctx.Done():
-			a.emitIndexProgress(indexProgressEvent{Phase: "cancelled"})
+			emitIndexProgress(indexProgressEvent{Phase: "cancelled"})
 			return
 		}
 
 		if ctx.Err() != nil {
-			a.emitIndexProgress(indexProgressEvent{Phase: "cancelled", Total: len(fitsPaths) + len(rasterPaths)})
+			emitIndexProgress(indexProgressEvent{Phase: "cancelled", Total: len(fitsPaths) + len(rasterPaths)})
 			return
 		}
 
 		total := len(fitsPaths) + len(rasterPaths)
-		a.emitIndexProgress(indexProgressEvent{Phase: "indexing", Total: total, Current: "Checking cache…"})
+		emitIndexProgress(indexProgressEvent{Phase: "indexing", Total: total, Current: "Checking cache…"})
 
 		if total == 0 {
-			a.emitIndexProgress(indexProgressEvent{Phase: "done"})
+			emitIndexProgress(indexProgressEvent{Phase: "done"})
 			return
 		}
 
@@ -139,7 +185,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 		}
 
 		alreadyCached := total - len(toIndexFits) - len(toIndexRaster)
-		a.emitIndexProgress(indexProgressEvent{
+		emitIndexProgress(indexProgressEvent{
 			Phase:   "indexing",
 			Total:   total,
 			Done:    alreadyCached,
@@ -205,7 +251,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			}
 
 			if time.Since(lastEmit) >= 80*time.Millisecond {
-				a.emitIndexProgress(indexProgressEvent{
+				emitIndexProgress(indexProgressEvent{
 					Phase:   "indexing",
 					Total:   total,
 					Done:    done,
@@ -234,7 +280,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			f := store.Frame{
 				FileSize:   fileSize,
 				LastSeen:   time.Now().Unix(),
-				FrameType:  store.FrameTypeImage,
+				FrameType:  store.ClassifyRasterType(p),
 				Object:     obj,
 				Telescope:  dm.Telescope,
 				Instrument: dm.Instrument,
@@ -251,7 +297,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			}
 
 			if time.Since(lastEmit) >= 80*time.Millisecond {
-				a.emitIndexProgress(indexProgressEvent{
+				emitIndexProgress(indexProgressEvent{
 					Phase:   "indexing",
 					Total:   total,
 					Done:    done,
@@ -284,7 +330,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 		if ctx.Err() != nil {
 			phase = "cancelled"
 		}
-		a.emitIndexProgress(indexProgressEvent{
+		emitIndexProgress(indexProgressEvent{
 			Phase:   phase,
 			Total:   total,
 			Done:    done,
@@ -292,7 +338,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			Errors:  errs,
 		})
 		if phase == "done" && newlyIndexed > 0 {
-			a.wails.Event.EmitEvent(&application.CustomEvent{Name: "library:updated"})
+			a.emitEvent("library:updated", nil)
 		}
 	}()
 }
@@ -308,5 +354,5 @@ func (a *App) CancelIndex() {
 }
 
 func (a *App) emitIndexProgress(evt indexProgressEvent) {
-	a.wails.Event.EmitEvent(&application.CustomEvent{Name: "index:progress", Data: evt})
+	a.emitEvent("index:progress", evt)
 }

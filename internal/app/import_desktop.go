@@ -3,13 +3,14 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/TaruDesigns/eirin/internal/importer"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // SelectSourceFolder opens an OS directory dialog for the user to pick the
@@ -83,103 +84,70 @@ func (a *App) ScanImportCandidates(sourceFolder string, extensions []string) ([]
 
 // StartImport re-scans sourceFolder, then copies qualifying files to the NAS
 // root in a background goroutine. extensions filters by file type (empty = all).
-// When deleteAfterCopy is true, each source file is removed after a successful copy.
+// When deleteAfterCopy is true, a source file is removed only once an
+// identical copy (same size and full-file SHA-256) is confirmed in the library.
 // FITS files are indexed into the database immediately after being copied.
-// Progress is reported via "import:progress" events.
+// Progress is reported via "import:progress" events and GetImportStatus.
+// Returns an error if an import is already running, the NAS root is not
+// accessible, or the scan fails; per-file failures are reported in the final
+// progress event's Errors instead.
 func (a *App) StartImport(sourceFolder string, extensions []string, deleteAfterCopy bool) error {
-	candidates, err := a.ScanImportCandidates(sourceFolder, extensions)
+	ctx, err := a.imports.begin()
 	if err != nil {
 		return err
 	}
-	go a.runImport(candidates, deleteAfterCopy)
+	fail := func(err error) error {
+		a.imports.finish(ImportProgress{Phase: importer.PhaseError, Error: err.Error(), Errors: []string{}, Notes: []string{}})
+		return err
+	}
+
+	nasRoot := a.store.Load().RootFolder
+	if nasRoot == "" {
+		return fail(errors.New("no NAS root folder configured"))
+	}
+	if info, err := os.Stat(nasRoot); err != nil || !info.IsDir() {
+		return fail(fmt.Errorf("NAS root folder is not accessible: %s", nasRoot))
+	}
+	candidates, err := a.ScanImportCandidates(sourceFolder, extensions)
+	if err != nil {
+		return fail(err)
+	}
+	knownHashes, err := a.store.GetAllFrameHashes()
+	if err != nil {
+		return fail(fmt.Errorf("querying hashes: %w", err))
+	}
+
+	go a.runImport(ctx, candidates, knownHashes, deleteAfterCopy)
 	return nil
 }
 
 func (a *App) emitImportProgress(p ImportProgress) {
-	a.wails.Event.EmitEvent(&application.CustomEvent{Name: "import:progress", Data: p})
+	a.imports.update(p)
+	a.emitEvent("import:progress", p)
 }
 
-func (a *App) runImport(candidates []ImportCandidate, deleteAfterCopy bool) {
-	total := len(candidates)
-	copied, skipped := 0, 0
+// importLibrary adapts the store to importer.Library.
+type importLibrary struct {
+	app         *App
+	knownHashes map[string]bool
+}
 
-	knownHashes, err := a.store.GetAllFrameHashes()
-	if err != nil {
-		a.emitImportProgress(ImportProgress{
-			Phase: "error",
-			Total: total,
-			Error: fmt.Sprintf("querying hashes: %v", err),
-		})
-		return
-	}
+func (l importLibrary) HasPrefixHash(hash string) bool { return l.knownHashes[hash] }
 
-	for i, c := range candidates {
-		a.emitImportProgress(ImportProgress{
-			Phase:       "copying",
-			Current:     i,
-			Total:       total,
-			CurrentFile: c.RelativePath,
-			Copied:      copied,
-			Skipped:     skipped,
-		})
+func (l importLibrary) PathsWithPrefixHash(hash string) ([]string, error) {
+	return l.app.store.GetFramePathsByHash(hash)
+}
 
-		hash, hashErr := importer.HashFilePrefix(c.SourcePath)
-		if hashErr != nil {
-			a.emitImportProgress(ImportProgress{
-				Phase:   "error",
-				Current: i,
-				Total:   total,
-				Error:   fmt.Sprintf("%s: %v", c.RelativePath, hashErr),
-			})
-			return
-		}
+func (l importLibrary) FileImported(c ImportCandidate) { l.app.indexImportedFile(c) }
 
-		if knownHashes[hash] {
-			// Same content already in library — skip copy but honour delete-from-source.
-			skipped++
-			if deleteAfterCopy {
-				if rmErr := os.Remove(c.SourcePath); rmErr != nil {
-					slog.Warn("import: delete source", "path", c.RelativePath, "err", rmErr)
-				}
-			}
-			continue
-		}
+func (a *App) runImport(ctx context.Context, candidates []ImportCandidate, knownHashes map[string]bool, deleteAfterCopy bool) {
+	lib := importLibrary{app: a, knownHashes: knownHashes}
+	final := importer.Run(ctx, candidates, lib, importer.Options{DeleteAfterCopy: deleteAfterCopy}, a.emitImportProgress)
+	a.imports.finish(final)
+	slog.Info("import: finished", "phase", final.Phase, "copied", final.Copied,
+		"skipped", final.Skipped, "kept", final.Kept, "errors", len(final.Errors))
 
-		wasSkipped, copyErr := importer.CopyFileIfNotExists(c.SourcePath, c.DestPath)
-		if copyErr != nil {
-			a.emitImportProgress(ImportProgress{
-				Phase:   "error",
-				Current: i,
-				Total:   total,
-				Error:   fmt.Sprintf("%s: %v", c.RelativePath, copyErr),
-			})
-			return
-		}
-
-		if wasSkipped {
-			skipped++
-		} else {
-			knownHashes[hash] = true // guard against duplicates within the same import batch
-			copied++
-			c.FileHash = hash
-			a.indexImportedFile(c)
-			if deleteAfterCopy {
-				if rmErr := os.Remove(c.SourcePath); rmErr != nil {
-					slog.Warn("import: delete source", "path", c.RelativePath, "err", rmErr)
-				}
-			}
-		}
-	}
-
-	a.emitImportProgress(ImportProgress{
-		Phase:   "done",
-		Current: total,
-		Total:   total,
-		Copied:  copied,
-		Skipped: skipped,
-	})
-
-	if copied > 0 {
-		a.wails.Event.EmitEvent(&application.CustomEvent{Name: "library:updated"})
+	if final.Copied > 0 {
+		a.emitEvent("library:updated", nil)
 	}
 }

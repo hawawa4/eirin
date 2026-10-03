@@ -7,12 +7,20 @@
   --accent: #7c9ef5;
   --accent-dim: #3d5aa8;
   --text-primary: #e0e4f0;
-  --text-secondary: #8892b0;
-  --text-dim: #4a5270;
-  --border: #252840;
-  --border-accent: #3a4070;
+  --text-secondary: #949db9;
+  --text-dim: #5f6a8f;
+  --border: #323656;
+  --border-accent: #464d82;
+  --accent-contrast: #0f111a;
   --danger: #e05c7e;
   --success: #5cb8a0;
+
+  /* ── Type scale ── */
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.875rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.25rem;
 }
 
 [data-theme="red"] {
@@ -24,10 +32,11 @@
   --accent: #e07060;
   --accent-dim: #6b2a24;
   --text-primary: #f0e0de;
-  --text-secondary: #ae8a88;
-  --text-dim: #6b3d3b;
-  --border: #2c1818;
-  --border-accent: #5a2c2c;
+  --text-secondary: #b38f8c;
+  --text-dim: #965653;
+  --border: #4f2b2b;
+  --border-accent: #763a3a;
+  --accent-contrast: #1a0806;
   --danger: #e05c7e;
   --success: #5cb8a0;
 }
@@ -41,10 +50,11 @@
   --accent: #9ba4b8;
   --accent-dim: #44495a;
   --text-primary: #e4e4ec;
-  --text-secondary: #848490;
-  --text-dim: #4a4a56;
-  --border: #25252e;
-  --border-accent: #363644;
+  --text-secondary: #9696a1;
+  --text-dim: #6a6a7a;
+  --border: #373744;
+  --border-accent: #4e4e60;
+  --accent-contrast: #111115;
   --danger: #e05c7e;
   --success: #5cb8a0;
 }
@@ -63,9 +73,21 @@ body {
     sans-serif;
   background-color: var(--bg-base);
   color: var(--text-primary);
+  line-height: 1.4;
   height: 100vh;
   overflow: hidden;
   user-select: none;
+}
+
+/* ── Focus ring ───────────────────────────────────────────────────────────── */
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 #app {
@@ -82,17 +104,21 @@ body {
   border: 1px solid var(--accent);
   border-radius: 6px;
   padding: 6px 16px;
-  font-size: 0.85rem;
+  font-size: var(--fs-md);
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: var(--accent);
-  color: #0f111a;
+  color: var(--accent-contrast);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .btn-large {
   padding: 10px 28px;
-  font-size: 1rem;
+  font-size: var(--fs-lg);
   margin-top: 16px;
 }
 
@@ -102,7 +128,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 13px;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   cursor: pointer;
   transition:
     color 0.15s,
@@ -125,7 +151,7 @@ body {
   border-radius: 4px;
   width: 28px;
   height: 28px;
-  font-size: 1rem;
+  font-size: var(--fs-lg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -138,7 +164,7 @@ body {
 .btn-icon.small {
   width: 22px;
   height: 22px;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 .btn-icon:hover:not(:disabled) {
   color: var(--accent);
@@ -155,7 +181,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 13px;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   cursor: pointer;
   transition:
     color 0.15s,
@@ -185,12 +211,16 @@ body {
   border: 1px solid var(--danger);
   border-radius: 6px;
   padding: 6px 16px;
-  font-size: 0.85rem;
+  font-size: var(--fs-md);
   cursor: pointer;
   transition: opacity 0.15s;
 }
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   opacity: 0.85;
+}
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .tool-btn {
@@ -199,7 +229,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 8px;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
   transition:
     color 0.15s,
@@ -210,10 +240,11 @@ body {
   color: var(--accent);
   border-color: var(--accent);
 }
-.tool-btn.active {
-  color: var(--accent);
+.tool-btn.active,
+.tool-btn.active:hover {
+  color: var(--accent-contrast);
   border-color: var(--accent);
-  background: var(--accent-dim);
+  background: var(--accent);
 }
 .tool-btn.preset {
   padding: 2px 6px;
@@ -224,7 +255,7 @@ body {
   border: 1px solid var(--danger);
   color: var(--danger);
   padding: 8px 16px;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   border-radius: 4px;
   margin: 8px 16px;
 }
@@ -233,5 +264,5 @@ body {
   padding: 32px;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: var(--fs-md);
 }

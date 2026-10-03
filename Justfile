@@ -50,6 +50,10 @@ build-macos-arm:
 build-server:
     go build -tags server -ldflags="-s -w" -o eirin-server .
 
+# Regenerate the TypeScript Wails bindings into frontend/bindings/
+bindings:
+    wails3 generate bindings -f '-tags gtk3' -clean=true -ts
+
 # ── Docker ───────────────────────────────────────────────────────────────────
 
 # Build the Linux binary inside Docker; output written to ./dist/eirin

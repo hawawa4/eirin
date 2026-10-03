@@ -93,7 +93,7 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 		}
 		// Raster files may have been indexed before FrameTypeImage existed; correct it now.
 		if indexer.IsRasterFile(path) {
-			if uerr := a.store.SetFrameType(path, store.FrameTypeImage); uerr != nil {
+			if uerr := a.store.SetFrameType(path, store.ClassifyRasterType(path)); uerr != nil {
 				slog.Warn("analysis: set frame type image", "err", uerr)
 			}
 		}

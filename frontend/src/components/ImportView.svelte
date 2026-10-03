@@ -1,373 +1,187 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import { SvelteSet } from "svelte/reactivity";
   import {
-    SelectSourceFolder,
-    ScanImportCandidates,
-    StartImport,
-  } from "$app";
-  import { Events } from "@wailsio/runtime";
-  import type { ImportCandidate, ImportProgress, ImportState } from "../lib/types";
+    session,
+    selectedFormats,
+    ensureListening,
+    syncStatus,
+    chooseSource,
+    startImport,
+    cancelImport,
+    resetSession,
+    isRunningPhase,
+  } from "../lib/import/session.svelte";
+  import FormatToggles from "./import/FormatToggles.svelte";
+  import CandidateTree from "./import/CandidateTree.svelte";
+  import ImportRunning from "./import/ImportRunning.svelte";
+  import ImportResult from "./import/ImportResult.svelte";
+  import DeleteSourceModal from "./import/DeleteSourceModal.svelte";
+  import Spinner from "./import/Spinner.svelte";
 
   interface Props {
     rootFolder: string;
+    /** True while this view's tab is visible. */
+    active?: boolean;
+    /** Switch to the Library tab, e.g. from the import-done screen. */
+    onviewlibrary?: () => void;
   }
 
-  let { rootFolder }: Props = $props();
+  let { rootFolder, active = true, onviewlibrary }: Props = $props();
 
-  let phase = $state<ImportState>("idle");
-  let sourceFolder = $state("");
-  let candidates = $state<ImportCandidate[]>([]);
-  let progress = $state<ImportProgress | null>(null);
-  let errorMsg = $state("");
-  // eslint-disable-next-line svelte/no-unnecessary-state-wrap
-  let collapsed = $state(new SvelteSet<string>());
+  ensureListening();
 
-  // ── Import options ────────────────────────────────────────────────────────
-
-  const FORMAT_GROUPS: { key: string; label: string; exts: string[] }[] = [
-    { key: "fits", label: "FITS", exts: ["fit", "fits"] },
-    { key: "png", label: "PNG", exts: ["png"] },
-    { key: "jpeg", label: "JPEG", exts: ["jpg", "jpeg"] },
-    { key: "tiff", label: "TIFF", exts: ["tif", "tiff"] },
-  ];
-
-  // eslint-disable-next-line svelte/no-unnecessary-state-wrap
-  let selectedFormats = $state(new SvelteSet<string>(["fits"]));
-  let deleteAfterCopy = $state(false);
-
-  let extensions = $derived(
-    FORMAT_GROUPS.filter((g) => selectedFormats.has(g.key)).flatMap((g) => g.exts),
-  );
-
-  function toggleFormat(key: string) {
-    const next = new SvelteSet(selectedFormats);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    selectedFormats = next;
-    if (phase === "scanned") scan();
-  }
-
-  // ── Tree building ─────────────────────────────────────────────────────────
-
-  interface FolderNode {
-    name: string;
-    folderPath: string;
-    subfolders: FolderNode[];
-    files: ImportCandidate[];
-  }
-
-  function buildTree(items: ImportCandidate[]): FolderNode {
-    const root: FolderNode = { name: "", folderPath: "", subfolders: [], files: [] };
-    for (const c of items) {
-      const parts = c.relativePath.split(/[\\/]/);
-      let node = root;
-      for (let i = 0; i < parts.length - 1; i++) {
-        const seg = parts[i];
-        let child = node.subfolders.find((f) => f.name === seg);
-        if (!child) {
-          const fp = node.folderPath ? node.folderPath + "/" + seg : seg;
-          child = { name: seg, folderPath: fp, subfolders: [], files: [] };
-          node.subfolders.push(child);
-        }
-        node = child;
-      }
-      node.files.push(c);
-    }
-    return root;
-  }
-
-  function nodeFileCount(node: FolderNode): number {
-    return node.files.length + node.subfolders.reduce((s, f) => s + nodeFileCount(f), 0);
-  }
-
-  function nodeSize(node: FolderNode): number {
-    return (
-      node.files.reduce((s, c) => s + c.fileSize, 0) +
-      node.subfolders.reduce((s, f) => s + nodeSize(f), 0)
-    );
-  }
-
-  type FlatRow =
-    | {
-        kind: "folder";
-        depth: number;
-        name: string;
-        folderPath: string;
-        count: number;
-        size: number;
-      }
-    | { kind: "file"; depth: number; candidate: ImportCandidate };
-
-  function flattenTree(node: FolderNode, depth: number, col: Set<string>): FlatRow[] {
-    const rows: FlatRow[] = [];
-    for (const sub of node.subfolders) {
-      rows.push({
-        kind: "folder",
-        depth,
-        name: sub.name,
-        folderPath: sub.folderPath,
-        count: nodeFileCount(sub),
-        size: nodeSize(sub),
-      });
-      if (!col.has(sub.folderPath)) {
-        rows.push(...flattenTree(sub, depth + 1, col));
-      }
-    }
-    for (const c of node.files) {
-      rows.push({ kind: "file", depth, candidate: c });
-    }
-    return rows;
-  }
-
-  let tree = $derived(buildTree(candidates));
-  let flatRows = $derived(flattenTree(tree, 0, collapsed));
-
-  function toggleFolder(fp: string) {
-    const next = new SvelteSet(collapsed);
-    if (next.has(fp)) next.delete(fp);
-    else next.add(fp);
-    collapsed = next;
-  }
-
-  function collapseAll() {
-    const fps = new SvelteSet<string>();
-    function collect(node: FolderNode) {
-      for (const sub of node.subfolders) {
-        fps.add(sub.folderPath);
-        collect(sub);
-      }
-    }
-    collect(tree);
-    collapsed = fps;
-  }
-
-  function expandAll() {
-    collapsed = new SvelteSet();
-  }
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-
-  async function selectSource() {
-    const path = await SelectSourceFolder();
-    if (!path) return;
-    sourceFolder = path;
-    collapsed = new SvelteSet();
-    await scan();
-  }
-
-  async function scan() {
-    phase = "scanning";
-    errorMsg = "";
-    try {
-      const result = await ScanImportCandidates(sourceFolder, extensions);
-      candidates = result ?? [];
-      phase = "scanned";
-    } catch (e) {
-      errorMsg = String(e);
-      phase = "error";
-    }
-  }
-
-  async function startImport() {
-    phase = "importing";
-    progress = null;
-    try {
-      await StartImport(sourceFolder, extensions, deleteAfterCopy);
-    } catch (e) {
-      errorMsg = String(e);
-      phase = "error";
-    }
-  }
-
-  function reset() {
-    phase = "idle";
-    sourceFolder = "";
-    candidates = [];
-    progress = null;
-    errorMsg = "";
-    collapsed = new SvelteSet();
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  let totalSize = $derived(candidates.reduce((sum, c) => sum + c.fileSize, 0));
-  let progressPct = $derived(
-    progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0,
-  );
-
-  onMount(() => {
-    Events.On("import:progress", (event) => {
-      const data = event.data as ImportProgress;
-      progress = data;
-      if (data.phase === "done") phase = "done";
-      else if (data.phase === "error") {
-        errorMsg = data.error ?? "Unknown error";
-        phase = "error";
-      }
-    });
+  // Pick the job back up whenever the tab is (re)shown: a remount or a missed event
+  // must never offer a second import while one is running.
+  $effect(() => {
+    if (active !== false) void syncStatus();
   });
 
-  onDestroy(() => {
-    Events.Off("import:progress");
-  });
+  let confirmDelete = $state(false);
+
+  let running = $derived(isRunningPhase(session.progress?.phase));
+  let count = $derived(session.candidates.length);
+  let canImport = $derived(
+    count > 0 &&
+      !!rootFolder &&
+      selectedFormats.size > 0 &&
+      !session.starting &&
+      !session.rescanning &&
+      !running,
+  );
+
+  function requestImport() {
+    if (!canImport) return;
+    if (session.deleteAfterCopy) confirmDelete = true;
+    else void startImport();
+  }
+
+  function retry() {
+    session.screen = "review";
+    requestImport();
+  }
 </script>
 
 <div class="import-view">
-  {#if phase === "idle" || phase === "error"}
+  {#if session.screen === "pick"}
     <div class="center-panel">
-      <div class="import-icon">⇪</div>
+      <div class="import-icon" aria-hidden="true">⇪</div>
       <p class="panel-title">Import Files</p>
-      <p class="panel-sub">
-        Select a source folder to find files not yet in your library and copy them to
-        <strong>{rootFolder}</strong>
-      </p>
-      <div class="format-row">
-        <span class="format-label">Import:</span>
-        {#each FORMAT_GROUPS as g (g.key)}
-          <button
-            class="fmt-btn"
-            class:active={selectedFormats.has(g.key)}
-            onclick={() => toggleFormat(g.key)}>{g.label}</button
-          >
-        {/each}
-      </div>
+      {#if rootFolder}
+        <p class="panel-sub">
+          Select a source folder (e.g. your Seestar) to find files that aren't in your library yet
+          and copy them to <code>{rootFolder}</code>.
+        </p>
+      {:else}
+        <p class="panel-sub">No library folder is set. Choose one in Settings before importing.</p>
+      {/if}
+      <FormatToggles label="Import:" />
       <button
         class="btn-primary btn-large"
-        disabled={selectedFormats.size === 0}
-        onclick={selectSource}>Select Source Folder</button
+        disabled={selectedFormats.size === 0 || !rootFolder}
+        title={selectedFormats.size === 0 ? "Select at least one file format" : undefined}
+        onclick={chooseSource}>Select Source Folder</button
       >
-      {#if errorMsg}
-        <p class="error-msg">{errorMsg}</p>
+      {#if session.scanError}
+        <p class="error-msg" role="alert">Couldn't scan the folder: {session.scanError}</p>
       {/if}
     </div>
-  {:else if phase === "scanning"}
+  {:else if session.screen === "scanning"}
     <div class="center-panel">
-      <div class="import-icon spinning">⇪</div>
+      <Spinner size={36} label="Scanning" />
       <p class="panel-title">Scanning…</p>
-      <p class="panel-sub">{sourceFolder}</p>
+      <p class="panel-sub mono">{session.sourceFolder}</p>
     </div>
-  {:else if phase === "scanned"}
-    <div class="scanned-panel">
-      <div class="scan-header">
-        <div class="scan-header-row">
+  {:else if session.screen === "review"}
+    <div class="review">
+      <div class="review-header">
+        <div class="review-row">
           <div class="source-info">
-            <span class="source-label">Source:</span>
-            <span class="source-path" title={sourceFolder}>{sourceFolder}</span>
+            <span class="source-label">Source</span>
+            <span class="source-path" title={session.sourceFolder}>{session.sourceFolder}</span>
           </div>
-          <div class="scan-actions">
-            {#if candidates.length > 0}
-              <button class="btn-ghost" onclick={expandAll} title="Expand all folders">⊞</button>
-              <button class="btn-ghost" onclick={collapseAll} title="Collapse all folders">⊟</button
+          <div class="review-actions">
+            <button class="btn-secondary" onclick={chooseSource} disabled={session.starting}
+              >Change folder</button
+            >
+            {#if count > 0}
+              <button
+                class={session.deleteAfterCopy ? "btn-danger" : "btn-primary"}
+                disabled={!canImport}
+                onclick={requestImport}
               >
-            {/if}
-            <button class="btn-secondary" onclick={selectSource}>Change Folder</button>
-            {#if candidates.length > 0}
-              <button class="btn-primary" class:btn-danger={deleteAfterCopy} onclick={startImport}>
-                Import {candidates.length}
-                {candidates.length === 1 ? "file" : "files"}
+                {#if session.starting}
+                  Starting…
+                {:else}
+                  {session.deleteAfterCopy ? "Import & delete" : "Import"}
+                  {count.toLocaleString()}
+                  {count === 1 ? "file" : "files"}
+                {/if}
               </button>
             {/if}
           </div>
         </div>
-        <div class="scan-options">
-          <span class="format-label">Formats:</span>
-          {#each FORMAT_GROUPS as g (g.key)}
-            <button
-              class="fmt-btn"
-              class:active={selectedFormats.has(g.key)}
-              onclick={() => toggleFormat(g.key)}>{g.label}</button
-            >
-          {/each}
-          <div class="opt-sep"></div>
-          <label class="delete-toggle" class:delete-active={deleteAfterCopy}>
-            <input type="checkbox" bind:checked={deleteAfterCopy} />
-            Delete from source after copying
+        <div class="review-row options">
+          <FormatToggles />
+          <span class="opt-sep" aria-hidden="true"></span>
+          <label
+            class="delete-toggle"
+            class:delete-active={session.deleteAfterCopy}
+            title="After copying, delete each file from the source — only once the library copy is verified identical"
+          >
+            <input type="checkbox" bind:checked={session.deleteAfterCopy} />
+            Delete from source after a verified copy
           </label>
         </div>
+        {#if session.startError}
+          <p class="error-msg" role="alert">Couldn't start the import: {session.startError}</p>
+        {/if}
+        {#if session.scanError}
+          <p class="error-msg" role="alert">Couldn't rescan the folder: {session.scanError}</p>
+        {/if}
       </div>
 
-      {#if candidates.length === 0}
+      {#if count === 0}
         <div class="empty-state">
-          <p>All files are already in the library. Nothing to import.</p>
+          {#if session.rescanning}
+            <Spinner size={16} label="Updating" /> Updating…
+          {:else if selectedFormats.size === 0}
+            Select at least one file format.
+          {:else}
+            All files are already in the library. Nothing to import.
+          {/if}
         </div>
       {:else}
-        <div class="candidate-meta">
-          {candidates.length}
-          {candidates.length === 1 ? "new file" : "new files"} · {formatSize(totalSize)} total
-        </div>
-        <div class="candidate-list">
-          <table>
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Destination</th>
-                <th class="col-size">Size</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each flatRows as row (row.kind === "folder" ? row.folderPath : row.candidate.sourcePath)}
-                {#if row.kind === "folder"}
-                  <tr
-                    class="folder-row"
-                    onclick={() => toggleFolder(row.folderPath)}
-                    title={row.folderPath}
-                  >
-                    <td style="padding-left: {row.depth * 18 + 10}px">
-                      <span class="chevron">{collapsed.has(row.folderPath) ? "▶" : "▼"}</span>
-                      <span class="folder-name">{row.name}</span>
-                      <span class="folder-meta"
-                        >{row.count} {row.count === 1 ? "file" : "files"}</span
-                      >
-                    </td>
-                    <td class="dest-path folder-dest">→ {row.name}/</td>
-                    <td class="size-cell">{formatSize(row.size)}</td>
-                  </tr>
-                {:else}
-                  <tr class="file-row">
-                    <td style="padding-left: {row.depth * 18 + 28}px" class="file-name">
-                      {row.candidate.relativePath.split(/[\\/]/).pop()}
-                    </td>
-                    <td class="dest-path">{row.candidate.destPath}</td>
-                    <td class="size-cell">{formatSize(row.candidate.fileSize)}</td>
-                  </tr>
-                {/if}
-              {/each}
-            </tbody>
-          </table>
-        </div>
+        <CandidateTree candidates={session.candidates} {rootFolder} updating={session.rescanning} />
       {/if}
     </div>
-  {:else if phase === "importing"}
-    <div class="center-panel">
-      <div class="import-icon">⇪</div>
-      <p class="panel-title">Importing…</p>
-      {#if progress}
-        <div class="progress-wrap">
-          <div class="progress-bar" style="width: {progressPct}%"></div>
-        </div>
-        <p class="progress-counts">{progress.current} / {progress.total}</p>
-        <p class="progress-file">{progress.currentFile}</p>
-      {/if}
-    </div>
-  {:else if phase === "done"}
-    <div class="center-panel">
-      <div class="import-icon done-icon">✓</div>
-      <p class="panel-title">Import Complete</p>
-      {#if progress}
-        <p class="panel-sub">{progress.copied} copied · {progress.skipped} already existed</p>
-      {/if}
-      <button class="btn-primary btn-large" onclick={reset}>Import More</button>
-    </div>
+  {:else if session.screen === "running"}
+    <ImportRunning
+      progress={session.progress}
+      cancelling={session.cancelling}
+      oncancel={cancelImport}
+    />
+  {:else if session.screen === "result" && session.progress}
+    <ImportResult
+      progress={session.progress}
+      canRetry={!!session.sourceFolder}
+      retrying={session.starting}
+      onretry={retry}
+      onagain={resetSession}
+      {onviewlibrary}
+    />
   {/if}
 </div>
+
+{#if confirmDelete}
+  <DeleteSourceModal
+    {count}
+    sourceFolder={session.sourceFolder}
+    oncancel={() => (confirmDelete = false)}
+    onconfirm={() => {
+      confirmDelete = false;
+      void startImport();
+    }}
+  />
+{/if}
 
 <style>
   .import-view {
@@ -390,198 +204,106 @@
     padding: 32px;
     text-align: center;
   }
-
   .import-icon {
     font-size: 2.8rem;
-    color: var(--accent-dim);
+    color: var(--accent);
     margin-bottom: 6px;
     line-height: 1;
   }
-
-  .import-icon.spinning {
-    animation: spin 1.2s linear infinite;
-  }
-
-  .import-icon.done-icon {
-    color: var(--accent);
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   .panel-title {
-    font-size: 1.1rem;
+    font-size: var(--fs-xl);
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
   }
-
   .panel-sub {
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
-    max-width: 480px;
-    margin: 0;
+    max-width: 520px;
+    margin: 0 0 6px;
+    word-break: break-word;
   }
-
+  .panel-sub code,
+  .mono {
+    font-family: monospace;
+    color: var(--text-primary);
+  }
   .error-msg {
-    font-size: 0.85rem;
-    color: var(--color-error, #e06c75);
+    font-size: var(--fs-sm);
+    color: var(--danger);
     margin: 0;
-    max-width: 480px;
+    max-width: 640px;
+    word-break: break-word;
   }
 
-  /* ── Progress ────────────────────────────────────────────────────────────── */
+  /* ── Review ──────────────────────────────────────────────────────────────── */
 
-  .progress-wrap {
-    width: 320px;
-    height: 6px;
-    background: var(--bg-row);
-    border-radius: 3px;
-    overflow: hidden;
-    margin-top: 8px;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 3px;
-    transition: width 0.1s ease;
-  }
-
-  .progress-counts {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin: 4px 0 0;
-  }
-
-  .progress-file {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    max-width: 420px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin: 0;
-  }
-
-  /* ── Scanned panel ───────────────────────────────────────────────────────── */
-
-  .scanned-panel {
+  .review {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
   }
-
-  .scan-header {
+  .review-header {
     display: flex;
     flex-direction: column;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-panel);
-    gap: 6px;
     flex-shrink: 0;
   }
-
-  .scan-header-row {
+  .review-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
   }
-
+  .review-row.options {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
   .source-info {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
   }
-
   .source-label {
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     flex-shrink: 0;
   }
-
   .source-path {
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--text-primary);
     font-family: monospace;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .scan-actions {
+  .review-actions {
     display: flex;
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
   }
-
-  /* ── Format + options row ────────────────────────────────────────────────── */
-
-  .format-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+  .review-actions .btn-secondary {
+    margin-right: 0;
   }
-
-  .scan-options {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .format-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-  }
-
-  .fmt-btn {
-    font-size: 0.72rem;
-    font-weight: 600;
-    padding: 2px 9px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition:
-      background 0.1s,
-      color 0.1s,
-      border-color 0.1s;
-  }
-  .fmt-btn:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
-  }
-  .fmt-btn.active {
-    border-color: var(--accent);
-    background: var(--accent-dim);
-    color: var(--accent);
-  }
-
   .opt-sep {
     width: 1px;
-    height: 14px;
+    height: 16px;
     background: var(--border);
-    margin: 0 4px;
-    flex-shrink: 0;
+    margin: 0 6px;
   }
-
   .delete-toggle {
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
+    gap: 6px;
+    font-size: var(--fs-md);
+    color: var(--text-primary);
     cursor: pointer;
     user-select: none;
   }
@@ -593,165 +315,13 @@
     color: var(--danger);
   }
 
-  .btn-danger {
-    background: var(--danger) !important;
-    border-color: var(--danger) !important;
-  }
-
-  .candidate-meta {
-    padding: 6px 16px;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    background: var(--bg-panel);
-  }
-
   .empty-state {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     color: var(--text-secondary);
-    font-size: 0.9rem;
-  }
-
-  /* ── Tree table ──────────────────────────────────────────────────────────── */
-
-  .candidate-list {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-
-  thead th {
-    position: sticky;
-    top: 0;
-    background: var(--bg-panel);
-    color: var(--text-secondary);
-    font-weight: 500;
-    text-align: left;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--border);
-    user-select: none;
-    white-space: nowrap;
-  }
-
-  .col-size {
-    width: 80px;
-    text-align: right;
-  }
-
-  /* Folder rows */
-
-  .folder-row {
-    cursor: pointer;
-    background: var(--bg-panel);
-  }
-
-  .folder-row:hover {
-    background: var(--bg-row-hover);
-  }
-
-  .folder-row td {
-    padding: 5px 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-    font-weight: 500;
-    vertical-align: middle;
-    white-space: nowrap;
-  }
-
-  .chevron {
-    display: inline-block;
-    font-size: 0.6rem;
-    width: 12px;
-    color: var(--text-secondary);
-    margin-right: 4px;
-  }
-
-  .folder-name {
-    color: var(--accent);
-  }
-
-  .folder-meta {
-    margin-left: 8px;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    font-weight: 400;
-  }
-
-  .folder-dest {
-    font-size: 0.78rem;
-    font-family: monospace;
-    color: var(--accent-dim);
-  }
-
-  /* File rows */
-
-  .file-row:hover {
-    background: var(--bg-row-hover);
-  }
-
-  .file-row td {
-    padding: 4px 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-    vertical-align: middle;
-  }
-
-  .file-name {
-    font-family: monospace;
-    font-size: 0.78rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 320px;
-  }
-
-  .dest-path {
-    font-family: monospace;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 360px;
-  }
-
-  .size-cell {
-    text-align: right;
-    color: var(--text-secondary);
-    white-space: nowrap;
-  }
-
-  /* ── Shared ──────────────────────────────────────────────────────────────── */
-
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    padding: 3px 7px;
-    cursor: pointer;
-    transition:
-      color 0.15s,
-      border-color 0.15s;
-  }
-
-  .btn-ghost:hover {
-    color: var(--text-primary);
-    border-color: var(--accent-dim);
-  }
-
-  .btn-large {
-    padding: 9px 24px;
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
   }
 </style>

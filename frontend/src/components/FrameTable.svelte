@@ -10,29 +10,51 @@
     getFrameNumVal,
     getFrameSortVal,
   } from "../lib/utils";
+  import Modal from "./Modal.svelte";
 
   interface Props {
     frames: app.LibraryFrame[];
     onselectionchange?: (paths: Set<string>) => void;
-    onremove?: (paths: string[]) => void;
+    /** Enables the "Remove N frames" button (asks for confirmation first). */
+    onremove?: (paths: string[]) => void | Promise<void>;
+    /** Explanation shown in the remove confirmation. */
+    removeDescription?: string;
     onrowclick?: (frame: app.LibraryFrame) => void;
+    /**
+     * Right-click on a row. `paths` is the selection when the row is part of a
+     * multi-selection, otherwise just that row (which becomes selected).
+     */
+    onrowcontextmenu?: (e: MouseEvent, frame: app.LibraryFrame, paths: string[]) => void;
     hasMore?: boolean;
     loadingMore?: boolean;
     onloadmore?: () => void;
+    /** Loads every remaining page (offered while `hasMore`). */
+    onloadall?: () => void;
     hiddenColumns?: string[];
     resetKey?: unknown;
+    /** Rows shown greyed out and not selectable (e.g. frames already in a project). */
+    disabledPaths?: ReadonlySet<string>;
+    disabledTitle?: string;
+    /** false: no own scroll area — the table grows and the parent scrolls. */
+    scroll?: boolean;
   }
 
   let {
     frames,
     onselectionchange,
     onremove,
+    removeDescription = "The selected frames will be removed from this list.",
     onrowclick,
+    onrowcontextmenu,
     hasMore = false,
     loadingMore = false,
     onloadmore,
+    onloadall,
     hiddenColumns = [],
     resetKey = undefined,
+    disabledPaths,
+    disabledTitle = "Not selectable",
+    scroll = true,
   }: Props = $props();
 
   // ── Columns ───────────────────────────────────────────────────────────────
@@ -45,12 +67,16 @@
     "expTime",
   ]);
   let columns = $state<ColumnDef[]>(
-    DEFAULT_LIBRARY_COLUMNS.filter((c) => !hiddenColumns.includes(c.id)).map((c) => ({
-      ...c,
-      visible: VISIBLE_BY_DEFAULT.has(c.id),
-    })),
+    // Column set is fixed for the table's lifetime; only the initial hiddenColumns matter.
+    untrack(() =>
+      DEFAULT_LIBRARY_COLUMNS.filter((c) => !hiddenColumns.includes(c.id)).map((c) => ({
+        ...c,
+        visible: VISIBLE_BY_DEFAULT.has(c.id),
+      })),
+    ),
   );
   let showColumnMenu = $state(false);
+  let colMenuEl = $state<HTMLDivElement | null>(null);
   let visibleColumns = $derived(
     [...columns].filter((c) => c.visible).sort((a, b) => a.order - b.order),
   );
@@ -87,6 +113,7 @@
 
   let colFilters = $state<Record<string, ColFilter>>({});
   let typeFilterPos = $state<{ x: number; y: number } | null>(null);
+  let typePopupEl = $state<HTMLDivElement | null>(null);
   let search = $state("");
   const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
@@ -126,6 +153,11 @@
     search = "";
   }
 
+  /** A numeric cell with no value (not analysed / not recorded). */
+  function isEmptyNum(colId: string, v: number | null): v is null {
+    return v === null || Number.isNaN(v) || (colId === "expTime" && v === 0);
+  }
+
   let filtered = $derived(
     frames.filter((f) => {
       if (search) {
@@ -142,11 +174,12 @@
           if (cf.types && cf.types.length > 0 && !cf.types.includes(f.frameType as FrameType))
             return false;
         } else if (TEXT_COLS.has(colId) && cf.text) {
-          if (!getFrameTextVal(f, colId).toLowerCase().startsWith(cf.text.toLowerCase()))
+          if (!getFrameTextVal(f, colId).toLowerCase().includes(cf.text.toLowerCase()))
             return false;
         } else if (NUM_COLS.has(colId) && cf.numOp && cf.numVal != null) {
           const v = getFrameNumVal(f, colId);
-          if (v === null) continue;
+          // An active numeric filter hides rows that have no value for the column.
+          if (isEmptyNum(colId, v)) return false;
           if (cf.numOp === "<" && v >= cf.numVal) return false;
           if (cf.numOp === ">" && v <= cf.numVal) return false;
         }
@@ -165,6 +198,11 @@
       : filtered,
   );
 
+  function isDisabled(path: string): boolean {
+    return disabledPaths?.has(path) ?? false;
+  }
+  let selectable = $derived(sorted.filter((f) => !isDisabled(f.nasPath)));
+
   // ── Selection ─────────────────────────────────────────────────────────────
   // eslint-disable-next-line svelte/no-unnecessary-state-wrap
   let selectedPaths = $state(new SvelteSet<string>());
@@ -173,7 +211,7 @@
 
   $effect(() => {
     if (allCheckEl)
-      allCheckEl.indeterminate = selectedPaths.size > 0 && selectedPaths.size < sorted.length;
+      allCheckEl.indeterminate = selectedPaths.size > 0 && selectedPaths.size < selectable.length;
   });
 
   function pick(next: SvelteSet<string>) {
@@ -181,24 +219,34 @@
     onselectionchange?.(next);
   }
 
+  // Never keep rows selected that the filters (or a reload) hid, or that became disabled:
+  // actions on the selection must only touch what the user can see.
+  $effect(() => {
+    const visible = new Set(selectable.map((f) => f.nasPath));
+    untrack(() => {
+      if ([...selectedPaths].some((p) => !visible.has(p))) {
+        pick(new SvelteSet<string>([...selectedPaths].filter((p) => visible.has(p))));
+      }
+    });
+  });
+
   function handleRowClick(e: MouseEvent, frame: app.LibraryFrame) {
+    if (isDisabled(frame.nasPath)) return;
     if (e.shiftKey && lastSelectedPath) {
       const aIdx = sorted.findIndex((f) => f.nasPath === lastSelectedPath);
       const bIdx = sorted.findIndex((f) => f.nasPath === frame.nasPath);
       if (aIdx !== -1 && bIdx !== -1) {
         const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
         const next = new SvelteSet<string>(selectedPaths);
-        for (let i = lo; i <= hi; i++) next.add(sorted[i].nasPath);
+        for (let i = lo; i <= hi; i++) {
+          if (!isDisabled(sorted[i].nasPath)) next.add(sorted[i].nasPath);
+        }
         pick(next);
       }
       return;
     }
     if (e.ctrlKey || e.metaKey) {
-      const next = new SvelteSet<string>(selectedPaths);
-      if (next.has(frame.nasPath)) next.delete(frame.nasPath);
-      else next.add(frame.nasPath);
-      pick(next);
-      lastSelectedPath = frame.nasPath;
+      toggleCheckbox(frame);
       return;
     }
     pick(new SvelteSet<string>([frame.nasPath]));
@@ -206,7 +254,22 @@
     onrowclick?.(frame);
   }
 
+  function handleRowContextMenu(e: MouseEvent, frame: app.LibraryFrame) {
+    if (!onrowcontextmenu || isDisabled(frame.nasPath)) return;
+    e.preventDefault();
+    let paths: string[];
+    if (selectedPaths.has(frame.nasPath) && selectedPaths.size > 1) {
+      paths = [...selectedPaths];
+    } else {
+      pick(new SvelteSet<string>([frame.nasPath]));
+      lastSelectedPath = frame.nasPath;
+      paths = [frame.nasPath];
+    }
+    onrowcontextmenu(e, frame, paths);
+  }
+
   function toggleCheckbox(frame: app.LibraryFrame) {
+    if (isDisabled(frame.nasPath)) return;
     const next = new SvelteSet<string>(selectedPaths);
     if (next.has(frame.nasPath)) next.delete(frame.nasPath);
     else next.add(frame.nasPath);
@@ -216,18 +279,35 @@
 
   function toggleAll() {
     pick(
-      selectedPaths.size === sorted.length && sorted.length > 0
+      selectedPaths.size === selectable.length && selectable.length > 0
         ? new SvelteSet<string>()
-        : new SvelteSet<string>(sorted.map((f) => f.nasPath)),
+        : new SvelteSet<string>(selectable.map((f) => f.nasPath)),
     );
+  }
+
+  // ── Remove (confirmed) ────────────────────────────────────────────────────
+  let confirmRemove = $state<string[] | null>(null);
+  let removing = $state(false);
+
+  async function doRemove() {
+    if (!onremove || !confirmRemove) return;
+    removing = true;
+    try {
+      await onremove(confirmRemove);
+      pick(new SvelteSet<string>());
+    } catch {
+      /* the parent reports the failure; keep the selection so the user can retry */
+    } finally {
+      removing = false;
+      confirmRemove = null;
+    }
   }
 
   // ── Effects ───────────────────────────────────────────────────────────────
   $effect(() => {
     if (!showColumnMenu) return;
     const onDoc = (e: MouseEvent) => {
-      if (!document.getElementById("ft-col-menu-root")?.contains(e.target as Node))
-        showColumnMenu = false;
+      if (!colMenuEl?.contains(e.target as Node)) showColumnMenu = false;
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -236,8 +316,7 @@
   $effect(() => {
     if (!typeFilterPos) return;
     const onDoc = (e: MouseEvent) => {
-      if (!document.getElementById("ft-type-popup")?.contains(e.target as Node))
-        typeFilterPos = null;
+      if (!typePopupEl?.contains(e.target as Node)) typeFilterPos = null;
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -245,7 +324,12 @@
 
   function typeMeta(t: string) {
     return (
-      FRAME_TYPE_META[t] ?? { label: t, short: t.toUpperCase(), color: "#9ca3af", bg: "#1f2937" }
+      FRAME_TYPE_META[t] ?? {
+        label: t,
+        short: t.toUpperCase(),
+        color: "var(--text-secondary)",
+        bg: "var(--bg-row)",
+      }
     );
   }
 
@@ -263,14 +347,8 @@
 <!-- ── Toolbar ─────────────────────────────────────────────────────────────── -->
 <div class="ft-toolbar">
   {#if onremove && selectedPaths.size > 0}
-    <button
-      class="ft-btn ft-remove-btn"
-      onclick={() => {
-        onremove!([...selectedPaths]);
-        pick(new SvelteSet<string>());
-      }}
-    >
-      Remove {selectedPaths.size} frame{selectedPaths.size !== 1 ? "s" : ""}
+    <button class="ft-btn ft-remove-btn" onclick={() => (confirmRemove = [...selectedPaths])}>
+      Remove {selectedPaths.size} frame{selectedPaths.size !== 1 ? "s" : ""}…
     </button>
   {/if}
   {#if sortCol}
@@ -284,9 +362,19 @@
   {#if anyFilterActive}
     <button class="ft-btn" onclick={clearAll}>✕ filters</button>
   {/if}
-  <input class="ft-search" type="search" placeholder="Search…" bind:value={search} />
-  <div class="ft-col-sel" id="ft-col-menu-root">
-    <button class="ft-btn" onclick={() => (showColumnMenu = !showColumnMenu)}>Cols ▾</button>
+  <input
+    class="ft-search"
+    type="search"
+    placeholder="Search…"
+    aria-label="Search frames"
+    bind:value={search}
+  />
+  <div class="ft-col-sel" bind:this={colMenuEl}>
+    <button
+      class="ft-btn"
+      aria-expanded={showColumnMenu}
+      onclick={() => (showColumnMenu = !showColumnMenu)}>Columns ▾</button
+    >
     {#if showColumnMenu}
       <div class="ft-col-menu">
         {#each [...columns].sort((a, b) => a.order - b.order) as col (col.id)}
@@ -302,8 +390,21 @@
   </div>
 </div>
 
+{#if hasMore}
+  <div class="ft-partial">
+    <span>
+      {frames.length.toLocaleString()} frames loaded — search, filters and sort apply to loaded rows only.
+    </span>
+    {#if onloadall}
+      <button class="ft-btn" disabled={loadingMore} onclick={onloadall}>
+        {loadingMore ? "Loading…" : "Load all"}
+      </button>
+    {/if}
+  </div>
+{/if}
+
 <!-- ── Table ──────────────────────────────────────────────────────────────── -->
-<div class="ft-scroll">
+<div class="ft-scroll" class:ft-noscroll={!scroll}>
   <table class="ft-table">
     <colgroup>
       <col style="width: 28px" />
@@ -314,15 +415,25 @@
         <th class="ft-cb-th">
           <input
             type="checkbox"
+            aria-label="Select all"
             bind:this={allCheckEl}
-            checked={selectedPaths.size === sorted.length && sorted.length > 0}
+            disabled={selectable.length === 0}
+            checked={selectedPaths.size === selectable.length && selectable.length > 0}
             onchange={toggleAll}
           />
         </th>
         {#each visibleColumns as col (col.id)}
-          <th class:ft-sorted={sortCol === col.id} onclick={() => toggleSort(col.id)}>
+          <th
+            class:ft-sorted={sortCol === col.id}
+            onclick={() => toggleSort(col.id)}
+            aria-sort={sortCol === col.id
+              ? sortDir === "asc"
+                ? "ascending"
+                : "descending"
+              : undefined}
+          >
             <span class="ft-th-text">{col.label}</span>
-            {#if isFilterActive(col.id)}<span class="ft-filter-dot">▽</span>{/if}
+            {#if isFilterActive(col.id)}<span class="ft-filter-dot" title="Filtered">▽</span>{/if}
             {#if sortCol === col.id}<span class="ft-sort-ind">{sortDir === "asc" ? "▲" : "▼"}</span
               >{/if}
           </th>
@@ -350,22 +461,25 @@
                 class="ft-finput"
                 class:ft-factive={isFilterActive(col.id)}
                 type="text"
-                placeholder="…"
+                placeholder="contains…"
+                aria-label="Filter {col.label}"
                 value={colFilters[col.id]?.text ?? ""}
                 oninput={(e) => setTextDebounced(col.id, (e.target as HTMLInputElement).value)}
               />
             {:else if NUM_COLS.has(col.id)}
               <div class="ft-fnum">
-                <button class="ft-fnum-op" onclick={() => toggleNumOp(col.id)}
-                  >{colFilters[col.id]?.numOp ?? "<"}</button
+                <button
+                  class="ft-fnum-op"
+                  title="Toggle less than / greater than"
+                  onclick={() => toggleNumOp(col.id)}>{colFilters[col.id]?.numOp ?? "<"}</button
                 >
                 <input
                   class="ft-fnum-val"
                   class:ft-factive={isFilterActive(col.id)}
                   type="number"
-                  min="0"
                   step="any"
                   placeholder="—"
+                  aria-label="Filter {col.label}"
                   value={colFilters[col.id]?.numVal ?? ""}
                   oninput={(e) => {
                     const v = parseFloat((e.target as HTMLInputElement).value);
@@ -392,10 +506,14 @@
         </tr>
       {/if}
       {#each sorted as frame (frame.nasPath)}
+        {@const disabled = isDisabled(frame.nasPath)}
         <tr
           class="ft-row"
           class:ft-sel={selectedPaths.has(frame.nasPath)}
+          class:ft-disabled={disabled}
+          title={disabled ? disabledTitle : undefined}
           onclick={(e) => handleRowClick(e, frame)}
+          oncontextmenu={(e) => handleRowContextMenu(e, frame)}
         >
           <td
             class="ft-cb-td"
@@ -406,6 +524,8 @@
           >
             <input
               type="checkbox"
+              aria-label="Select {frame.fileName}"
+              {disabled}
               checked={selectedPaths.has(frame.nasPath)}
               onclick={(e) => e.stopPropagation()}
               onchange={() => toggleCheckbox(frame)}
@@ -443,7 +563,7 @@
 {#if typeFilterPos}
   <div
     class="ft-type-popup"
-    id="ft-type-popup"
+    bind:this={typePopupEl}
     style="left:{typeFilterPos.x}px;top:{typeFilterPos.y}px"
   >
     {#each Object.entries(FRAME_TYPE_META) as [type, meta] (type)}
@@ -457,6 +577,28 @@
       </label>
     {/each}
   </div>
+{/if}
+
+{#if confirmRemove}
+  <Modal
+    title="Remove {confirmRemove.length} frame{confirmRemove.length !== 1 ? 's' : ''}?"
+    onclose={() => (confirmRemove = null)}
+    busy={removing}
+    danger
+  >
+    <p class="ft-confirm-text">{removeDescription}</p>
+    {#snippet actions()}
+      <button
+        class="btn-ghost"
+        data-autofocus
+        disabled={removing}
+        onclick={() => (confirmRemove = null)}>Cancel</button
+      >
+      <button class="btn-danger" disabled={removing} onclick={doRemove}>
+        {removing ? "Removing…" : "Remove"}
+      </button>
+    {/snippet}
+  </Modal>
 {/if}
 
 <style>
@@ -476,7 +618,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     padding: 2px 8px;
     cursor: pointer;
     white-space: nowrap;
@@ -484,28 +626,32 @@
       background 0.1s,
       color 0.1s;
   }
-  .ft-btn:hover {
+  .ft-btn:hover:not(:disabled) {
     background: var(--bg-row-hover);
     color: var(--text-primary);
+  }
+  .ft-btn:disabled {
+    cursor: default;
+    color: var(--text-dim);
   }
 
   .ft-remove-btn {
     color: var(--danger);
     border-color: var(--danger);
   }
-  .ft-remove-btn:hover {
-    background: #2a1020;
+  .ft-remove-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
     color: var(--danger);
   }
 
   .ft-search {
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-primary);
     padding: 3px 8px;
-    width: 140px;
+    width: 160px;
     outline: none;
     margin-left: auto;
   }
@@ -527,7 +673,7 @@
     border-radius: 5px;
     padding: 5px 0;
     z-index: 200;
-    min-width: 130px;
+    min-width: 140px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
   }
 
@@ -536,7 +682,7 @@
     align-items: center;
     gap: 7px;
     padding: 4px 10px;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
@@ -550,10 +696,27 @@
     cursor: pointer;
   }
 
+  .ft-partial {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-panel) 70%, var(--accent-dim) 30%);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
   /* ── Table ───────────────────────────────────────────────────────────────── */
   .ft-scroll {
     flex: 1;
+    min-height: 0;
     overflow: auto;
+  }
+  .ft-scroll.ft-noscroll {
+    flex: none;
+    overflow: visible;
   }
   .ft-scroll::-webkit-scrollbar {
     width: 6px;
@@ -566,28 +729,29 @@
 
   .ft-table {
     border-collapse: collapse;
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
     table-layout: fixed;
     width: 100%;
     min-width: 100%;
   }
 
-  .ft-table thead tr {
+  /* The whole header (titles + filter row) sticks to the nearest scroll area. */
+  .ft-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     background: var(--bg-panel);
   }
 
   .ft-table th {
     padding: 7px 8px;
     text-align: left;
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 2;
     background: var(--bg-panel);
     white-space: nowrap;
     overflow: hidden;
@@ -599,17 +763,14 @@
     display: inline-block;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .ft-filter-dot {
-    font-size: 0.5rem;
-    color: var(--accent);
-    margin-left: 2px;
     vertical-align: middle;
   }
+  .ft-filter-dot,
   .ft-sort-ind {
-    font-size: 0.55rem;
+    font-size: var(--fs-xs);
     color: var(--accent);
     margin-left: 3px;
+    vertical-align: middle;
   }
   .ft-sorted .ft-th-text {
     color: var(--accent);
@@ -620,13 +781,15 @@
     width: 28px !important;
     padding: 0 !important;
     text-align: center;
-    cursor: default;
+    cursor: default !important;
   }
-  .ft-cb-th input {
+  .ft-cb-th input,
+  .ft-cb-td input {
     accent-color: var(--accent);
     cursor: pointer;
     width: 13px;
     height: 13px;
+    vertical-align: middle;
   }
   .ft-cb-td {
     padding: 0 !important;
@@ -634,12 +797,9 @@
     cursor: default;
     width: 28px;
   }
-  .ft-cb-td input {
-    accent-color: var(--accent);
-    cursor: pointer;
-    width: 13px;
-    height: 13px;
-    vertical-align: middle;
+  .ft-cb-td input:disabled,
+  .ft-cb-th input:disabled {
+    cursor: default;
   }
 
   /* ── Filter row ──────────────────────────────────────────────────────────── */
@@ -648,7 +808,8 @@
     background: color-mix(in srgb, var(--bg-panel) 55%, var(--bg-base) 45%);
     border-bottom: 2px solid var(--border-accent);
     cursor: default;
-    top: 31px;
+    text-transform: none;
+    letter-spacing: normal;
   }
   .ft-fth {
     padding: 2px 4px !important;
@@ -657,7 +818,7 @@
 
   .ft-finput {
     width: 100%;
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 3px;
@@ -677,7 +838,7 @@
     align-items: center;
   }
   .ft-fnum-op {
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     padding: 1px 4px;
     background: var(--bg-base);
     border: 1px solid var(--border);
@@ -695,7 +856,7 @@
   .ft-fnum-val {
     width: 100%;
     min-width: 0;
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     background: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 3px;
@@ -709,7 +870,7 @@
   }
 
   .ft-ftype-btn {
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     padding: 2px 5px;
     background: var(--bg-base);
     border: 1px solid var(--border);
@@ -751,6 +912,14 @@
   .ft-row.ft-sel:hover td {
     background: var(--accent-dim);
   }
+  .ft-row.ft-disabled {
+    cursor: default;
+  }
+  .ft-row.ft-disabled td,
+  .ft-row.ft-disabled:hover td {
+    background: var(--bg-base);
+    color: var(--text-dim);
+  }
 
   /* ── Column-specific ─────────────────────────────────────────────────────── */
   .ft-col-expTime,
@@ -764,18 +933,18 @@
   .ft-col-snr {
     text-align: right;
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
   }
   .ft-col-dateObs {
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;
   }
 
   .ft-type-badge {
     display: inline-block;
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     font-weight: 700;
     font-family: monospace;
     padding: 1px 5px;
@@ -798,10 +967,10 @@
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
   }
   .ft-clear-btn {
-    font-size: 0.78rem;
+    font-size: var(--fs-sm);
     padding: 4px 14px;
     background: transparent;
     border: 1px solid var(--accent);
@@ -814,7 +983,7 @@
   }
   .ft-clear-btn:hover {
     background: var(--accent);
-    color: var(--bg-base);
+    color: var(--accent-contrast);
   }
 
   /* ── Load more ───────────────────────────────────────────────────────────── */
@@ -824,7 +993,7 @@
     border-bottom: none;
   }
   .ft-load-btn {
-    font-size: 0.78rem;
+    font-size: var(--fs-sm);
     padding: 4px 16px;
     background: transparent;
     border: 1px solid var(--border);
@@ -840,8 +1009,8 @@
     color: var(--text-primary);
   }
   .ft-load-btn:disabled {
-    opacity: 0.4;
     cursor: default;
+    color: var(--text-dim);
   }
 
   /* ── Type filter popup ───────────────────────────────────────────────────── */
@@ -852,7 +1021,7 @@
     border-radius: 5px;
     padding: 4px 0;
     z-index: 300;
-    min-width: 120px;
+    min-width: 130px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
   }
   .ft-popup-item {
@@ -860,7 +1029,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
@@ -872,5 +1041,9 @@
   .ft-popup-item input {
     accent-color: var(--accent);
     cursor: pointer;
+  }
+
+  .ft-confirm-text {
+    margin: 0;
   }
 </style>

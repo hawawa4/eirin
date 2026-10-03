@@ -9,7 +9,7 @@ export default defineConfig({
   plugins: [svelte()],
   resolve: {
     alias: {
-      "$app": resolve(bindings, "app/app.ts"),
+      $app: resolve(bindings, "app/app.ts"),
       "$models/app": resolve(bindings, "app/models.ts"),
       "$models/fits": resolve(bindings, "fits/models.ts"),
       "$models/catalog": resolve(bindings, "catalog/models.ts"),

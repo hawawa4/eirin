@@ -71,14 +71,14 @@ export type FrameType = "light" | "dark" | "flat" | "bias" | "stacked" | "proces
 
 export interface ColFilter {
   text?: string;
+  /** `text` was picked from the value list: match the whole value, not a substring. */
+  exact?: boolean;
   numOp?: "<" | ">";
   numVal?: number | null;
   types?: FrameType[];
 }
 
 export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
-
-export type ImportState = "idle" | "scanning" | "scanned" | "importing" | "done" | "error";
 
 export interface Capabilities {
   desktopMode: boolean;
@@ -90,23 +90,6 @@ export interface AppInfo {
   serverUrl: string;
   portSource: string;
   capabilities: Capabilities;
-}
-
-export interface ImportCandidate {
-  sourcePath: string;
-  relativePath: string;
-  destPath: string;
-  fileSize: number;
-}
-
-export interface ImportProgress {
-  phase: "copying" | "done" | "error";
-  current: number;
-  total: number;
-  currentFile: string;
-  copied: number;
-  skipped: number;
-  error?: string;
 }
 
 export interface Project {

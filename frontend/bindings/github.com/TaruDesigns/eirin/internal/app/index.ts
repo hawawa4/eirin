@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    AddFramesResult,
     AppInfo,
     AtlasFrameSize,
     AtlasIndexEntry,
@@ -15,6 +16,8 @@ export {
     EnrichedFileEntry,
     FileEntry,
     ImportCandidate,
+    ImportOutputsResult,
+    ImportProgress,
     LibraryFrame,
     PagedLightFrames,
     Project,

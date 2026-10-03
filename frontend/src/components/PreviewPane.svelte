@@ -3,40 +3,56 @@
   import type * as app from "$models/app";
   import type * as fits from "$models/fits";
   import type * as catalog from "$models/catalog";
-  import {
-    GeneratePreviewRawSized,
-    LoadRasterImage,
-    ReadFITSHeader,
-    GetAnnotations,
-  } from "$app";
+  import { LoadRasterImage, GetAnnotations } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
   import { mtfMidtone } from "../lib/stretchPreview";
+  import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
+  import {
+    loadPreview,
+    peekPreview,
+    prefetchPreview,
+    type DecodedPreview,
+    type HistBins,
+  } from "../lib/library/previewCache";
 
   interface Props {
     entry: app.EnrichedFileEntry;
-    stretchEnabled: boolean;
-    stretchLevel: number;
-    basicCollapsed: boolean;
-    advancedCollapsed: boolean;
     qualityFrame?: app.LibraryFrame | null;
     onclose: () => void;
+    /** Title-bar navigation; the button is shown disabled when absent but its sibling exists. */
+    onprev?: () => void;
+    onnext?: () => void;
+    /** Title-bar actions — each button renders only when its handler is provided. */
+    onreject?: () => void;
+    onrestore?: () => void;
+    ondelete?: () => void;
+    onreveal?: () => void;
+    /** Path of the frame likely to be shown next; warmed into the preview cache. */
+    prefetch?: string | null;
   }
 
   let {
     entry,
-    stretchEnabled = $bindable(),
-    stretchLevel = $bindable(),
-    basicCollapsed = $bindable(),
-    advancedCollapsed = $bindable(),
     qualityFrame = null,
     onclose,
+    onprev,
+    onnext,
+    onreject,
+    onrestore,
+    ondelete,
+    onreveal,
+    prefetch = null,
   }: Props = $props();
+
+  let isRejected = $derived(qualityFrame?.isRejected ?? entry.isRejected);
 
   function isRasterFile(path: string): boolean {
     return path.toLowerCase().endsWith(".png");
   }
 
-  let isRaster = $derived(isRasterFile(entry.path));
+  // Primitive derived: a new entry object for the same file must not retrigger loading.
+  let entryPath = $derived(entry.path);
+  let isRaster = $derived(isRasterFile(entryPath));
 
   let isProcessed = $derived(qualityFrame?.frameType === "processed");
 
@@ -47,12 +63,6 @@
 
   let showHistogram = $state(false);
   let histCanvas = $state<HTMLCanvasElement | null>(null);
-  interface HistBins {
-    r: Float32Array;
-    g: Float32Array;
-    b: Float32Array;
-    channels: number;
-  }
   let histBins = $state<HistBins | null>(null);
 
   let showAnnotations = $state(false);
@@ -247,8 +257,8 @@ void main() {
     if (!gl || !program || !glTex || !glU || !rawInfo || !glCanvas || gl.isContextLost()) return;
     const uniforms = computeUniforms(
       stats ?? rawInfo.stats,
-      enabled ?? (stretchEnabled && !isProcessed),
-      level ?? stretchLevel,
+      enabled ?? (pp.stretchEnabled && !isProcessed),
+      level ?? pp.stretchLevel,
     );
     const u0 = uniforms[0] ?? { shadows: 0, midtone: 0.5, linear: true };
     const u1 = uniforms[1] ?? u0;
@@ -327,6 +337,13 @@ void main() {
   }
 
   function createGLCanvas(width: number, height: number): boolean {
+    // Reuse the existing context: resizing a canvas keeps its GL state, and creating a
+    // fresh context per frame quickly exhausts the browser's context limit when culling.
+    if (gl && program && glTex && glU && glCanvas && !gl.isContextLost()) {
+      glCanvas.width = width;
+      glCanvas.height = height;
+      return true;
+    }
     if (gl && !gl.isContextLost()) {
       if (program) gl.deleteProgram(program);
       if (glTex) gl.deleteTexture(glTex);
@@ -369,11 +386,20 @@ void main() {
     redraw2d();
   });
 
-  // ── Load when entry changes ──────────────────────────────────────────────
+  // ── Load when the entry's path changes ───────────────────────────────────
+  // Keyed on the path only, so metadata updates (reject, retype) don't reload pixels.
+
+  const LOAD_DELAY_MS = 60;
+  let loadTimer: ReturnType<typeof setTimeout> | undefined;
 
   $effect(() => {
-    const e = entry;
-    previewLoading = true;
+    const path = entryPath;
+    untrack(() => startLoad(path));
+    return () => clearTimeout(loadTimer);
+  });
+
+  function startLoad(path: string) {
+    clearTimeout(loadTimer);
     previewError = "";
     fitsHeader = null;
     rawInfo = null;
@@ -386,68 +412,79 @@ void main() {
 
     const id = ++previewReqId;
 
-    if (isRaster) {
-      LoadRasterImage(e.path).then((dataUrl: string) => {
-        if (id !== previewReqId) return;
-        rasterDataUrl = dataUrl;
-        hasImage = true;
-        previewLoading = false;
-      }).catch((err: unknown) => {
-        if (id !== previewReqId) return;
-        previewError = err instanceof Error ? err.message : "Failed to load image";
-        previewLoading = false;
-      });
+    if (isRasterFile(path)) {
+      previewLoading = true;
+      LoadRasterImage(path)
+        .then((dataUrl: string) => {
+          if (id !== previewReqId) return;
+          rasterDataUrl = dataUrl;
+          hasImage = true;
+          previewLoading = false;
+        })
+        .catch((err: unknown) => {
+          if (id !== previewReqId) return;
+          previewError = err instanceof Error ? err.message : "Failed to load image";
+          previewLoading = false;
+        });
       return;
     }
 
-    const se = untrack(() => stretchEnabled);
-    const sl = untrack(() => stretchLevel);
+    const cached = peekPreview(path);
+    if (cached) {
+      showPreview(cached, id);
+      return;
+    }
 
-    Promise.allSettled([ReadFITSHeader(e.path), GeneratePreviewRawSized(e.path, 2048)]).then(
-      ([hdrResult, rawResult]) => {
+    previewLoading = true;
+    // Short delay so holding an arrow key doesn't queue a backend render per row.
+    loadTimer = setTimeout(() => {
+      if (id !== previewReqId) return;
+      loadPreview(path)
+        .then((p) => {
+          if (id !== previewReqId) return;
+          showPreview(p, id);
+        })
+        .catch((err: unknown) => {
+          if (id !== previewReqId) return;
+          previewLoading = false;
+          previewError = (err instanceof Error ? err.message : String(err)) || "Preview failed";
+        });
+    }, LOAD_DELAY_MS);
+  }
+
+  function showPreview(p: DecodedPreview, id: number) {
+    previewLoading = false;
+    fitsHeader = p.header;
+    rawInfo = { width: p.width, height: p.height, channels: p.channels, stats: p.stats };
+    if (!createGLCanvas(p.width, p.height)) return;
+    uploadTexture(p.pixels, p.width, p.height, false);
+    renderGL();
+    hasImage = true;
+
+    if (p.hist) {
+      histBins = p.hist;
+    } else {
+      setTimeout(() => {
         if (id !== previewReqId) return;
-        previewLoading = false;
+        p.hist = computeHistBins(p.pixels, p.channels);
+        histBins = p.hist;
+      }, 0);
+    }
+  }
 
-        if (hdrResult.status === "fulfilled") fitsHeader = hdrResult.value;
-
-        if (rawResult.status === "fulfilled") {
-          const result = rawResult.value;
-
-          const bin = atob(result.data);
-          const u8 = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-          const f32 = new Float32Array(u8.buffer);
-
-          rawInfo = {
-            width: result.width,
-            height: result.height,
-            channels: result.channels,
-            stats: result.stats,
-          };
-
-          if (!createGLCanvas(result.width, result.height)) return;
-          uploadTexture(f32, result.width, result.height, false);
-
-          const qf = untrack(() => qualityFrame);
-          renderGL(rawInfo.stats, se && qf?.frameType !== "processed", sl, 0);
-          hasImage = true;
-
-          setTimeout(() => {
-            histBins = computeHistBins(f32, result.channels);
-          }, 0);
-        } else {
-          previewError =
-            (rawResult as PromiseRejectedResult).reason?.toString() ?? "Preview failed";
-        }
-      },
-    );
+  // Warm the cache for the likely-next frame once the current one is on screen.
+  $effect(() => {
+    const next = prefetch;
+    if (!next || previewLoading || next === entryPath || isRasterFile(next)) return;
+    const t = setTimeout(() => prefetchPreview(next), 120);
+    return () => clearTimeout(t);
   });
 
   function applyStretch() {
     renderGL();
   }
   function setStretch(l: number) {
-    stretchLevel = l;
+    pp.stretchLevel = l;
     renderGL();
   }
   function setChannelMode(m: 0 | 1 | 2 | 3) {
@@ -483,8 +520,8 @@ void main() {
   $effect(() => {
     const hb = histBins;
     const hc = histCanvas;
-    const se = stretchEnabled;
-    const sl = stretchLevel;
+    const se = pp.stretchEnabled;
+    const sl = pp.stretchLevel;
     const ri = rawInfo;
     if (!showHistogram || !hb || !hc || !ri) return;
     const ctx2 = hc.getContext("2d");
@@ -611,73 +648,115 @@ void main() {
 
 <div class="preview-pane">
   <div class="preview-titlebar">
+    {#if onprev || onnext}
+      <div class="pv-group">
+        <button
+          class="pv-btn pv-icon"
+          onclick={onprev}
+          disabled={!onprev}
+          aria-label="Previous frame"
+          title="Previous frame (↑ / k)">◀</button
+        >
+        <button
+          class="pv-btn pv-icon"
+          onclick={onnext}
+          disabled={!onnext}
+          aria-label="Next frame"
+          title="Next frame (↓ / j)">▶</button
+        >
+      </div>
+    {/if}
     <span class="preview-filename" title={entry.path}>{entry.name}</span>
-    <div class="preview-controls">
-      <span class="zoom-label">{Math.round(zoom * 100)}%</span>
+    {#if isRejected}<span class="pv-rejected">Rejected</span>{/if}
+    <div class="pv-group">
+      {#if isRejected && onrestore}
+        <button class="pv-btn" onclick={onrestore} title="Restore this frame (u)">Restore</button>
+      {:else if !isRejected && onreject}
+        <button class="pv-btn pv-reject" onclick={onreject} title="Reject this frame (x)"
+          >Reject</button
+        >
+      {/if}
+      {#if ondelete}
+        <button
+          class="pv-btn pv-danger"
+          onclick={ondelete}
+          title="Delete this file from disk (Delete)">Delete…</button
+        >
+      {/if}
+      {#if onreveal}
+        <button class="pv-btn" onclick={onreveal} title="Show in the system file manager"
+          >Show in folder</button
+        >
+      {/if}
+    </div>
+    <button
+      class="pv-close"
+      onclick={onclose}
+      aria-label="Close preview"
+      title="Close preview (Esc)">✕</button
+    >
+  </div>
+
+  <div class="preview-toolbar">
+    <div class="pv-group">
       <button class="tool-btn" onclick={resetView} title="Fit to window (double-click image)"
         >Fit</button
       >
+      <span class="zoom-label">{Math.round(zoom * 100)}%</span>
+    </div>
 
+    <div class="pv-group pv-view">
       {#if !isProcessed && !isRaster}
-        <div class="stretch-group">
+        <div class="seg-group" role="group" aria-label="Autostretch">
           <button
             class="tool-btn"
-            class:active={stretchEnabled}
+            class:active={pp.stretchEnabled}
             onclick={() => {
-              stretchEnabled = !stretchEnabled;
+              pp.stretchEnabled = !pp.stretchEnabled;
               applyStretch();
             }}
             title="Toggle autostretch">Stretch</button
           >
-          {#if stretchEnabled}
+          {#if pp.stretchEnabled}
             <button
               class="tool-btn preset"
-              class:active={stretchLevel === 1}
+              class:active={pp.stretchLevel === 1}
               onclick={() => setStretch(1)}>Gentle</button
             >
             <button
               class="tool-btn preset"
-              class:active={stretchLevel === 2}
+              class:active={pp.stretchLevel === 2}
               onclick={() => setStretch(2)}>Normal</button
             >
             <button
               class="tool-btn preset"
-              class:active={stretchLevel === 3}
+              class:active={pp.stretchLevel === 3}
               onclick={() => setStretch(3)}>Strong</button
             >
           {/if}
         </div>
       {/if}
 
-      {#if rawInfo && !isRaster}
-        {@const isColor = rawInfo.channels === 3}
-        <div
-          class="channel-group"
-          class:ch-disabled={!isColor}
-          title={isColor ? "" : "Channel split requires a color (OSC) image"}
-        >
+      {#if rawInfo && !isRaster && rawInfo.channels === 3}
+        <div class="seg-group" role="group" aria-label="Channel">
           <button
             class="tool-btn ch-btn"
             class:active={channelMode === 0}
-            disabled={!isColor}
             onclick={() => setChannelMode(0)}>RGB</button
           >
           <button
             class="tool-btn ch-btn ch-r"
             class:active={channelMode === 1}
-            disabled={!isColor}
             onclick={() => setChannelMode(1)}>R</button
           >
           <button
             class="tool-btn ch-btn ch-g"
             class:active={channelMode === 2}
-            disabled={!isColor}
             onclick={() => setChannelMode(2)}>G</button
           >
           <button
             class="tool-btn ch-btn ch-b"
             class:active={channelMode === 3}
-            disabled={!isColor}
             onclick={() => setChannelMode(3)}>B</button
           >
         </div>
@@ -700,8 +779,6 @@ void main() {
           title="Star / DSO annotations">✦ Labels</button
         >
       {/if}
-
-      <button class="btn-icon small" onclick={onclose} title="Close preview">✕</button>
     </div>
   </div>
 
@@ -743,11 +820,11 @@ void main() {
             y={viewportH / 2}
             dominant-baseline="middle"
             text-anchor="middle"
-            font-size="13"
+            font-size="14"
             fill="rgba(255,200,50,0.7)">Loading annotations…</text
           >
         {:else if annotations.length === 0}
-          <text x="8" y={viewportH - 8} font-size="10" fill="rgba(255,200,50,0.55)"
+          <text x="8" y={viewportH - 8} font-size="12" fill="rgba(255,200,50,0.55)"
             >No catalog objects in this field</text
           >
         {:else}
@@ -765,7 +842,7 @@ void main() {
               <text
                 x={vp.x}
                 y={vp.y + 16}
-                font-size="10"
+                font-size="12"
                 fill="rgba(136,196,255,0.95)"
                 text-anchor="middle"
                 class="ann-lbl">{ann.label}</text
@@ -790,7 +867,7 @@ void main() {
               <text
                 x={vp.x}
                 y={vp.y + 17}
-                font-size="10"
+                font-size="12"
                 fill="rgba(255,204,68,1)"
                 text-anchor="middle"
                 class="ann-lbl">{ann.label}</text
@@ -818,11 +895,11 @@ void main() {
   {#if fitsHeader || (isRaster && qualityFrame)}
     <div class="preview-meta">
       <div class="meta-section">
-        <button class="meta-section-hdr" onclick={() => (basicCollapsed = !basicCollapsed)}>
+        <button class="meta-section-hdr" onclick={() => (pp.basicCollapsed = !pp.basicCollapsed)}>
           <span>Basic</span>
-          <span class="meta-caret">{basicCollapsed ? "›" : "⌄"}</span>
+          <span class="meta-caret">{pp.basicCollapsed ? "›" : "⌄"}</span>
         </button>
-        {#if !basicCollapsed}
+        {#if !pp.basicCollapsed}
           {#if fitsHeader}
             {#each basicRows(fitsHeader) as row (row.key)}
               <div class="meta-row">
@@ -912,11 +989,14 @@ void main() {
       {/if}
       {#if fitsHeader}
         <div class="meta-section">
-          <button class="meta-section-hdr" onclick={() => (advancedCollapsed = !advancedCollapsed)}>
+          <button
+            class="meta-section-hdr"
+            onclick={() => (pp.advancedCollapsed = !pp.advancedCollapsed)}
+          >
             <span>Advanced</span>
-            <span class="meta-caret">{advancedCollapsed ? "›" : "⌄"}</span>
+            <span class="meta-caret">{pp.advancedCollapsed ? "›" : "⌄"}</span>
           </button>
-          {#if !advancedCollapsed}
+          {#if !pp.advancedCollapsed}
             {#each advancedRows(fitsHeader) as row (row.key)}
               <div class="meta-row">
                 <span class="meta-key">{row.key}</span>
@@ -992,71 +1072,149 @@ void main() {
   .preview-titlebar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
-    padding: 6px 12px;
+    padding: 5px 8px 5px 10px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
+  .preview-filename {
+    font-size: var(--fs-sm);
+    font-family: "Consolas", "Fira Code", monospace;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pv-rejected {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: 3px;
+    padding: 0 6px;
+    flex-shrink: 0;
+  }
+
+  .pv-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .pv-btn {
+    height: 26px;
+    padding: 0 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s,
+      background 0.15s;
+  }
+  .pv-btn:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .pv-btn:disabled {
+    color: var(--text-dim);
+    cursor: default;
+  }
+  .pv-icon {
+    width: 28px;
+    padding: 0;
+  }
+  .pv-reject:hover:not(:disabled),
+  .pv-danger:hover:not(:disabled) {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  .pv-close {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: var(--fs-md);
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .pv-close:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+    background: var(--bg-row-hover);
+  }
+
+  .preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding: 4px 10px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
-  .preview-filename {
-    font-size: 0.8rem;
-    font-family: "Consolas", "Fira Code", monospace;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-  }
-
-  .preview-controls {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    flex-shrink: 0;
+  .pv-view {
     flex-wrap: wrap;
     justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 1;
   }
 
   .zoom-label {
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
     min-width: 36px;
-    text-align: right;
   }
 
-  .stretch-group,
-  .channel-group {
+  .seg-group {
     display: flex;
     align-items: center;
     gap: 2px;
   }
 
   .ch-btn {
-    min-width: 24px !important;
-    padding: 2px 5px !important;
-    font-weight: 700 !important;
+    min-width: 24px;
+    padding: 2px 5px;
+    font-weight: 700;
   }
-  .ch-r.active {
-    color: #ff6060 !important;
-    border-color: #ff6060 !important;
+  .ch-r.active,
+  .ch-r.active:hover {
+    background: #ff6060;
+    border-color: #ff6060;
   }
-  .ch-g.active {
-    color: #50d050 !important;
-    border-color: #50d050 !important;
+  .ch-g.active,
+  .ch-g.active:hover {
+    background: #50d050;
+    border-color: #50d050;
   }
-  .ch-b.active {
-    color: #6098ff !important;
-    border-color: #6098ff !important;
-  }
-  .ch-disabled {
-    opacity: 0.38;
-    cursor: not-allowed;
-  }
-  .ch-disabled .ch-btn {
-    cursor: not-allowed;
+  .ch-b.active,
+  .ch-b.active:hover {
+    background: #6098ff;
+    border-color: #6098ff;
   }
 
   /* ── Image viewport ──────────────────────────────────────────────────── */
@@ -1133,7 +1291,7 @@ void main() {
     align-items: center;
     justify-content: center;
     color: var(--text-secondary);
-    font-size: 0.875rem;
+    font-size: var(--fs-md);
     gap: 8px;
     pointer-events: none;
   }
@@ -1154,8 +1312,8 @@ void main() {
   .preview-error {
     position: absolute;
     color: var(--danger);
-    font-size: 0.82rem;
-    background: #2a1020;
+    font-size: var(--fs-sm);
+    background: var(--bg-panel);
     border: 1px solid var(--danger);
     border-radius: 4px;
     padding: 10px 14px;
@@ -1191,7 +1349,7 @@ void main() {
     cursor: pointer;
     padding: 5px 0 3px;
     color: var(--text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -1200,15 +1358,14 @@ void main() {
     color: var(--text-primary);
   }
   .meta-caret {
-    font-size: 0.8rem;
-    opacity: 0.8;
+    font-size: var(--fs-sm);
   }
 
   .meta-row {
     display: flex;
     justify-content: space-between;
     padding: 2px 0;
-    font-size: 0.79rem;
+    font-size: var(--fs-sm);
     border-bottom: 1px solid var(--border);
   }
   .meta-key {
@@ -1226,18 +1383,18 @@ void main() {
   }
 
   .stats-badge {
-    font-size: 0.6rem;
+    font-size: var(--fs-xs);
     color: var(--accent);
     margin-left: 4px;
     margin-right: auto;
   }
   .stats-hint {
-    opacity: 0.7;
     font-style: italic;
   }
   .stats-hint .meta-val {
     text-align: left;
     white-space: normal;
-    font-size: 0.73rem;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
   }
 </style>

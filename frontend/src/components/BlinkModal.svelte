@@ -1,16 +1,22 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import type * as app from "$models/app";
   import { GeneratePreview } from "$app";
+  import { pushModal, popModal, isTopModal } from "../lib/modalStack";
 
   interface Props {
     frames: app.LibraryFrame[];
     onclose: () => void;
     onreject?: (nasPath: string) => void;
+    onrestore?: (nasPath: string) => void;
+    /**
+     * Deletes the frame from disk. Blink asks for confirmation itself, so the handler
+     * must not confirm again; the parent removes the frame from `frames` on success.
+     */
     onharddelete?: (nasPath: string, name: string) => void;
   }
 
-  let { frames, onclose, onreject, onharddelete }: Props = $props();
+  let { frames, onclose, onreject, onrestore, onharddelete }: Props = $props();
 
   // ── State ─────────────────────────────────────────────────────────────────
   let currentIndex = $state(0);
@@ -20,8 +26,10 @@
   let confirmDelete = $state(false);
 
   // Cache: nasPath → data-URL. Only a sliding window of entries is kept.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
   const cache = new Map<string, string>();
   // Tracks in-flight fetches so we don't double-fetch.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
   const fetching = new Set<string>();
 
   // How many frames to preload ahead and behind the current index.
@@ -47,44 +55,58 @@
     })(),
   );
 
-  // Whenever currentIndex or stretchLevel changes, refresh the sliding window.
+  // Keep pointing at the same frame when the parent updates `frames` (reject flag
+  // flips, deletions). If the current frame was removed, the next one slides into
+  // its index; past the end we wrap to the first frame.
+  let lastPath = "";
   $effect(() => {
+    const fs = frames;
+    untrack(() => {
+      const i = fs.findIndex((f) => f.nasPath === lastPath);
+      if (i !== -1) currentIndex = i;
+      else if (currentIndex >= fs.length) currentIndex = 0;
+      if (fs.length < 2) stopBlink();
+    });
+  });
+  $effect(() => {
+    lastPath = frames[currentIndex]?.nasPath ?? "";
+  });
+
+  // Whenever the frame set, currentIndex or stretchLevel changes, refresh the window.
+  $effect(() => {
+    void frames;
     void currentIndex;
     void stretchLevel;
-    updateWindow();
+    untrack(updateWindow);
   });
 
   function updateWindow() {
     const n = frames.length;
     if (n === 0) return;
 
-    // Compute the set of indices we want loaded.
-    const wanted = new Set<number>();
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive
+    const wanted = new Set<string>();
     for (let d = -BEHIND; d <= AHEAD; d++) {
-      wanted.add(((currentIndex + d) % n + n) % n);
+      wanted.add(frames[(((currentIndex + d) % n) + n) % n].nasPath);
     }
 
     // Evict entries outside the window.
     for (const [path] of cache) {
-      const idx = frames.findIndex((f) => f.nasPath === path);
-      if (idx === -1 || !wanted.has(idx)) {
-        cache.delete(path);
-      }
+      if (!wanted.has(path)) cache.delete(path);
     }
 
     // Fetch missing entries.
-    for (const idx of wanted) {
-      const path = frames[idx].nasPath;
+    for (const path of wanted) {
       if (!cache.has(path) && !fetching.has(path)) {
         fetching.add(path);
         GeneratePreview(path, stretchLevel)
           .then((url) => {
             cache.set(path, url);
-            fetching.delete(path);
-            cacheVersion++;
           })
           .catch(() => {
             cache.set(path, ""); // empty = failed, don't retry
+          })
+          .finally(() => {
             fetching.delete(path);
             cacheVersion++;
           });
@@ -93,7 +115,7 @@
   }
 
   function startBlink() {
-    if (timerId) return;
+    if (timerId || frames.length < 2) return;
     timerId = setInterval(() => {
       currentIndex = (currentIndex + 1) % frames.length;
     }, intervalMs);
@@ -115,6 +137,8 @@
 
   function step(dir: -1 | 1) {
     stopBlink();
+    confirmDelete = false;
+    if (frames.length === 0) return;
     currentIndex = (currentIndex + dir + frames.length) % frames.length;
   }
 
@@ -126,44 +150,97 @@
     }
   }
 
-  function advanceAfterAction() {
-    if (frames.length <= 1) {
-      onclose();
-    } else if (currentIndex < frames.length - 1) {
-      currentIndex++;
-    } else {
-      currentIndex = 0;
-    }
+  function advance() {
+    if (frames.length > 1) currentIndex = (currentIndex + 1) % frames.length;
   }
 
   function doReject() {
     const frame = frames[currentIndex];
-    if (!frame || !onreject) return;
+    if (!frame || !onreject || frame.isRejected) return;
     stopBlink();
     onreject(frame.nasPath);
-    advanceAfterAction();
+    advance();
+  }
+
+  function doRestore() {
+    const frame = frames[currentIndex];
+    if (!frame || !onrestore || !frame.isRejected) return;
+    stopBlink();
+    onrestore(frame.nasPath);
+  }
+
+  function askDelete() {
+    if (!onharddelete || !frames[currentIndex]) return;
+    stopBlink();
+    confirmDelete = true;
   }
 
   function doHardDelete() {
     const frame = frames[currentIndex];
+    confirmDelete = false;
     if (!frame || !onharddelete) return;
     stopBlink();
-    confirmDelete = false;
+    // The parent removes the frame from `frames`; the effect above keeps the index valid.
     onharddelete(frame.nasPath, frame.fileName);
-    advanceAfterAction();
   }
 
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      if (confirmDelete) confirmDelete = false;
-      else onclose();
+  // ── Keyboard / modal stack ────────────────────────────────────────────────
+  let dialogEl: HTMLDivElement;
+  let modalId: symbol | null = null;
+  const previouslyFocused =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+  onMount(() => {
+    modalId = pushModal();
+    dialogEl.focus();
+    return () => {
+      if (modalId) popModal(modalId);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  });
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!modalId || !isTopModal(modalId)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const inInput = e.target instanceof HTMLInputElement;
+
+    switch (e.key) {
+      case "Escape":
+        e.preventDefault();
+        if (confirmDelete) confirmDelete = false;
+        else onclose();
+        return;
+      case " ":
+        e.preventDefault();
+        togglePlay();
+        return;
+      case "ArrowRight":
+      case "ArrowLeft":
+        // Let the speed slider keep its own arrow-key behaviour.
+        if (inInput) return;
+        e.preventDefault();
+        step(e.key === "ArrowRight" ? 1 : -1);
+        return;
+      case "r":
+        e.preventDefault();
+        doReject();
+        return;
+      case "u":
+        e.preventDefault();
+        doRestore();
+        return;
+      case "Delete":
+        e.preventDefault();
+        if (confirmDelete) doHardDelete();
+        else askDelete();
+        return;
+      case "Enter":
+        if (confirmDelete) {
+          e.preventDefault();
+          doHardDelete();
+        }
+        return;
     }
-    if (e.key === " ") {
-      e.preventDefault();
-      togglePlay();
-    }
-    if (e.key === "ArrowRight") step(1);
-    if (e.key === "ArrowLeft") step(-1);
   }
 
   onDestroy(() => stopBlink());
@@ -171,18 +248,28 @@
   const current = $derived(frames[currentIndex]);
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
 <div
   class="blink-backdrop"
   onmousedown={(e) => {
     if (e.target === e.currentTarget) onclose();
   }}
-  onkeydown={(e) => e.key === "Escape" && onclose()}
   role="presentation"
 >
-  <div class="blink-modal" role="dialog" tabindex="-1" aria-modal="true" onkeydown={onKeydown}>
+  <div
+    bind:this={dialogEl}
+    class="blink-modal"
+    role="dialog"
+    tabindex="-1"
+    aria-modal="true"
+    aria-label="Blink comparison"
+  >
     <div class="blink-header">
-      <span class="blink-title">Blink Comparison — {frames.length} frames</span>
-      <button class="blink-close" onclick={onclose}>✕</button>
+      <span class="blink-title">Blink comparison — {frames.length} frames</span>
+      <button class="blink-close" onclick={onclose} aria-label="Close blink" title="Close (Esc)"
+        >✕</button
+      >
     </div>
 
     <div class="blink-viewport">
@@ -204,7 +291,10 @@
       {/if}
       <!-- Preload indicator: how many of the window are ready -->
       {#if frames.length > WINDOW}
-        {@const ready = [currentIndex, ...Array.from({length: AHEAD}, (_, i) => ((currentIndex + i + 1) % frames.length))].filter(i => cache.has(frames[i]?.nasPath ?? "")).length}
+        {@const ready = [
+          currentIndex,
+          ...Array.from({ length: AHEAD }, (_, i) => (currentIndex + i + 1) % frames.length),
+        ].filter((i) => cache.has(frames[i]?.nasPath ?? "")).length}
         {@const total = Math.min(WINDOW, frames.length)}
         {#if ready < total}
           <div class="blink-preload-badge">⟳ {ready}/{total}</div>
@@ -215,36 +305,44 @@
     <div class="blink-info">
       <span class="blink-name" title={current?.nasPath}>{current?.fileName}</span>
       {#if current?.dateObs}
-        <span class="blink-date">{current.dateObs.slice(0, 16).replace("T", " ")}</span>
+        <span class="blink-meta">{current.dateObs.slice(0, 16).replace("T", " ")}</span>
       {/if}
       {#if current?.fwhm && current.qualityAnalyzed}
         <span class="blink-stat">FWHM {current.fwhm.toFixed(2)}{current.fwhmUnit || "px"}</span>
       {/if}
       {#if current?.object}
-        <span class="blink-obj">{current.object}</span>
+        <span class="blink-meta">{current.object}</span>
       {/if}
     </div>
 
     <div class="blink-controls">
-      <button class="blink-btn" onclick={() => step(-1)} title="Previous (←)">◀</button>
+      <button class="blink-btn" onclick={() => step(-1)} title="Previous (←)" aria-label="Previous"
+        >◀</button
+      >
       <button
         class="blink-btn blink-play"
         class:playing
         onclick={togglePlay}
         title="Play/Pause (Space)"
+        aria-label={playing ? "Pause" : "Play"}
       >
         {playing ? "⏸" : "▶"}
       </button>
-      <button class="blink-btn" onclick={() => step(1)} title="Next (→)">▶</button>
+      <button class="blink-btn" onclick={() => step(1)} title="Next (→)" aria-label="Next">▶</button
+      >
 
-      {#if onreject || onharddelete}
+      {#if onreject || onrestore || onharddelete}
         <div class="blink-actions">
-          {#if onreject}
+          {#if current?.isRejected && onrestore}
+            <button class="blink-action-btn restore-btn" onclick={doRestore} title="Restore (u)">
+              Restore
+            </button>
+          {:else if onreject}
             <button
               class="blink-action-btn reject-btn"
               disabled={current?.isRejected}
               onclick={doReject}
-              title={current?.isRejected ? "Already rejected" : "Reject this frame"}
+              title={current?.isRejected ? "Already rejected" : "Reject this frame (r)"}
             >
               ✕ Reject
             </button>
@@ -261,17 +359,17 @@
             {:else}
               <button
                 class="blink-action-btn delete-btn"
-                onclick={() => (confirmDelete = true)}
-                title="Hard delete this frame from disk"
+                onclick={askDelete}
+                title="Delete this frame from disk (Delete)"
               >
-                🗑 Delete
+                Delete…
               </button>
             {/if}
           {/if}
         </div>
       {/if}
 
-      <div class="blink-speed">
+      <label class="blink-speed">
         <span class="blink-speed-label">Speed</span>
         <input
           type="range"
@@ -283,25 +381,37 @@
           class="blink-slider"
         />
         <span class="blink-speed-val">{intervalMs}ms</span>
-      </div>
+      </label>
 
       <div class="blink-dots">
         {#each [-2, -1, 0, 1, 2] as offset (offset)}
-          {@const idx = ((currentIndex + offset) % frames.length + frames.length) % frames.length}
+          {@const idx = (((currentIndex + offset) % frames.length) + frames.length) % frames.length}
           {@const frame = frames[idx]}
           {#if frame}
             <button
               class="blink-dot"
               class:active={offset === 0}
               class:rejected={frame.isRejected}
-              class:cached={cache.has(frame.nasPath)}
-              onclick={() => { stopBlink(); currentIndex = idx; }}
+              class:pending={!cache.has(frame.nasPath)}
+              onclick={() => {
+                stopBlink();
+                currentIndex = idx;
+              }}
               title={frame.fileName}
+              aria-label="Show {frame.fileName}"
             ></button>
           {/if}
         {/each}
       </div>
+    </div>
 
+    <div class="blink-legend" aria-label="Keyboard shortcuts">
+      <span><kbd>←</kbd><kbd>→</kbd> step</span>
+      <span><kbd>Space</kbd> play/pause</span>
+      {#if onreject}<span><kbd>r</kbd> reject</span>{/if}
+      {#if onrestore}<span><kbd>u</kbd> restore</span>{/if}
+      {#if onharddelete}<span><kbd>Del</kbd> delete</span>{/if}
+      <span><kbd>Esc</kbd> close</span>
     </div>
   </div>
 </div>
@@ -324,7 +434,7 @@
     display: flex;
     flex-direction: column;
     width: min(90vw, 900px);
-    max-height: 90vh;
+    height: min(88vh, 820px);
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
     overflow: hidden;
     outline: none;
@@ -334,23 +444,24 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 8px 10px 8px 14px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
   .blink-title {
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     color: var(--text-primary);
   }
   .blink-close {
+    width: 28px;
+    height: 28px;
     background: transparent;
-    border: none;
+    border: 1px solid var(--border);
     color: var(--text-secondary);
-    font-size: 1rem;
+    font-size: var(--fs-md);
     cursor: pointer;
-    padding: 2px 6px;
     border-radius: 4px;
   }
   .blink-close:hover {
@@ -379,7 +490,7 @@
 
   .blink-loading {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
   }
 
   .blink-badge {
@@ -387,8 +498,8 @@
     top: 8px;
     left: 8px;
     background: rgba(0, 0, 0, 0.6);
-    color: var(--text-secondary);
-    font-size: 0.72rem;
+    color: var(--text-primary);
+    font-size: var(--fs-xs);
     padding: 2px 7px;
     border-radius: 3px;
     font-variant-numeric: tabular-nums;
@@ -398,9 +509,9 @@
     position: absolute;
     bottom: 8px;
     left: 8px;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
     color: var(--text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     padding: 2px 6px;
     border-radius: 3px;
   }
@@ -409,9 +520,9 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    background: rgba(180, 40, 40, 0.8);
+    background: var(--danger);
     color: #fff;
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     font-weight: 700;
     padding: 2px 8px;
     border-radius: 3px;
@@ -422,35 +533,30 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 5px 14px;
+    padding: 6px 14px;
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
   .blink-name {
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-family: "Consolas", monospace;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
   }
-  .blink-date {
-    font-size: 0.75rem;
+  .blink-meta {
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
   .blink-stat {
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     color: var(--accent);
-    white-space: nowrap;
-  }
-  .blink-obj {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
     white-space: nowrap;
   }
 
@@ -468,13 +574,14 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     padding: 4px 10px;
     cursor: pointer;
     transition:
       background 0.1s,
       color 0.1s;
     min-width: 32px;
+    min-height: 28px;
   }
   .blink-btn:hover {
     background: var(--bg-row-hover);
@@ -482,10 +589,11 @@
   }
   .blink-play {
     min-width: 44px;
-    font-size: 1rem;
+    font-size: var(--fs-lg);
   }
   .blink-play.playing {
-    color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-contrast);
     border-color: var(--accent);
   }
 
@@ -496,7 +604,7 @@
     margin-left: 8px;
   }
   .blink-speed-label {
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
   }
   .blink-slider {
@@ -505,9 +613,9 @@
     cursor: pointer;
   }
   .blink-speed-val {
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     color: var(--text-secondary);
-    width: 42px;
+    width: 48px;
     font-variant-numeric: tabular-nums;
   }
 
@@ -520,8 +628,8 @@
     max-width: 300px;
   }
   .blink-dot {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     background: var(--border-accent);
     border: none;
@@ -531,18 +639,15 @@
       background 0.1s,
       transform 0.1s;
   }
+  .blink-dot.pending {
+    background: var(--border);
+  }
   .blink-dot.active {
     background: var(--accent);
-    transform: scale(1.4);
+    transform: scale(1.3);
   }
   .blink-dot.rejected {
     background: var(--danger);
-  }
-  .blink-dot.cached {
-    opacity: 1;
-  }
-  .blink-dot:not(.cached):not(.active) {
-    opacity: 0.4;
   }
   .blink-dot:hover {
     background: var(--text-secondary);
@@ -558,8 +663,9 @@
   }
 
   .blink-action-btn {
-    font-size: 0.75rem;
-    padding: 3px 10px;
+    font-size: var(--fs-xs);
+    padding: 4px 10px;
+    min-height: 28px;
     border-radius: 4px;
     cursor: pointer;
     border: 1px solid;
@@ -579,8 +685,19 @@
     color: #fff;
   }
   .reject-btn:disabled {
-    opacity: 0.35;
+    border-color: var(--border);
+    color: var(--text-dim);
     cursor: not-allowed;
+  }
+
+  .restore-btn {
+    background: transparent;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .restore-btn:hover {
+    background: var(--accent);
+    color: var(--accent-contrast);
   }
 
   .delete-btn {
@@ -599,9 +716,6 @@
     color: #fff;
     font-weight: 600;
   }
-  .delete-confirm-btn:hover {
-    opacity: 0.85;
-  }
 
   .cancel-btn {
     background: transparent;
@@ -613,8 +727,33 @@
   }
 
   .blink-confirm-text {
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     color: var(--danger);
     white-space: nowrap;
+  }
+
+  /* ── Shortcut legend ──────────────────────────────────────────────────────── */
+  .blink-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    padding: 6px 14px 8px;
+    border-top: 1px solid var(--border);
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .blink-legend kbd {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 4px;
+    margin-right: 3px;
+    border: 1px solid var(--border-accent);
+    border-radius: 3px;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: var(--fs-xs);
+    text-align: center;
   }
 </style>

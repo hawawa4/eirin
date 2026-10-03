@@ -58,6 +58,12 @@ export class Prefs {
     "projectsFolder": string;
     "theme": string;
 
+    /**
+     * UIState is an opaque JSON blob owned by the frontend (layout, last
+     * view, …). Empty by default.
+     */
+    "uiState": string;
+
     /** Creates a new Prefs instance. */
     constructor($$source: Partial<Prefs> = {}) {
         if (!("rootFolder" in $$source)) {
@@ -89,6 +95,9 @@ export class Prefs {
         }
         if (!("theme" in $$source)) {
             this["theme"] = "";
+        }
+        if (!("uiState" in $$source)) {
+            this["uiState"] = "";
         }
 
         Object.assign(this, $$source);

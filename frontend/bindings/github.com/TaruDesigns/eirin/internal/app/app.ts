@@ -26,11 +26,25 @@ import * as store$0 from "../store/models.js";
 import * as $models from "./models.js";
 
 /**
- * AddFramesToProject symlinks or copies NAS frames into <projectFolder>/lights/.
- * mode must be "symlink" or "copy".
+ * AddFramesToProject symlinks or copies NAS frames into the project, routing
+ * each into lights/, darks/, flats/ or biases/ by its frame type. mode must be
+ * "symlink" or "copy". Frames of other types are skipped (and logged); an
+ * error is returned only if frames were requested but none could be placed.
+ * See AddFramesToProjectDetailed for per-call counts.
  */
 export function AddFramesToProject(projectFolder: string, nasPaths: string[], mode: string): $CancellablePromise<void> {
     return $Call.ByID(1804889247, projectFolder, nasPaths, mode);
+}
+
+/**
+ * AddFramesToProjectDetailed is AddFramesToProject returning what happened.
+ * An entry with the same name that refers to the same source is left alone;
+ * one that refers to a different source gets a numeric suffix (name_2.fit).
+ */
+export function AddFramesToProjectDetailed(projectFolder: string, nasPaths: string[], mode: string): $CancellablePromise<$models.AddFramesResult> {
+    return $Call.ByID(598750943, projectFolder, nasPaths, mode).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
@@ -75,6 +89,11 @@ export function BatchUnrejectFiles(paths: string[]): $CancellablePromise<void> {
  * for files not yet in the cache, and stores them. Progress is reported via
  * "index:progress" Wails events. When force is true, already-indexed files are
  * re-read and overwritten (WCS plate-solve results are preserved).
+ * 
+ * Starting a new run supersedes (cancels) any run in progress; the superseded
+ * run stops emitting events so it can't overwrite the new run's progress.
+ * Every run ends with a "done" or "cancelled" event — if rootPath is empty or
+ * not an accessible directory, a "done" event carrying Error is emitted.
  */
 export function BuildIndex(rootPath: string, force: boolean): $CancellablePromise<void> {
     return $Call.ByID(2469627606, rootPath, force);
@@ -85,6 +104,15 @@ export function BuildIndex(rootPath: string, force: boolean): $CancellablePromis
  */
 export function CancelAnalysis(): $CancellablePromise<void> {
     return $Call.ByID(2126577498);
+}
+
+/**
+ * CancelImport stops the running import after the file currently being
+ * processed. The run then emits a final "import:progress" with phase
+ * "cancelled". No-op if nothing is running.
+ */
+export function CancelImport(): $CancellablePromise<void> {
+    return $Call.ByID(1282660021);
 }
 
 /**
@@ -99,16 +127,18 @@ export function CancelIndex(): $CancellablePromise<void> {
  */
 export function CheckSiril(): $CancellablePromise<$models.SirilInfo> {
     return $Call.ByID(1088539049).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
 /**
- * CreateProject creates a new project: DB record + folder + lights subfolder.
+ * CreateProject creates a new project: DB record + folder with lights/,
+ * darks/, flats/ and biases/ subfolders. It fails if the sanitized folder
+ * already exists on disk (e.g. "M31 Ha" and "M31_Ha" map to the same folder).
  */
 export function CreateProject(name: string, description: string): $CancellablePromise<$models.Project> {
     return $Call.ByID(1805623471, name, description).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
@@ -134,7 +164,7 @@ export function GeneratePreview(path: string, stretchLevel: number): $Cancellabl
  */
 export function GeneratePreviewRawSized(path: string, maxSize: number): $CancellablePromise<fits$0.RawPreviewData> {
     return $Call.ByID(3470306118, path, maxSize).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
@@ -145,7 +175,7 @@ export function GeneratePreviewRawSized(path: string, maxSize: number): $Cancell
  */
 export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: number, rotation: number, width: number, height: number): $CancellablePromise<catalog$0.Annotation[]> {
     return $Call.ByID(3201120012, raCenter, decCenter, pixelScale, rotation, width, height).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
@@ -154,7 +184,7 @@ export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: 
  */
 export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
     return $Call.ByID(35635725).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
@@ -165,7 +195,7 @@ export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
  */
 export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
     return $Call.ByID(2946490455, nasPath).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType7($result);
     });
 }
 
@@ -177,7 +207,7 @@ export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.
  */
 export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.AtlasIndexEntry[]> {
     return $Call.ByID(580963003, rootPath).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType9($result);
     });
 }
 
@@ -186,7 +216,7 @@ export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.Atl
  */
 export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
     return $Call.ByID(797145757).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
@@ -195,7 +225,17 @@ export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
  */
 export function GetFrameTypeSummary(rootPath: string): $CancellablePromise<$models.StorageNode[]> {
     return $Call.ByID(1792517689, rootPath).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
+    });
+}
+
+/**
+ * GetImportStatus returns the latest import progress snapshot, or a progress
+ * with Phase "idle" if no import has run since startup.
+ */
+export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
+    return $Call.ByID(726154637).then(($result: any) => {
+        return $$createType14($result);
     });
 }
 
@@ -205,7 +245,18 @@ export function GetFrameTypeSummary(rootPath: string): $CancellablePromise<$mode
  */
 export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(3745958251, rootPath).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
+    });
+}
+
+/**
+ * GetLibraryFramesByType returns the indexed frames of one frame type (light,
+ * dark, flat, bias, …) under rootPath — e.g. calibration frames for the
+ * project frame picker, without loading the whole library.
+ */
+export function GetLibraryFramesByType(rootPath: string, frameType: string): $CancellablePromise<$models.LibraryFrame[]> {
+    return $Call.ByID(2996506086, rootPath, frameType).then(($result: any) => {
+        return $$createType16($result);
     });
 }
 
@@ -215,7 +266,7 @@ export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.
  */
 export function GetLightFramesPaged(rootPath: string, objects: string[], offset: number): $CancellablePromise<$models.PagedLightFrames> {
     return $Call.ByID(2061787285, rootPath, objects, offset).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType17($result);
     });
 }
 
@@ -224,38 +275,41 @@ export function GetLightFramesPaged(rootPath: string, objects: string[], offset:
  */
 export function GetLightObjects(rootPath: string): $CancellablePromise<string[]> {
     return $Call.ByID(1824160294, rootPath).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
 /**
- * GetProjectFrames lists filenames present in <projectFolder>/lights/.
+ * GetProjectFrames lists the file names present in the project's frame
+ * subfolders (lights/, darks/, flats/, biases/).
  */
 export function GetProjectFrames(projectFolder: string): $CancellablePromise<string[]> {
     return $Call.ByID(3301776845, projectFolder).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
 /**
- * GetProjectLibraryFrames returns full LibraryFrame metadata for every frame in
- * <projectFolder>/lights/, resolving symlinks back to the NAS source path for
- * the DB lookup. Frames not yet in the DB are returned with just their filename.
+ * GetProjectLibraryFrames returns full LibraryFrame metadata for every frame
+ * in the project's frame subfolders, resolving symlinks back to the NAS source
+ * path for the DB lookup. FrameType comes from the DB; frames not in the DB
+ * are returned with their filename and the type implied by their subfolder.
+ * Legacy projects with darks/biases inside lights/ are listed too.
  */
 export function GetProjectLibraryFrames(projectFolder: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(2780196728, projectFolder).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
 /**
  * GetProjectOutputFiles lists files directly in the project root folder,
- * skipping all subdirectories (including lights/). These are the processed
- * outputs created by Siril.
+ * skipping all subdirectories (including lights/, darks/, flats/, biases/ and
+ * Siril's process/). These are the processed outputs created by Siril.
  */
 export function GetProjectOutputFiles(projectFolder: string): $CancellablePromise<$models.ProjectOutputFile[]> {
     return $Call.ByID(2934423885, projectFolder).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType20($result);
     });
 }
 
@@ -272,7 +326,7 @@ export function GetProjectsFolder(): $CancellablePromise<string> {
  */
 export function GetStorageStats(rootPath: string): $CancellablePromise<$models.StorageNode> {
     return $Call.ByID(3681786110, rootPath).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
@@ -286,16 +340,24 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
 /**
  * ImportOutputFiles copies project output files to destFolder on the NAS,
  * then indexes each copied file so it appears in the library immediately.
- * Metadata (object, telescope, instrument) is inherited from the first light
- * symlink found in the project's lights/ folder.
+ * 
+ * It is all-or-nothing with respect to name conflicts: existing NAS files are
+ * never overwritten, so if any destination already exists (or two sources
+ * share a name), nothing is copied and the result lists the conflicting names
+ * with a nil error. The error is reserved for real failures (invalid
+ * destination, I/O errors); a copy failing midway keeps the files copied so
+ * far (listed in Copied). Metadata (object, telescope, instrument, filter) is
+ * inherited from the first project light frame found in the DB.
  */
-export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<void> {
-    return $Call.ByID(1641822381, filePaths, destFolder);
+export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
+    return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
+        return $$createType21($result);
+    });
 }
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(3367487933, path).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType23($result);
     });
 }
 
@@ -306,7 +368,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(483950001, path).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType25($result);
     });
 }
 
@@ -315,7 +377,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(2159218332).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType26($result);
     });
 }
 
@@ -324,7 +386,7 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(2572957756).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType27($result);
     });
 }
 
@@ -334,6 +396,13 @@ export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
  */
 export function LoadRasterImage(path: string): $CancellablePromise<string> {
     return $Call.ByID(1706285520, path);
+}
+
+/**
+ * OpenFolder opens path (or, for a file, its parent folder) in the OS file manager.
+ */
+export function OpenFolder(path: string): $CancellablePromise<void> {
+    return $Call.ByID(968682538, path);
 }
 
 /**
@@ -353,7 +422,7 @@ export function OpenWithSiril(filePath: string): $CancellablePromise<void> {
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(3225654599, path).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType29($result);
     });
 }
 
@@ -366,8 +435,9 @@ export function RejectFile(path: string): $CancellablePromise<void> {
 }
 
 /**
- * RemoveFramesFromProject removes the file or symlink in <projectFolder>/lights/
- * whose basename matches each given NAS path.
+ * RemoveFramesFromProject removes the project entries (symlinks or copies) in
+ * any frame subfolder that refer to the given NAS paths. NAS files are never
+ * touched.
  */
 export function RemoveFramesFromProject(projectFolder: string, nasPaths: string[]): $CancellablePromise<void> {
     return $Call.ByID(1305981425, projectFolder, nasPaths);
@@ -382,6 +452,13 @@ export function RenameFrame(oldPath: string, newName: string): $CancellablePromi
 }
 
 /**
+ * RevealPath opens the OS file manager with path selected.
+ */
+export function RevealPath(path: string): $CancellablePromise<void> {
+    return $Call.ByID(577569720, path);
+}
+
+/**
  * ScanImportCandidates walks sourceFolder and returns files whose basename does
  * not already appear in the frames database. extensions limits which file types
  * are included (e.g. ["fit","fits","png"]); an empty slice includes everything.
@@ -391,7 +468,7 @@ export function RenameFrame(oldPath: string, newName: string): $CancellablePromi
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(3873197428, sourceFolder, extensions).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType31($result);
     });
 }
 
@@ -455,9 +532,13 @@ export function SetSirilPath(path: string): $CancellablePromise<void> {
 /**
  * StartImport re-scans sourceFolder, then copies qualifying files to the NAS
  * root in a background goroutine. extensions filters by file type (empty = all).
- * When deleteAfterCopy is true, each source file is removed after a successful copy.
+ * When deleteAfterCopy is true, a source file is removed only once an
+ * identical copy (same size and full-file SHA-256) is confirmed in the library.
  * FITS files are indexed into the database immediately after being copied.
- * Progress is reported via "import:progress" events.
+ * Progress is reported via "import:progress" events and GetImportStatus.
+ * Returns an error if an import is already running, the NAS root is not
+ * accessible, or the scan fails; per-file failures are reported in the final
+ * progress event's Errors instead.
  */
 export function StartImport(sourceFolder: string, extensions: string[], deleteAfterCopy: boolean): $CancellablePromise<void> {
     return $Call.ByID(1581009823, sourceFolder, extensions, deleteAfterCopy);
@@ -470,7 +551,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(1563214480, rootPath, threshold).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType33($result);
     });
 }
 
@@ -490,34 +571,37 @@ export function UpdateFrameMeta(path: string, meta: store$0.FrameMeta): $Cancell
 }
 
 // Private type creation functions
-const $$createType0 = siril$0.SirilInfo.createFrom;
-const $$createType1 = $models.Project.createFrom;
-const $$createType2 = fits$0.RawPreviewData.createFrom;
-const $$createType3 = catalog$0.Annotation.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $models.AppInfo.createFrom;
-const $$createType6 = $models.AtlasFrameSize.createFrom;
-const $$createType7 = $models.AtlasIndexEntry.createFrom;
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = $models.CatalogObject.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = $models.StorageNode.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = $models.LibraryFrame.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $models.PagedLightFrames.createFrom;
-const $$createType16 = $Create.Array($Create.Any);
-const $$createType17 = $models.ProjectOutputFile.createFrom;
-const $$createType18 = $Create.Array($$createType17);
-const $$createType19 = $models.FileEntry.createFrom;
+const $$createType0 = $models.AddFramesResult.createFrom;
+const $$createType1 = siril$0.SirilInfo.createFrom;
+const $$createType2 = $models.Project.createFrom;
+const $$createType3 = fits$0.RawPreviewData.createFrom;
+const $$createType4 = catalog$0.Annotation.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.AppInfo.createFrom;
+const $$createType7 = $models.AtlasFrameSize.createFrom;
+const $$createType8 = $models.AtlasIndexEntry.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $models.CatalogObject.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = $models.StorageNode.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = importer$0.Progress.createFrom;
+const $$createType15 = $models.LibraryFrame.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $models.PagedLightFrames.createFrom;
+const $$createType18 = $Create.Array($Create.Any);
+const $$createType19 = $models.ProjectOutputFile.createFrom;
 const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $models.EnrichedFileEntry.createFrom;
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = $Create.Array($$createType1);
-const $$createType24 = store$0.Prefs.createFrom;
-const $$createType25 = fits$0.FITSHeader.createFrom;
-const $$createType26 = $Create.Nullable($$createType25);
-const $$createType27 = importer$0.Candidate.createFrom;
-const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = $models.SuggestResult.createFrom;
-const $$createType30 = $Create.Array($$createType29);
+const $$createType21 = $models.ImportOutputsResult.createFrom;
+const $$createType22 = $models.FileEntry.createFrom;
+const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = $models.EnrichedFileEntry.createFrom;
+const $$createType25 = $Create.Array($$createType24);
+const $$createType26 = $Create.Array($$createType2);
+const $$createType27 = store$0.Prefs.createFrom;
+const $$createType28 = fits$0.FITSHeader.createFrom;
+const $$createType29 = $Create.Nullable($$createType28);
+const $$createType30 = importer$0.Candidate.createFrom;
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = $models.SuggestResult.createFrom;
+const $$createType33 = $Create.Array($$createType32);

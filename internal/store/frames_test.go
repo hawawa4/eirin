@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // ── ClassifyFrameType ─────────────────────────────────────────────────────────
 
@@ -19,15 +22,38 @@ func TestClassifyFrameType(t *testing.T) {
 		{"/data/Bias_001.fits", FrameTypeBias},
 		{"/data/bias_001.fits", FrameTypeBias}, // case-insensitive
 		{"/data/BIAS_001.fits", FrameTypeBias},
+		// PROCESSED / FINAL / HERO as a word in the name: processed.
+		{"/data/processed_output.fits", FrameTypeProcessed},
+		{"/data/M31_FINAL.fit", FrameTypeProcessed},
+		{"/data/NGC7000-hero-v2.fits", FrameTypeProcessed},
+		{"/data/M31Final.fit", FrameTypeProcessed},
+		{"/data/final/result.fits", FrameTypeStacked}, // only the file name counts
+		{"/data/m31_unprocessed.fits", FrameTypeStacked},
+		{"/data/finally.fits", FrameTypeStacked},
+		{"/data/Light_final_001.fits", FrameTypeLight}, // prefixes win
 		// Anything else defaults to stacked.
 		{"/data/result.fits", FrameTypeStacked},
-		{"/data/processed_output.fits", FrameTypeStacked},
 	}
 
 	for _, tt := range tests {
 		got := ClassifyFrameType(tt.path)
 		if got != tt.want {
 			t.Errorf("ClassifyFrameType(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestClassifyRasterType(t *testing.T) {
+	tests := map[string]string{
+		"/data/M31_final.png":     FrameTypeProcessed,
+		"/data/HERO.jpg":          FrameTypeProcessed,
+		"/data/m42 processed.tif": FrameTypeProcessed,
+		"/data/m42.png":           FrameTypeImage,
+		"/data/heron.jpg":         FrameTypeImage,
+	}
+	for path, want := range tests {
+		if got := ClassifyRasterType(path); got != want {
+			t.Errorf("ClassifyRasterType(%q) = %q, want %q", path, got, want)
 		}
 	}
 }
@@ -173,6 +199,33 @@ func TestGetAllFramesUnder(t *testing.T) {
 	}
 	if len(frames) > 0 && frames[0].NasPath != "/nas/root/a/Light_001.fits" {
 		t.Errorf("unexpected NasPath %q", frames[0].NasPath)
+	}
+}
+
+func TestGetFramesUnderByType(t *testing.T) {
+	s := newTestStore(t)
+	must(t, s.UpsertFrame("/nas/root/darks/Dark_002.fits", Frame{Object: "B", FrameType: FrameTypeDark}))
+	must(t, s.UpsertFrame("/nas/root/darks/Dark_001.fits", Frame{Object: "A", FrameType: FrameTypeDark}))
+	must(t, s.UpsertFrame("/nas/root/a/Light_001.fits", Frame{Object: "M42", FrameType: FrameTypeLight}))
+	must(t, s.UpsertFrame("/nas/root/flats/Flat_001.fits", Frame{FrameType: FrameTypeFlat}))
+	must(t, s.UpsertFrame("/nas/other/Dark_003.fits", Frame{FrameType: FrameTypeDark}))
+	must(t, s.RejectFrame("/nas/root/darks/Dark_004.fits", "rejection-only row"))
+
+	frames, err := s.GetFramesUnderByType("/nas/root", FrameTypeDark)
+	if err != nil {
+		t.Fatalf("GetFramesUnderByType: %v", err)
+	}
+	var got []string
+	for _, f := range frames {
+		got = append(got, f.NasPath)
+	}
+	want := []string{"/nas/root/darks/Dark_001.fits", "/nas/root/darks/Dark_002.fits"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("darks = %v, want %v (sorted by object)", got, want)
+	}
+
+	if frames, err := s.GetFramesUnderByType("/nas/root", FrameTypeBias); err != nil || len(frames) != 0 {
+		t.Errorf("biases = %v err = %v, want none", frames, err)
 	}
 }
 
@@ -351,5 +404,26 @@ func TestSetFrameType(t *testing.T) {
 	frames, _ := s.GetFrames([]string{path})
 	if frames[path].FrameType != FrameTypeProcessed {
 		t.Errorf("FrameType = %q, want %q", frames[path].FrameType, FrameTypeProcessed)
+	}
+}
+
+func TestGetFramePathsByHash(t *testing.T) {
+	s := newTestStore(t)
+	must(t, s.UpsertFrame("/nas/a.fits", Frame{FrameType: FrameTypeLight, FileHash: "h1"}))
+	must(t, s.UpsertFrame("/nas/b.fits", Frame{FrameType: FrameTypeLight, FileHash: "h1"}))
+	must(t, s.UpsertFrame("/nas/c.fits", Frame{FrameType: FrameTypeLight, FileHash: "h2"}))
+
+	paths, err := s.GetFramePathsByHash("h1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("paths = %v, want 2 entries", paths)
+	}
+	if paths, _ := s.GetFramePathsByHash("missing"); len(paths) != 0 {
+		t.Errorf("unknown hash returned %v", paths)
+	}
+	if paths, _ := s.GetFramePathsByHash(""); len(paths) != 0 {
+		t.Errorf("empty hash returned %v", paths)
 	}
 }

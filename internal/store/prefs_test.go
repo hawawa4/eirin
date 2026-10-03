@@ -103,3 +103,15 @@ func TestLoadAllKeys(t *testing.T) {
 		t.Errorf("LibraryColumnConfig = %q", p.LibraryColumnConfig)
 	}
 }
+
+func TestUIStatePref(t *testing.T) {
+	s := newTestStore(t)
+	if p := s.Load(); p.UIState != "" {
+		t.Errorf("default UIState = %q, want empty", p.UIState)
+	}
+	blob := `{"view":"library","sidebar":{"collapsed":true}}`
+	must(t, s.Set(KeyUIState, blob))
+	if p := s.Load(); p.UIState != blob {
+		t.Errorf("UIState = %q, want %q", p.UIState, blob)
+	}
+}
