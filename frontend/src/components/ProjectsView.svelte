@@ -10,7 +10,8 @@
   import type * as app from "$models/app";
   import { ui } from "../lib/uiState.svelte";
   import { toast } from "../lib/toast.svelte";
-  import { describeAddResult, plural, type ProjectFrameType } from "../lib/projects/frames";
+  import { describeAddResult, type ProjectFrameType } from "../lib/projects/frames";
+  import { plural } from "../lib/utils";
   import ProjectSidebar from "./projects/ProjectSidebar.svelte";
   import ProjectHeader from "./projects/ProjectHeader.svelte";
   import ProjectFrames from "./projects/ProjectFrames.svelte";

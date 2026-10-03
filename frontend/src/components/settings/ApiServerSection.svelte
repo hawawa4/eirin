@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AppInfo } from "../../lib/types";
-  import { copyText } from "../../lib/shell/fileActions";
+  import { copyText } from "../../lib/clipboard";
 
   interface Props {
     appInfo: AppInfo;

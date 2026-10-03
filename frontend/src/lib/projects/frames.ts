@@ -1,12 +1,17 @@
 // ── Project frame helpers ──────────────────────────────────────────────────
 
 import type * as app from "$models/app";
-import { formatExpTime } from "../utils";
+import { formatExpTime, plural } from "../utils";
 
 /** Frame types that have a folder in a Siril project (lights/ darks/ flats/ biases/). */
 export type ProjectFrameType = "light" | "dark" | "flat" | "bias";
 
 export const PROJECT_FRAME_TYPES: readonly ProjectFrameType[] = ["light", "dark", "flat", "bias"];
+
+/** Whether a frame of this type has a home in a Siril project (see internal/projectfs). */
+export function isProjectFrameType(t: string): t is ProjectFrameType {
+  return (PROJECT_FRAME_TYPES as readonly string[]).includes(t);
+}
 
 export const PROJECT_TYPE_LABEL: Record<ProjectFrameType, { one: string; many: string }> = {
   light: { one: "light", many: "Lights" },
@@ -38,10 +43,6 @@ export function sectionsByType(frames: app.LibraryFrame[]): FrameSection[] {
   }));
   if (other.length) sections.push({ type: "other", label: "Other", frames: other });
   return sections;
-}
-
-export function plural(n: number, one: string, many = one + "s"): string {
-  return `${n} ${n === 1 ? one : many}`;
 }
 
 /** One-line summary of an AddFramesToProjectDetailed result. */
@@ -99,6 +100,22 @@ export function sanitizeFolderName(name: string): string {
   return safe || "project";
 }
 
+/**
+ * Makes a single path segment safe to use as a folder name on any OS: path
+ * separators and characters invalid on Windows (\ / : * ? " < > |) become "_",
+ * control characters are dropped, and trailing dots/spaces are trimmed.
+ */
+export function safeSubfolderName(name: string): string {
+  return (
+    name
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f]/g, "")
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .trim()
+      .replace(/[. ]+$/, "")
+  );
+}
+
 /** Joins a folder and a relative subpath with "/" (the paths come from the backend as-is). */
 export function joinPath(base: string, sub: string): string {
   const clean = sub.trim().replace(/^[\\/]+|[\\/]+$/g, "");
@@ -111,11 +128,4 @@ export function formatShortDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

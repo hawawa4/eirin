@@ -4,7 +4,8 @@
   import { ImportOutputFiles, OpenFolder } from "$app";
   import Modal from "../Modal.svelte";
   import { toast } from "../../lib/toast.svelte";
-  import { formatBytes, joinPath, plural } from "../../lib/projects/frames";
+  import { joinPath, safeSubfolderName } from "../../lib/projects/frames";
+  import { formatBytes, plural } from "../../lib/utils";
 
   interface Props {
     rootFolder: string;
@@ -19,10 +20,10 @@
   const initialFiles = files.slice();
   const selected = new SvelteSet<string>(initialFiles.map((f) => f.path));
   // svelte-ignore state_referenced_locally
-  let subfolder = $state(project.name);
+  let subfolder = $state(safeSubfolderName(project.name));
   let saving = $state(false);
   let error = $state("");
-  /** Names that already exist at the destination (from the backend's refusal). */
+  /** Names that already exist at the destination (reported by the backend; nothing was copied). */
   let conflicts = $state<string[]>([]);
 
   let subfolderInvalid = $derived(subfolder.split(/[\\/]/).some((seg) => seg.trim() === ".."));
@@ -47,16 +48,17 @@
     const target = dest;
     const n = selected.size;
     try {
-      await ImportOutputFiles([...selected], target);
-      toast.success(`Saved ${plural(n, "file")} to the library`, {
+      const res = await ImportOutputFiles([...selected], target);
+      if (res.conflicts?.length) {
+        conflicts = res.conflicts;
+        return;
+      }
+      toast.success(`Saved ${plural(res.copied?.length ?? n, "file")} to the library`, {
         action: { label: "Show folder", run: () => OpenFolder(target) },
       });
       onclose();
     } catch (err) {
-      const msg = String(err);
-      const m = /already exist in .*?: (.+)$/s.exec(msg);
-      if (m) conflicts = m[1].split(", ").map((s) => s.trim());
-      else error = msg;
+      error = String(err);
     } finally {
       saving = false;
     }

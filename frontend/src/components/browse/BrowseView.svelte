@@ -12,7 +12,8 @@
   import { isFits } from "../../lib/utils";
   import { attempt, toast } from "../../lib/toast.svelte";
   import { isModalOpen, isTypingTarget } from "../../lib/keys";
-  import { copyPath, openFolder, revealPath } from "../../lib/shell/fileActions";
+  import { openFolder, revealPath } from "../../lib/shell/fileActions";
+  import { copyPath } from "../../lib/clipboard";
   import NavToolbar from "../NavToolbar.svelte";
   import FileList from "../FileList.svelte";
   import PreviewPane from "../PreviewPane.svelte";

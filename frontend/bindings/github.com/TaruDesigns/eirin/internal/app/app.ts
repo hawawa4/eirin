@@ -250,6 +250,17 @@ export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.
 }
 
 /**
+ * GetLibraryFramesByType returns the indexed frames of one frame type (light,
+ * dark, flat, bias, …) under rootPath — e.g. calibration frames for the
+ * project frame picker, without loading the whole library.
+ */
+export function GetLibraryFramesByType(rootPath: string, frameType: string): $CancellablePromise<$models.LibraryFrame[]> {
+    return $Call.ByID(2996506086, rootPath, frameType).then(($result: any) => {
+        return $$createType16($result);
+    });
+}
+
+/**
  * GetLightFramesPaged returns a page of light frames under rootPath filtered to
  * the given objects. offset=0 for the first page.
  */
@@ -329,18 +340,24 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
 /**
  * ImportOutputFiles copies project output files to destFolder on the NAS,
  * then indexes each copied file so it appears in the library immediately.
- * Existing NAS files are never overwritten: if any destination already exists
- * (or two sources share a name), nothing is copied and the error names the
- * conflicting files. Metadata (object, telescope, instrument, filter) is
+ * 
+ * It is all-or-nothing with respect to name conflicts: existing NAS files are
+ * never overwritten, so if any destination already exists (or two sources
+ * share a name), nothing is copied and the result lists the conflicting names
+ * with a nil error. The error is reserved for real failures (invalid
+ * destination, I/O errors); a copy failing midway keeps the files copied so
+ * far (listed in Copied). Metadata (object, telescope, instrument, filter) is
  * inherited from the first project light frame found in the DB.
  */
-export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<void> {
-    return $Call.ByID(1641822381, filePaths, destFolder);
+export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
+    return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
+        return $$createType21($result);
+    });
 }
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(3367487933, path).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType23($result);
     });
 }
 
@@ -351,7 +368,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(483950001, path).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType25($result);
     });
 }
 
@@ -360,7 +377,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(2159218332).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType26($result);
     });
 }
 
@@ -369,7 +386,7 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(2572957756).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType27($result);
     });
 }
 
@@ -405,7 +422,7 @@ export function OpenWithSiril(filePath: string): $CancellablePromise<void> {
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(3225654599, path).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType29($result);
     });
 }
 
@@ -451,7 +468,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(3873197428, sourceFolder, extensions).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType31($result);
     });
 }
 
@@ -534,7 +551,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(1563214480, rootPath, threshold).then(($result: any) => {
-        return $$createType32($result);
+        return $$createType33($result);
     });
 }
 
@@ -575,15 +592,16 @@ const $$createType17 = $models.PagedLightFrames.createFrom;
 const $$createType18 = $Create.Array($Create.Any);
 const $$createType19 = $models.ProjectOutputFile.createFrom;
 const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $models.FileEntry.createFrom;
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = $models.EnrichedFileEntry.createFrom;
-const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = $Create.Array($$createType2);
-const $$createType26 = store$0.Prefs.createFrom;
-const $$createType27 = fits$0.FITSHeader.createFrom;
-const $$createType28 = $Create.Nullable($$createType27);
-const $$createType29 = importer$0.Candidate.createFrom;
-const $$createType30 = $Create.Array($$createType29);
-const $$createType31 = $models.SuggestResult.createFrom;
-const $$createType32 = $Create.Array($$createType31);
+const $$createType21 = $models.ImportOutputsResult.createFrom;
+const $$createType22 = $models.FileEntry.createFrom;
+const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = $models.EnrichedFileEntry.createFrom;
+const $$createType25 = $Create.Array($$createType24);
+const $$createType26 = $Create.Array($$createType2);
+const $$createType27 = store$0.Prefs.createFrom;
+const $$createType28 = fits$0.FITSHeader.createFrom;
+const $$createType29 = $Create.Nullable($$createType28);
+const $$createType30 = importer$0.Candidate.createFrom;
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = $models.SuggestResult.createFrom;
+const $$createType33 = $Create.Array($$createType32);

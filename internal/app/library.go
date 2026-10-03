@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -47,12 +48,28 @@ type LibraryFrame struct {
 
 // GetLibraryFrames returns all indexed frames under rootPath, converted to the
 // LibraryFrame shape for the frontend library view.
-func (a *App) GetLibraryFrames(rootPath string) []LibraryFrame {
+func (a *App) GetLibraryFrames(rootPath string) ([]LibraryFrame, error) {
 	frames, err := a.store.GetAllFramesUnder(rootPath)
 	if err != nil {
 		slog.Error("library: get frames", "err", err)
-		return nil
+		return nil, fmt.Errorf("reading library: %w", err)
 	}
+	return toLibraryFrames(frames), nil
+}
+
+// GetLibraryFramesByType returns the indexed frames of one frame type (light,
+// dark, flat, bias, …) under rootPath — e.g. calibration frames for the
+// project frame picker, without loading the whole library.
+func (a *App) GetLibraryFramesByType(rootPath string, frameType string) ([]LibraryFrame, error) {
+	frames, err := a.store.GetFramesUnderByType(rootPath, frameType)
+	if err != nil {
+		slog.Error("library: get frames by type", "type", frameType, "err", err)
+		return nil, fmt.Errorf("reading library: %w", err)
+	}
+	return toLibraryFrames(frames), nil
+}
+
+func toLibraryFrames(frames []store.Frame) []LibraryFrame {
 	result := make([]LibraryFrame, 0, len(frames))
 	for _, f := range frames {
 		result = append(result, toLibraryFrame(f))
@@ -67,28 +84,24 @@ type PagedLightFrames struct {
 }
 
 // GetLightObjects returns the sorted list of distinct object names for light frames under rootPath.
-func (a *App) GetLightObjects(rootPath string) []string {
+func (a *App) GetLightObjects(rootPath string) ([]string, error) {
 	objects, err := a.store.GetDistinctObjects(rootPath, store.FrameTypeLight)
 	if err != nil {
 		slog.Error("library: get objects", "err", err)
-		return nil
+		return nil, fmt.Errorf("reading library: %w", err)
 	}
-	return objects
+	return objects, nil
 }
 
 // GetLightFramesPaged returns a page of light frames under rootPath filtered to
 // the given objects. offset=0 for the first page.
-func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int) PagedLightFrames {
+func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int) (PagedLightFrames, error) {
 	frames, hasMore, err := a.store.GetLightFramesPaged(rootPath, objects, offset)
 	if err != nil {
 		slog.Error("library: paged lights", "err", err)
-		return PagedLightFrames{}
+		return PagedLightFrames{Frames: []LibraryFrame{}}, fmt.Errorf("reading library: %w", err)
 	}
-	result := make([]LibraryFrame, 0, len(frames))
-	for _, f := range frames {
-		result = append(result, toLibraryFrame(f))
-	}
-	return PagedLightFrames{Frames: result, HasMore: hasMore}
+	return PagedLightFrames{Frames: toLibraryFrames(frames), HasMore: hasMore}, nil
 }
 
 func toLibraryFrame(f store.Frame) LibraryFrame {

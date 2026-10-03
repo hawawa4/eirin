@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // ── ClassifyFrameType ─────────────────────────────────────────────────────────
 
@@ -173,6 +176,33 @@ func TestGetAllFramesUnder(t *testing.T) {
 	}
 	if len(frames) > 0 && frames[0].NasPath != "/nas/root/a/Light_001.fits" {
 		t.Errorf("unexpected NasPath %q", frames[0].NasPath)
+	}
+}
+
+func TestGetFramesUnderByType(t *testing.T) {
+	s := newTestStore(t)
+	must(t, s.UpsertFrame("/nas/root/darks/Dark_002.fits", Frame{Object: "B", FrameType: FrameTypeDark}))
+	must(t, s.UpsertFrame("/nas/root/darks/Dark_001.fits", Frame{Object: "A", FrameType: FrameTypeDark}))
+	must(t, s.UpsertFrame("/nas/root/a/Light_001.fits", Frame{Object: "M42", FrameType: FrameTypeLight}))
+	must(t, s.UpsertFrame("/nas/root/flats/Flat_001.fits", Frame{FrameType: FrameTypeFlat}))
+	must(t, s.UpsertFrame("/nas/other/Dark_003.fits", Frame{FrameType: FrameTypeDark}))
+	must(t, s.RejectFrame("/nas/root/darks/Dark_004.fits", "rejection-only row"))
+
+	frames, err := s.GetFramesUnderByType("/nas/root", FrameTypeDark)
+	if err != nil {
+		t.Fatalf("GetFramesUnderByType: %v", err)
+	}
+	var got []string
+	for _, f := range frames {
+		got = append(got, f.NasPath)
+	}
+	want := []string{"/nas/root/darks/Dark_001.fits", "/nas/root/darks/Dark_002.fits"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("darks = %v, want %v (sorted by object)", got, want)
+	}
+
+	if frames, err := s.GetFramesUnderByType("/nas/root", FrameTypeBias); err != nil || len(frames) != 0 {
+		t.Errorf("biases = %v err = %v, want none", frames, err)
 	}
 }
 

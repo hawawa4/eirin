@@ -26,7 +26,8 @@
     LibraryGroupBy,
     Project,
   } from "../lib/types";
-  import { libraryFrameToEntry } from "../lib/utils";
+  import { libraryFrameToEntry, plural } from "../lib/utils";
+  import { copyPaths } from "../lib/clipboard";
   import { makeColumnManager } from "../lib/columnManager";
   import { ui } from "../lib/uiState.svelte";
   import { toast, attempt } from "../lib/toast.svelte";
@@ -92,10 +93,6 @@
 
   const CHUNK = 300;
   const SEARCH_DEBOUNCE_MS = 150;
-
-  function plural(n: number, word = "frame") {
-    return `${n} ${word}${n === 1 ? "" : "s"}`;
-  }
 
   function baseName(path: string) {
     return path.split(/[\\/]/).pop() ?? path;
@@ -501,7 +498,7 @@
     analysisProgress = null;
     if (ok) {
       if (errors > 0) toast.error(`Analysis finished with ${plural(errors, "error")}`);
-      else toast.success(`Analyzed ${plural(paths.length)} in “${group.label}”`);
+      else toast.success(`Analyzed ${plural(paths.length, "frame")} in “${group.label}”`);
     }
     reload();
   }
@@ -536,7 +533,7 @@
         else await (rejected ? BatchRejectFiles(list) : BatchUnrejectFiles(list));
         return true;
       },
-      `Could not ${rejected ? "reject" : "restore"} ${plural(list.length)}`,
+      `Could not ${rejected ? "reject" : "restore"} ${plural(list.length, "frame")}`,
     );
     if (!ok) {
       applyFlag(!rejected);
@@ -544,7 +541,7 @@
       return false;
     }
     if (undoable) {
-      toast.success(`${rejected ? "Rejected" : "Restored"} ${plural(list.length)}`, {
+      toast.success(`${rejected ? "Rejected" : "Restored"} ${plural(list.length, "frame")}`, {
         action: {
           label: "Undo",
           run: async () => {
@@ -595,7 +592,7 @@
         else await BatchHardDeleteFiles(paths);
         return true;
       },
-      `Could not delete ${plural(paths.length)}`,
+      `Could not delete ${plural(paths.length, "frame")}`,
     );
     if (!ok) {
       if (paths.length > 1) reload();
@@ -609,7 +606,7 @@
       forgetPreview(p);
     }
     if (previewPath && removed.has(previewPath)) setCursor(next);
-    toast.success(`Deleted ${plural(paths.length)} from disk`);
+    toast.success(`Deleted ${plural(paths.length, "frame")} from disk`);
     return true;
   }
 
@@ -635,15 +632,6 @@
   // ── Shell helpers ────────────────────────────────────────────────────────
   function reveal(path: string) {
     attempt(() => RevealPath(path), "Could not show the file in its folder");
-  }
-
-  async function copyPaths(paths: string[]) {
-    try {
-      await navigator.clipboard.writeText(paths.join("\n"));
-      toast.success(paths.length > 1 ? `${paths.length} paths copied` : "Path copied");
-    } catch (e) {
-      toast.error(`Could not copy to the clipboard: ${String(e)}`);
-    }
   }
 
   function openWithSiril(path: string) {

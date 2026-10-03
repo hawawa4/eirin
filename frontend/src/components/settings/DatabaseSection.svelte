@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BackupDatabase } from "$app";
-  import { copyPath, revealPath } from "../../lib/shell/fileActions";
+  import { revealPath } from "../../lib/shell/fileActions";
+  import { copyPath } from "../../lib/clipboard";
 
   interface Props {
     dbPath: string;

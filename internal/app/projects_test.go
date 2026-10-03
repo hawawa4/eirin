@@ -129,7 +129,11 @@ func TestGetProjectLibraryFramesLegacyAndTypes(t *testing.T) {
 	_ = os.Symlink(unknown, filepath.Join(proj, "flats", "u.fit"))
 
 	got := map[string]string{}
-	for _, f := range a.GetProjectLibraryFrames(proj) {
+	frames, err := a.GetProjectLibraryFrames(proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range frames {
 		got[f.FileName] = f.FrameType
 	}
 	want := map[string]string{"l.fit": "light", "d.fit": "dark", "u.fit": "flat"}
@@ -183,9 +187,12 @@ func TestImportOutputFilesNoOverwrite(t *testing.T) {
 	writeTestFile(t, out2, "new2")
 	writeTestFile(t, filepath.Join(dest, "result.png"), "old")
 
-	err := a.ImportOutputFiles([]string{out1, out2}, dest)
-	if err == nil || !strings.Contains(err.Error(), "result.png") {
-		t.Fatalf("err = %v, want conflict naming result.png", err)
+	res, err := a.ImportOutputFiles([]string{out1, out2}, dest)
+	if err != nil {
+		t.Fatalf("conflict should not be an error: %v", err)
+	}
+	if len(res.Conflicts) != 1 || res.Conflicts[0] != "result.png" || len(res.Copied) != 0 {
+		t.Fatalf("res = %+v, want conflict result.png and nothing copied", res)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dest, "result.png")); string(got) != "old" {
 		t.Error("existing NAS file overwritten")
@@ -194,11 +201,50 @@ func TestImportOutputFilesNoOverwrite(t *testing.T) {
 		t.Error("nothing should be copied when there is a conflict")
 	}
 
-	if err := a.ImportOutputFiles([]string{out2}, dest); err != nil {
+	res, err = a.ImportOutputFiles([]string{out2}, dest)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(res.Copied) != 1 || res.Copied[0] != "other.png" || len(res.Conflicts) != 0 {
+		t.Errorf("res = %+v", res)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dest, "other.png")); string(got) != "new2" {
 		t.Error("non-conflicting file not copied")
+	}
+}
+
+func TestImportOutputFilesDuplicateNamesConflict(t *testing.T) {
+	a := newTestApp(t)
+	proj, dest := t.TempDir(), t.TempDir()
+	a1 := filepath.Join(proj, "a", "out.png")
+	a2 := filepath.Join(proj, "b", "out.png")
+	writeTestFile(t, a1, "1")
+	writeTestFile(t, a2, "2")
+	res, err := a.ImportOutputFiles([]string{a1, a2}, dest)
+	if err != nil || len(res.Conflicts) != 1 || res.Conflicts[0] != "out.png" {
+		t.Errorf("res = %+v err = %v", res, err)
+	}
+}
+
+func TestImportOutputFilesRejectsBadDest(t *testing.T) {
+	a := newTestApp(t)
+	root := t.TempDir()
+	if err := a.store.Set(store.KeyRootFolder, root); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "out.png")
+	writeTestFile(t, src, "x")
+	for _, dest := range []string{
+		"relative/dir",
+		filepath.Join(root, "..", "escape"),
+		filepath.Join(t.TempDir(), "elsewhere"),
+	} {
+		if _, err := a.ImportOutputFiles([]string{src}, dest); err == nil {
+			t.Errorf("dest %q accepted", dest)
+		}
+	}
+	if res, err := a.ImportOutputFiles([]string{src}, filepath.Join(root, "M31")); err != nil || len(res.Copied) != 1 {
+		t.Errorf("valid dest: res = %+v err = %v", res, err)
 	}
 }
 

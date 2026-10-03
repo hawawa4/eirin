@@ -71,8 +71,10 @@ export function loadUiState(json: string | undefined): void {
   $effect.root(() => {
     $effect(() => {
       const snapshot = JSON.stringify(ui);
-      if (snapshot === lastSaved) return;
+      // Cancel a pending save first: a change reverted within the debounce
+      // window must not persist the stale intermediate state.
       clearTimeout(timer);
+      if (snapshot === lastSaved) return;
       timer = setTimeout(() => {
         lastSaved = snapshot;
         SetPref(PREF_UI_STATE, snapshot);

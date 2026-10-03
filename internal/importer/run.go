@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // noteNotVerified is recorded when a source file is kept on the device because
 // its library copy could not be proven identical.
 const noteNotVerified = "kept on device: not verified identical"
+
+// hashFull computes a file's full SHA-256; a variable so tests can inject
+// read failures.
+var hashFull = HashFileFull
 
 // Library is the view of the existing frame catalog that Run needs.
 type Library interface {
@@ -111,18 +118,25 @@ func (r *runner) process(c Candidate) {
 		return
 	}
 
-	wasSkipped, err := CopyFileIfNotExists(c.SourcePath, c.DestPath)
+	dest, duplicate, err := copyToFreeName(c.SourcePath, c.DestPath)
 	if err != nil {
 		r.fail(c, "copying: %v", err)
 		return
 	}
-	if wasSkipped {
-		// Destination path already taken (by a file not known by hash).
+	if duplicate {
+		// An identical file (size + full SHA-256) already sits at dest — a
+		// genuine duplicate not known by hash (e.g. not indexed yet).
 		r.p.Skipped++
 		if r.opts.DeleteAfterCopy {
-			r.deleteIfVerified(c, []string{c.DestPath})
+			r.deleteIfVerified(c, []string{dest})
 		}
 		return
+	}
+	if dest != c.DestPath {
+		// The flattened destination name was taken by a different file
+		// (e.g. two device folders with the same name and file names).
+		r.p.Notes = append(r.p.Notes, fmt.Sprintf("%s: saved as %s (name already taken by a different file)", c.RelativePath, filepath.Base(dest)))
+		c.DestPath = dest
 	}
 
 	r.p.Copied++
@@ -139,7 +153,10 @@ func (r *runner) process(c Candidate) {
 func (r *runner) deleteIfVerified(c Candidate, libraryPaths []string) {
 	ok, err := identicalToAny(c.SourcePath, libraryPaths)
 	if err != nil {
+		// The error already explains why; the file stays on the device.
 		r.fail(c, "verifying: %v", err)
+		r.p.Kept++
+		return
 	}
 	if !ok {
 		r.p.Kept++
@@ -177,11 +194,11 @@ func identicalToAny(src string, paths []string) (bool, error) {
 			continue
 		}
 		if srcHash == "" {
-			if srcHash, err = HashFileFull(src); err != nil {
+			if srcHash, err = hashFull(src); err != nil {
 				return false, err
 			}
 		}
-		h, err := HashFileFull(p)
+		h, err := hashFull(p)
 		if err != nil {
 			slog.Warn("import: hashing library file", "path", p, "err", err)
 			continue
@@ -191,4 +208,73 @@ func identicalToAny(src string, paths []string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// maxSuffix bounds the name_N search in copyToFreeName.
+const maxSuffix = 10000
+
+// copyToFreeName copies src to dst, or — when dst is already taken by a
+// different file — to the first free suffixed name (name_2.fit, name_3.fit,
+// …). If dst (or a suffixed slot tried along the way) already holds a file
+// identical to src (same size and full SHA-256), nothing is copied and
+// duplicate is true; dest is then that identical file. Existing files are
+// never overwritten.
+func copyToFreeName(src, dst string) (dest string, duplicate bool, err error) {
+	dir := filepath.Dir(dst)
+	base := filepath.Base(dst)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	srcHash := ""
+	for n := 1; n < maxSuffix; n++ {
+		dest = dst
+		if n > 1 {
+			dest = filepath.Join(dir, stem+"_"+strconv.Itoa(n)+ext)
+		}
+		skipped, err := CopyFileIfNotExists(src, dest)
+		if err != nil {
+			return "", false, err
+		}
+		if !skipped {
+			return dest, false, nil
+		}
+		same, err := sameContent(src, dest, &srcHash)
+		if err != nil {
+			return "", false, fmt.Errorf("comparing with existing %s: %w", filepath.Base(dest), err)
+		}
+		if same {
+			return dest, true, nil
+		}
+	}
+	return "", false, fmt.Errorf("too many files named %s in %s", base, dir)
+}
+
+// sameContent reports whether the existing path dst holds the same content as
+// src: the very same file, or a regular file with the same size and full-file
+// SHA-256. A dangling or non-regular dst is "different". *srcHash memoizes the
+// source's full hash across calls ("" = not computed yet).
+func sameContent(src, dst string, srcHash *string) (bool, error) {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(dst)
+	if err != nil || !info.Mode().IsRegular() {
+		return false, nil
+	}
+	if os.SameFile(srcInfo, info) {
+		return true, nil
+	}
+	if info.Size() != srcInfo.Size() {
+		return false, nil
+	}
+	if *srcHash == "" {
+		if *srcHash, err = hashFull(src); err != nil {
+			return false, err
+		}
+	}
+	h, err := hashFull(dst)
+	if err != nil {
+		return false, err
+	}
+	return h == *srcHash, nil
 }

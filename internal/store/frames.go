@@ -203,9 +203,28 @@ func (s *Store) GetFrames(paths []string) (map[string]Frame, error) {
 // GetAllFramesUnder returns all indexed (cached_at > 0) frames whose path
 // starts with rootPath. Results are sorted by object then date_obs.
 func (s *Store) GetAllFramesUnder(rootPath string) ([]Frame, error) {
+	return s.framesUnder(rootPath, nil)
+}
+
+// GetFramesUnderByType returns cached frames of one frame type under rootPath,
+// ordered by object then date.
+func (s *Store) GetFramesUnderByType(rootPath, frameType string) ([]Frame, error) {
+	return s.framesUnder(rootPath, sq.Eq{"frame_type": frameType})
+}
+
+// framesUnder returns cached frames under rootPath matching the optional
+// extra condition, ordered by object then date.
+func (s *Store) framesUnder(rootPath string, extra sq.Sqlizer) ([]Frame, error) {
 	prefix := rootPath
 	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
 		prefix += "/"
+	}
+	cond := sq.And{
+		sq.Like{"nas_path": prefix + "%"},
+		sq.Gt{"cached_at": 0},
+	}
+	if extra != nil {
+		cond = append(cond, extra)
 	}
 	query, args, err := s.qb.
 		Select(
@@ -217,10 +236,7 @@ func (s *Store) GetAllFramesUnder(rootPath string) ([]Frame, error) {
 			"approved", "rejected", "rejection_reason", "tags", "notes",
 		).
 		From("frames").
-		Where(sq.And{
-			sq.Like{"nas_path": prefix + "%"},
-			sq.Gt{"cached_at": 0},
-		}).
+		Where(cond).
 		OrderBy("object", "date_obs").
 		ToSql()
 	if err != nil {

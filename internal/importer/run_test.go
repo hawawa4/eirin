@@ -3,6 +3,7 @@ package importer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,21 +153,75 @@ func TestRunCopiesAndDeletesVerified(t *testing.T) {
 	}
 }
 
-func TestRunExistingDestDifferentContentKept(t *testing.T) {
+func TestRunExistingDestDifferentContentSavedUnderSuffix(t *testing.T) {
 	src, nas := t.TempDir(), t.TempDir()
 	c := candidate(src, nas, "a.fit")
 	writeFile(t, c.SourcePath, []byte("new content"))
 	writeFile(t, c.DestPath, []byte("other content"))
+	lib := newFakeLib()
 
-	p := Run(context.Background(), []Candidate{c}, newFakeLib(), Options{DeleteAfterCopy: true}, nil)
-	if !exists(c.SourcePath) {
-		t.Fatal("source deleted although destination differs")
-	}
-	if p.Skipped != 1 || p.Kept != 1 {
-		t.Errorf("progress = %+v", p)
-	}
+	p := Run(context.Background(), []Candidate{c}, lib, Options{DeleteAfterCopy: true}, nil)
 	if got, _ := os.ReadFile(c.DestPath); string(got) != "other content" {
 		t.Error("existing destination was overwritten")
+	}
+	want := filepath.Join(nas, "obj", "a_2.fit")
+	if got, _ := os.ReadFile(want); string(got) != "new content" {
+		t.Fatalf("source not saved as a_2.fit (got %q)", got)
+	}
+	if p.Copied != 1 || p.Skipped != 0 || p.Kept != 0 || len(p.Errors) != 0 {
+		t.Errorf("progress = %+v", p)
+	}
+	if len(p.Notes) != 1 || !strings.Contains(p.Notes[0], "saved as a_2.fit") {
+		t.Errorf("notes = %v", p.Notes)
+	}
+	if len(lib.imported) != 1 || lib.imported[0].DestPath != want {
+		t.Errorf("imported = %+v, want dest %s", lib.imported, want)
+	}
+	if exists(c.SourcePath) {
+		t.Error("source should be deleted after the verified suffixed copy")
+	}
+}
+
+func TestRunSuffixSlotsSkipTakenAndDetectDuplicate(t *testing.T) {
+	src, nas := t.TempDir(), t.TempDir()
+	c := candidate(src, nas, "a.fit")
+	writeFile(t, c.SourcePath, []byte("mine"))
+	writeFile(t, c.DestPath, []byte("other 1"))
+	writeFile(t, filepath.Join(nas, "obj", "a_2.fit"), []byte("other 2"))
+	writeFile(t, filepath.Join(nas, "obj", "a_3.fit"), []byte("mine"))
+	lib := newFakeLib()
+
+	p := Run(context.Background(), []Candidate{c}, lib, Options{}, nil)
+	if p.Skipped != 1 || p.Copied != 0 || len(lib.imported) != 0 {
+		t.Errorf("identical a_3.fit should count as duplicate: progress = %+v", p)
+	}
+	if exists(filepath.Join(nas, "obj", "a_4.fit")) {
+		t.Error("duplicate copied again under a new suffix")
+	}
+}
+
+func TestRunVerifyErrorReportedOnce(t *testing.T) {
+	src, nas := t.TempDir(), t.TempDir()
+	data := []byte("identical frame data")
+	libPath := filepath.Join(nas, "obj", "existing.fit")
+	writeFile(t, libPath, data)
+	writeFile(t, filepath.Join(src, "dup.fit"), data)
+	lib := newFakeLib()
+	lib.add(t, libPath)
+	orig := hashFull
+	hashFull = func(string) (string, error) { return "", errors.New("read failed") }
+	t.Cleanup(func() { hashFull = orig })
+
+	c := candidate(src, nas, "dup.fit")
+	p := Run(context.Background(), []Candidate{c}, lib, Options{DeleteAfterCopy: true}, nil)
+	if !exists(c.SourcePath) {
+		t.Fatal("source deleted although verification failed")
+	}
+	if len(p.Errors) != 1 || !strings.Contains(p.Errors[0], "verifying: read failed") {
+		t.Errorf("errors = %v", p.Errors)
+	}
+	if p.Kept != 1 || len(p.Notes) != 0 {
+		t.Errorf("kept = %d notes = %v, want 1 and none", p.Kept, p.Notes)
 	}
 }
 

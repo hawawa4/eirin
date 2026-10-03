@@ -197,60 +197,94 @@ func (a *App) GetProjectOutputFiles(projectFolder string) ([]ProjectOutputFile, 
 	return files, nil
 }
 
+// ImportOutputsResult is returned by ImportOutputFiles.
+type ImportOutputsResult struct {
+	// Copied lists the file names copied (and indexed) into the destination.
+	Copied []string `json:"copied"`
+	// Conflicts lists file names that already exist in the destination (or
+	// appear twice in the request). When non-empty, nothing was copied.
+	Conflicts []string `json:"conflicts"`
+}
+
 // ImportOutputFiles copies project output files to destFolder on the NAS,
 // then indexes each copied file so it appears in the library immediately.
-// Existing NAS files are never overwritten: if any destination already exists
-// (or two sources share a name), nothing is copied and the error names the
-// conflicting files. Metadata (object, telescope, instrument, filter) is
+//
+// It is all-or-nothing with respect to name conflicts: existing NAS files are
+// never overwritten, so if any destination already exists (or two sources
+// share a name), nothing is copied and the result lists the conflicting names
+// with a nil error. The error is reserved for real failures (invalid
+// destination, I/O errors); a copy failing midway keeps the files copied so
+// far (listed in Copied). Metadata (object, telescope, instrument, filter) is
 // inherited from the first project light frame found in the DB.
-func (a *App) ImportOutputFiles(filePaths []string, destFolder string) error {
-	var conflicts []string
+func (a *App) ImportOutputFiles(filePaths []string, destFolder string) (ImportOutputsResult, error) {
+	res := ImportOutputsResult{Copied: []string{}, Conflicts: []string{}}
+	if err := a.validateOutputDest(destFolder); err != nil {
+		return res, err
+	}
 	seen := map[string]bool{}
 	for _, src := range filePaths {
 		name := filepath.Base(src)
 		if seen[name] {
-			conflicts = append(conflicts, name)
+			res.Conflicts = append(res.Conflicts, name)
 			continue
 		}
 		seen[name] = true
 		if _, err := os.Lstat(filepath.Join(destFolder, name)); err == nil {
-			conflicts = append(conflicts, name)
+			res.Conflicts = append(res.Conflicts, name)
 		}
 	}
-	if len(conflicts) > 0 {
-		return fmt.Errorf("not importing — these files already exist in %s: %s", destFolder, strings.Join(conflicts, ", "))
+	if len(res.Conflicts) > 0 {
+		return res, nil
 	}
 	if err := os.MkdirAll(destFolder, 0o750); err != nil {
-		return fmt.Errorf("creating destination: %w", err)
+		return res, fmt.Errorf("creating destination: %w", err)
 	}
 
 	meta := store.DirMeta{}
 	if len(filePaths) > 0 {
 		meta = a.projectLightMeta(filepath.Dir(filePaths[0]))
 	}
-
-	copied := 0
-	for _, src := range filePaths {
-		dst := filepath.Join(destFolder, filepath.Base(src))
-		if err := projectfs.CopyNoOverwrite(src, dst); err != nil {
-			if copied > 0 {
-				a.emitEvent("library:updated", nil)
-			}
-			return fmt.Errorf("copying %s: %w", filepath.Base(src), err)
+	defer func() {
+		if len(res.Copied) > 0 {
+			a.emitEvent("library:updated", nil)
 		}
-		info, err := os.Stat(src)
-		if err == nil {
+	}()
+
+	for _, src := range filePaths {
+		name := filepath.Base(src)
+		dst := filepath.Join(destFolder, name)
+		if err := projectfs.CopyNoOverwrite(src, dst); err != nil {
+			return res, fmt.Errorf("copying %s: %w", name, err)
+		}
+		if info, err := os.Stat(src); err == nil {
 			a.indexImportedFileWithMeta(importer.Candidate{
 				SourcePath:   src,
-				RelativePath: filepath.Base(src),
+				RelativePath: name,
 				DestPath:     dst,
 				FileSize:     info.Size(),
 			}, meta)
 		}
-		copied++
+		res.Copied = append(res.Copied, name)
 	}
-	if copied > 0 {
-		a.emitEvent("library:updated", nil)
+	return res, nil
+}
+
+// validateOutputDest rejects destinations that are relative, contain ".."
+// segments, or (when a library root is configured) lie outside the root.
+func (a *App) validateOutputDest(destFolder string) error {
+	if !filepath.IsAbs(destFolder) {
+		return fmt.Errorf("destination must be an absolute path: %q", destFolder)
+	}
+	for _, seg := range strings.FieldsFunc(destFolder, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return fmt.Errorf("destination can't contain \"..\": %q", destFolder)
+		}
+	}
+	if root := a.store.Load().RootFolder; root != "" {
+		rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(destFolder))
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("destination %q is outside the library root %q", destFolder, root)
+		}
 	}
 	return nil
 }
@@ -294,10 +328,11 @@ func (a *App) GetProjectFrames(projectFolder string) ([]string, error) {
 // path for the DB lookup. FrameType comes from the DB; frames not in the DB
 // are returned with their filename and the type implied by their subfolder.
 // Legacy projects with darks/biases inside lights/ are listed too.
-func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
+func (a *App) GetProjectLibraryFrames(projectFolder string) ([]LibraryFrame, error) {
 	entries, err := projectfs.ListFrames(projectFolder)
 	if err != nil {
 		slog.Warn("project frames: readdir", "dir", projectFolder, "err", err)
+		return nil, fmt.Errorf("reading project folder: %w", err)
 	}
 	nasPaths := make([]string, len(entries))
 	for i, e := range entries {
@@ -306,7 +341,7 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
 	frameMap, err := a.store.GetFrames(nasPaths)
 	if err != nil {
 		slog.Warn("project frames: db lookup", "err", err)
-		frameMap = map[string]store.Frame{}
+		return nil, fmt.Errorf("reading library: %w", err)
 	}
 
 	result := make([]LibraryFrame, 0, len(entries))
@@ -322,7 +357,7 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) []LibraryFrame {
 			})
 		}
 	}
-	return result
+	return result, nil
 }
 
 // RemoveFramesFromProject removes the project entries (symlinks or copies) in

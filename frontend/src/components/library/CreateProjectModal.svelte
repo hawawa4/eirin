@@ -1,18 +1,10 @@
-<script lang="ts" module>
-  /** Frame types that have a home in a Siril project (see internal/projectfs). */
-  export const PROJECT_FRAME_TYPES: ReadonlySet<string> = new Set([
-    "light",
-    "dark",
-    "flat",
-    "bias",
-  ]);
-</script>
-
 <script lang="ts">
   import type * as app from "$models/app";
   import { AddFramesToProjectDetailed, CreateProject } from "$app";
   import type { Project } from "../../lib/types";
   import { toast } from "../../lib/toast.svelte";
+  import { isProjectFrameType } from "../../lib/projects/frames";
+  import { plural } from "../../lib/utils";
   import Modal from "../Modal.svelte";
 
   interface Props {
@@ -28,12 +20,8 @@
   let error = $state("");
   let creating = $state(false);
 
-  let eligible = $derived(frames.filter((f) => PROJECT_FRAME_TYPES.has(f.frameType)));
+  let eligible = $derived(frames.filter((f) => isProjectFrameType(f.frameType)));
   let ineligibleCount = $derived(frames.length - eligible.length);
-
-  function plural(n: number, word: string) {
-    return `${n} ${word}${n === 1 ? "" : "s"}`;
-  }
 
   async function submit(e?: Event) {
     e?.preventDefault();

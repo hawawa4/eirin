@@ -9,18 +9,8 @@
     onretry: () => void;
     onagain: () => void;
     onviewlibrary?: () => void;
-    /** Offered when a run stopped early after copying files (the automatic scan only follows "done"). */
-    onscan?: () => void;
   }
-  let {
-    progress,
-    canRetry,
-    retrying = false,
-    onretry,
-    onagain,
-    onviewlibrary,
-    onscan,
-  }: Props = $props();
+  let { progress, canRetry, retrying = false, onretry, onagain, onviewlibrary }: Props = $props();
 
   let errors = $derived((progress.errors ?? []).map(String));
   let notes = $derived((progress.notes ?? []).map(String));
@@ -66,14 +56,11 @@
     {/if}
   </dl>
 
-  {#if !failed && !cancelled && progress.copied > 0}
-    <p class="hint">The library is re-scanned automatically to pick up the new files.</p>
-  {:else if progress.copied > 0}
+  {#if progress.copied > 0}
     <p class="hint">
-      Files copied before the import stopped aren't in the library index yet.
-      {#if onscan}
-        <button class="link-btn" onclick={onscan}>Scan library now</button>
-      {/if}
+      {progress.copied === 1
+        ? "The copied file was added to the library."
+        : `The ${progress.copied.toLocaleString()} copied files were added to the library.`}
     </p>
   {/if}
 
@@ -185,15 +172,6 @@
     margin: 0;
     font-size: var(--fs-sm);
     color: var(--text-secondary);
-  }
-  .link-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    color: var(--accent);
-    text-decoration: underline;
-    cursor: pointer;
   }
   .list {
     width: min(640px, 100%);

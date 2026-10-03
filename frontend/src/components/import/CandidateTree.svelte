@@ -1,6 +1,7 @@
 <script lang="ts">
   import { collapsedFolders, type Candidate } from "../../lib/import/session.svelte";
-  import { allFolderPaths, buildTree, flattenTree, formatSize } from "../../lib/import/tree";
+  import { allFolderPaths, buildTree, flattenTree } from "../../lib/import/tree";
+  import { formatBytes } from "../../lib/utils";
   import Spinner from "./Spinner.svelte";
 
   interface Props {
@@ -31,7 +32,7 @@
 <div class="tree-meta">
   <span>
     {candidates.length.toLocaleString()}
-    {candidates.length === 1 ? "new file" : "new files"} · {formatSize(totalSize)} total
+    {candidates.length === 1 ? "new file" : "new files"} · {formatBytes(totalSize)} total
   </span>
   {#if updating}
     <span class="updating"><Spinner size={12} label="Updating" /> Updating…</span>
@@ -78,7 +79,7 @@
                 >
               {/if}
             </td>
-            <td class="size-cell">{formatSize(row.size)}</td>
+            <td class="size-cell">{formatBytes(row.size)}</td>
           </tr>
         {:else}
           <tr class="file-row">
@@ -86,7 +87,7 @@
               >{row.name}</td
             >
             <td class="dest-path" title={row.candidate.destPath}>{row.dest}</td>
-            <td class="size-cell">{formatSize(row.candidate.fileSize)}</td>
+            <td class="size-cell">{formatBytes(row.candidate.fileSize)}</td>
           </tr>
         {/if}
       {/each}

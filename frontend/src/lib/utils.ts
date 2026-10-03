@@ -30,12 +30,23 @@ export function formatExpTime(secs: number): string {
   return secs + " s";
 }
 
-export function formatSize(bytes: number, isDir: boolean): string {
-  if (isDir) return "—";
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
-  return (bytes / 1024 / 1024 / 1024).toFixed(2) + " GB";
+const BYTE_UNITS = ["KB", "MB", "GB", "TB", "PB"];
+
+/** Human-readable byte size in binary units with one decimal ("1.5 GB"). */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 1024) return `${Math.max(0, bytes || 0)} B`;
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < BYTE_UNITS.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(1)} ${BYTE_UNITS[i]}`;
+}
+
+/** "1 frame", "3 frames" — `many` defaults to `one` + "s". */
+export function plural(n: number, one: string, many = one + "s"): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 export function getCellValue(entry: app.EnrichedFileEntry, colId: string): string {
@@ -59,7 +70,7 @@ export function getCellValue(entry: app.EnrichedFileEntry, colId: string): strin
     case "modTime":
       return formatDate(entry.modTime);
     case "size":
-      return formatSize(entry.size, entry.isDir);
+      return entry.isDir ? "—" : formatBytes(entry.size);
     case "gain":
       return entry.hasMeta ? (entry.gain ? String(entry.gain) : "—") : "";
     case "ccdTemp":
@@ -104,7 +115,7 @@ export function getLibraryCellValue(frame: app.LibraryFrame, colId: string): str
     case "expTime":
       return formatExpTime(frame.expTime);
     case "size":
-      return formatSize(frame.fileSize, false);
+      return formatBytes(frame.fileSize);
     case "gain":
       return frame.gain ? String(frame.gain) : "—";
     case "ccdTemp":

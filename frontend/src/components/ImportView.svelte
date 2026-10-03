@@ -21,13 +21,11 @@
     rootFolder: string;
     /** True while this view's tab is visible. */
     active?: boolean;
-    /** Request a library (re)scan/index. */
-    onscan?: () => void;
     /** Switch to the Library tab, e.g. from the import-done screen. */
     onviewlibrary?: () => void;
   }
 
-  let { rootFolder, active = true, onscan, onviewlibrary }: Props = $props();
+  let { rootFolder, active = true, onviewlibrary }: Props = $props();
 
   ensureListening();
 
@@ -169,7 +167,6 @@
       onretry={retry}
       onagain={resetSession}
       {onviewlibrary}
-      {onscan}
     />
   {/if}
 </div>

@@ -404,6 +404,50 @@ export const ImportCandidate = importer$0.Candidate;
 export type ImportCandidate = importer$0.Candidate;
 
 /**
+ * ImportOutputsResult is returned by ImportOutputFiles.
+ */
+export class ImportOutputsResult {
+    /**
+     * Copied lists the file names copied (and indexed) into the destination.
+     */
+    "copied": string[];
+
+    /**
+     * Conflicts lists file names that already exist in the destination (or
+     * appear twice in the request). When non-empty, nothing was copied.
+     */
+    "conflicts": string[];
+
+    /** Creates a new ImportOutputsResult instance. */
+    constructor($$source: Partial<ImportOutputsResult> = {}) {
+        if (!("copied" in $$source)) {
+            this["copied"] = [];
+        }
+        if (!("conflicts" in $$source)) {
+            this["conflicts"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ImportOutputsResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ImportOutputsResult {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("copied" in $$parsedSource) {
+            $$parsedSource["copied"] = $$createField0_0($$parsedSource["copied"]);
+        }
+        if ("conflicts" in $$parsedSource) {
+            $$parsedSource["conflicts"] = $$createField1_0($$parsedSource["conflicts"]);
+        }
+        return new ImportOutputsResult($$parsedSource as Partial<ImportOutputsResult>);
+    }
+}
+
+/**
  * ImportProgress is emitted as an "import:progress" event during StartImport.
  * Re-exported from the importer package for Wails binding compatibility.
  */

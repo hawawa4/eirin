@@ -4,7 +4,7 @@
   import type * as app from "$models/app";
   import {
     AddFramesToProjectDetailed,
-    GetLibraryFrames,
+    GetLibraryFramesByType,
     GetLightFramesPaged,
     GetLightObjects,
   } from "$app";
@@ -15,10 +15,10 @@
     PROJECT_TYPE_LABEL,
     calibrationGroupKey,
     groupCalibration,
-    plural,
     type PickerGroup,
     type ProjectFrameType,
   } from "../../lib/projects/frames";
+  import { plural } from "../../lib/utils";
 
   interface Props {
     rootFolder: string;
@@ -49,11 +49,10 @@
   let groupSearch = $state("");
   const selectedGroups = new SvelteSet<string>();
 
-  /** Whole-library frame list, fetched once and only for calibration types. */
-  let library: app.LibraryFrame[] | null = null;
-  async function libraryFrames(): Promise<app.LibraryFrame[]> {
-    if (!library) library = (await GetLibraryFrames(rootFolder)) ?? [];
-    return library;
+  /** Library frames of one calibration type, fetched once per type. */
+  const calibrationCache: Partial<Record<ProjectFrameType, app.LibraryFrame[]>> = {};
+  async function calibrationFrames(t: ProjectFrameType): Promise<app.LibraryFrame[]> {
+    return (calibrationCache[t] ??= (await GetLibraryFramesByType(rootFolder, t)) ?? []);
   }
 
   let groupsReq = 0;
@@ -71,7 +70,7 @@
         const objects = (await GetLightObjects(rootFolder)) ?? [];
         result = objects.map((o) => ({ key: o, label: o || "(no object)" }));
       } else {
-        result = groupCalibration((await libraryFrames()).filter((f) => f.frameType === t));
+        result = groupCalibration(await calibrationFrames(t));
       }
       if (req === groupsReq) groups = result;
     } catch (e) {
@@ -130,9 +129,9 @@
         hasMore = page.hasMore;
       } else {
         const t = type;
-        const all = await libraryFrames();
+        const all = await calibrationFrames(t);
         if (req !== framesReq) return false;
-        frames = all.filter((f) => f.frameType === t && selectedGroups.has(calibrationGroupKey(f)));
+        frames = all.filter((f) => selectedGroups.has(calibrationGroupKey(f)));
         hasMore = false;
       }
       return true;

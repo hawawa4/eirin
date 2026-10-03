@@ -1,6 +1,7 @@
 // ── Library index scans ─────────────────────────────────────────────────────
 // Owns the "index:progress" event stream and the start/cancel calls, so App only
-// wires triggers (buttons, root change, import done) and reacts to completion.
+// wires triggers (buttons, root change) and reacts to completion. Imports index
+// their copied files themselves, so they never trigger a scan.
 
 import { BuildIndex, CancelIndex } from "$app";
 import { Events } from "@wailsio/runtime";
@@ -19,11 +20,8 @@ export type IndexOutcome =
 
 export interface StartOptions {
   force?: boolean;
-  ifRunning?: "ignore" | "queue" | "supersede";
+  ifRunning?: "ignore" | "supersede";
 }
-
-/** A queued request is dropped if the running scan started less than this long ago. */
-const RECENT_START_MS = 2000;
 
 function isFinished(p: IndexProgressEvent | null): boolean {
   return p === null || p.phase === "done" || p.phase === "cancelled";
@@ -33,16 +31,11 @@ class IndexController {
   progress = $state<IndexProgressEvent | null>(null);
   running = $derived(!isFinished(this.progress));
 
-  /** Root of a non-forced scan requested while another run was active. */
-  #queued: string | null = null;
   #onfinish: ((o: IndexOutcome) => void) | null = null;
-  #startedAt = 0;
 
   /**
    * Starts a scan of `root` (`force` re-reads already-indexed files). `ifRunning`
    * decides what happens when a scan is already active: "ignore" drops the request,
-   * "queue" runs it once the current scan finishes (automatic triggers — skipped when
-   * the current scan started moments ago, e.g. by another listener of the same event), and
    * "supersede" starts it right away — the backend cancels the old run.
    */
   async start(
@@ -50,14 +43,7 @@ class IndexController {
     { force = false, ifRunning = "ignore" }: StartOptions = {},
   ): Promise<void> {
     if (!root) return;
-    if (this.running && ifRunning !== "supersede") {
-      if (ifRunning === "queue" && Date.now() - this.#startedAt > RECENT_START_MS) {
-        this.#queued = root;
-      }
-      return;
-    }
-    this.#queued = null;
-    this.#startedAt = Date.now();
+    if (this.running && ifRunning !== "supersede") return;
     this.progress = {
       phase: "scanning",
       total: 0,
@@ -75,7 +61,6 @@ class IndexController {
   }
 
   async cancel(): Promise<void> {
-    this.#queued = null;
     try {
       await CancelIndex();
     } catch (e) {
@@ -94,7 +79,6 @@ class IndexController {
       } else if (data.phase === "done") {
         this.#finish({ kind: "done", progress: data });
       } else if (data.phase === "cancelled") {
-        this.#queued = null;
         this.#finish({ kind: "cancelled", progress: data });
       }
     });
@@ -110,9 +94,6 @@ class IndexController {
       this.progress = { ...o.progress, phase: "done" };
     }
     this.#onfinish?.(o);
-    const next = this.#queued;
-    this.#queued = null;
-    if (next) void this.start(next);
   }
 }
 

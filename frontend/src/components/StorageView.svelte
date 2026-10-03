@@ -2,7 +2,8 @@
   import type * as app from "$models/app";
   import { GetStorageStats, GetFrameTypeSummary } from "$app";
   import { isTypingTarget, isModalOpen } from "../lib/keys";
-  import { fmtBytes, fmtFrames } from "../lib/storage/format";
+  import { fmtFrames } from "../lib/storage/format";
+  import { formatBytes } from "../lib/utils";
   import Treemap from "./storage/Treemap.svelte";
 
   interface Props {
@@ -110,7 +111,9 @@
   <div class="storage-header">
     <h2 class="storage-title">Storage</h2>
     {#if root && hasData}
-      <span class="storage-total">{fmtBytes(root.totalBytes)} · {fmtFrames(root.frameCount)}</span>
+      <span class="storage-total"
+        >{formatBytes(root.totalBytes)} · {fmtFrames(root.frameCount)}</span
+      >
     {/if}
     <span class="spacer"></span>
     {#if loading && root}
@@ -151,7 +154,7 @@
         {#each typeSummary as t (t.label)}
           <div class="type-chip">
             <span class="type-label">{typeLabel(t.label)}</span>
-            <span class="type-size">{fmtBytes(t.totalBytes)}</span>
+            <span class="type-size">{formatBytes(t.totalBytes)}</span>
             <span class="type-count">{fmtFrames(t.frameCount)}</span>
           </div>
         {/each}
@@ -197,7 +200,7 @@
           <div class="obj-bar-wrap" title="{pct.toFixed(1)}% of this level">
             <div class="obj-bar" style:width="{pct}%"></div>
           </div>
-          <span class="obj-size">{fmtBytes(node.totalBytes)}</span>
+          <span class="obj-size">{formatBytes(node.totalBytes)}</span>
         </li>
       {/each}
     </ul>

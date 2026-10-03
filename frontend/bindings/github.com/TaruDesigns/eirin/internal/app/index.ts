@@ -16,6 +16,7 @@ export {
     EnrichedFileEntry,
     FileEntry,
     ImportCandidate,
+    ImportOutputsResult,
     ImportProgress,
     LibraryFrame,
     PagedLightFrames,

@@ -117,6 +117,7 @@ func AddFrame(projectFolder, subdir, src, mode string) (AddResult, error) {
 	base := filepath.Base(src)
 	ext := filepath.Ext(base)
 	stem := strings.TrimSuffix(base, ext)
+	srcHash := "" // full hash of src, computed at most once
 	for n := 1; n < 10000; n++ {
 		name := base
 		if n > 1 {
@@ -134,7 +135,8 @@ func AddFrame(projectFolder, subdir, src, mode string) (AddResult, error) {
 			return AddResult{}, err
 		}
 		if lst.Mode()&os.ModeSymlink != 0 {
-			if _, statErr := os.Stat(dst); statErr != nil {
+			info, statErr := os.Stat(dst)
+			if statErr != nil {
 				// Dangling link (its NAS file was moved/deleted): reuse the slot.
 				if err := os.Remove(dst); err != nil {
 					return AddResult{}, err
@@ -144,8 +146,14 @@ func AddFrame(projectFolder, subdir, src, mode string) (AddResult, error) {
 				}
 				return AddResult{Path: dst}, nil
 			}
+			// A link is the same source only if it resolves to src itself;
+			// a link to any other NAS path is a different source — no hashing.
+			if os.SameFile(info, srcInfo) {
+				return AddResult{Path: dst, Existed: true}, nil
+			}
+			continue
 		}
-		if sameSource(dst, src, srcInfo) {
+		if sameCopy(dst, lst, src, srcInfo, &srcHash) {
 			return AddResult{Path: dst, Existed: true}, nil
 		}
 	}
@@ -159,29 +167,33 @@ func place(src, dst, mode string) error {
 	return CopyNoOverwrite(src, dst)
 }
 
-// sameSource reports whether the existing entry dst refers to src: either it
-// resolves to the very same file (symlink), or it is a regular file with the
-// same size and full-file SHA-256 (copy).
-func sameSource(dst, src string, srcInfo os.FileInfo) bool {
-	info, err := os.Stat(dst)
-	if err != nil {
-		return false
-	}
-	if os.SameFile(info, srcInfo) {
+// hashFull computes a file's full SHA-256; a variable so tests can observe
+// when hashing happens.
+var hashFull = importer.HashFileFull
+
+// sameCopy reports whether the existing non-symlink entry dst (lst is its
+// Lstat info) holds the same content as src: the very same file, or a
+// regular file with the same size and full-file SHA-256 (copy mode).
+// *srcHash memoizes src's hash across calls ("" = not computed yet).
+func sameCopy(dst string, lst os.FileInfo, src string, srcInfo os.FileInfo, srcHash *string) bool {
+	if os.SameFile(lst, srcInfo) {
 		return true
 	}
-	if !info.Mode().IsRegular() || info.Size() != srcInfo.Size() {
+	if !lst.Mode().IsRegular() || lst.Size() != srcInfo.Size() {
 		return false
 	}
-	h1, err := importer.HashFileFull(dst)
+	if *srcHash == "" {
+		h, err := hashFull(src)
+		if err != nil {
+			return false
+		}
+		*srcHash = h
+	}
+	h, err := hashFull(dst)
 	if err != nil {
 		return false
 	}
-	h2, err := importer.HashFileFull(src)
-	if err != nil {
-		return false
-	}
-	return h1 == h2
+	return h == *srcHash
 }
 
 // Entry is one frame file found in a project's frame subfolders.

@@ -8,7 +8,6 @@
     CheckSiril,
     GetProjectsFolder,
   } from "$app";
-  import { Events } from "@wailsio/runtime";
   import {
     DEFAULT_COLUMNS,
     DEFAULT_LIBRARY_COLUMNS,
@@ -94,17 +93,9 @@
 
   onMount(() => installUiScaleShortcuts());
 
-  onMount(() => {
-    const offIndex = indexer.listen(onIndexFinished);
-    const offImport = Events.On("import:progress", (event) => {
-      const data = event.data as { phase?: string; copied?: number };
-      if (data.phase === "done" && (data.copied ?? 0) > 0) startScan({ ifRunning: "queue" });
-    });
-    return () => {
-      offIndex();
-      offImport();
-    };
-  });
+  // Imports index each copied file themselves (and emit library:updated), so
+  // they don't trigger a scan here.
+  onMount(() => indexer.listen(onIndexFinished));
 
   onMount(async () => {
     const [p, info, siril, pf] = await Promise.all([
@@ -286,7 +277,6 @@
             <ImportView
               {rootFolder}
               active={appMode === "import"}
-              onscan={() => startScan()}
               onviewlibrary={() => setMode("library")}
             />
           </div>

@@ -1,7 +1,8 @@
 <script lang="ts">
   import type * as app from "$models/app";
   import { squarify } from "../../lib/storage/treemap";
-  import { fitLabel, fmtBytes, fmtFrames } from "../../lib/storage/format";
+  import { fitLabel, fmtFrames } from "../../lib/storage/format";
+  import { formatBytes } from "../../lib/utils";
 
   interface Props {
     nodes: app.StorageNode[];
@@ -49,7 +50,9 @@
       const subH = subPx * 1.35;
       const label = r.h >= lineH + pad ? fitLabel(n.label, innerW, labelPx) : null;
       const size =
-        label && r.h >= lineH + subH + pad ? fitLabel(fmtBytes(n.totalBytes), innerW, subPx) : null;
+        label && r.h >= lineH + subH + pad
+          ? fitLabel(formatBytes(n.totalBytes), innerW, subPx)
+          : null;
       const frames =
         size && r.h >= lineH + subH * 2 + pad
           ? fitLabel(fmtFrames(n.frameCount), innerW, subPx)
@@ -102,7 +105,9 @@
           class:hovered={hovered === c.node.label}
           role={c.drillable ? "button" : "img"}
           tabindex={c.drillable ? 0 : undefined}
-          aria-label="{c.node.label}: {fmtBytes(c.node.totalBytes)}, {fmtFrames(c.node.frameCount)}"
+          aria-label="{c.node.label}: {formatBytes(c.node.totalBytes)}, {fmtFrames(
+            c.node.frameCount,
+          )}"
           onmouseenter={() => onhover(c.node.label)}
           onfocus={() => onhover(c.node.label)}
           onblur={() => onhover(null)}
@@ -145,7 +150,7 @@
       style:top="{Math.min(pointer.y + 14, Math.max(0, height - 90))}px"
     >
       <strong>{hoveredNode.label}</strong>
-      <span>{fmtBytes(hoveredNode.totalBytes)} · {fmtFrames(hoveredNode.frameCount)}</span>
+      <span>{formatBytes(hoveredNode.totalBytes)} · {fmtFrames(hoveredNode.frameCount)}</span>
       {#if hoveredNode.children?.length}
         <span class="tooltip-hint">Click to drill down</span>
       {/if}

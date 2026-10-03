@@ -112,6 +112,58 @@ func TestAddFrameDifferentSourceGetsSuffix(t *testing.T) {
 	}
 }
 
+func TestAddFrameSymlinkCollisionDoesNotHash(t *testing.T) {
+	nas, proj := t.TempDir(), t.TempDir()
+	a := filepath.Join(nas, "n1", "Light_001.fit")
+	b := filepath.Join(nas, "n2", "Light_001.fit")
+	writeFile(t, a, "same size")
+	writeFile(t, b, "same size")
+	calls := 0
+	orig := hashFull
+	hashFull = func(p string) (string, error) { calls++; return orig(p) }
+	t.Cleanup(func() { hashFull = orig })
+
+	if _, err := AddFrame(proj, DirLights, a, ModeSymlink); err != nil {
+		t.Fatal(err)
+	}
+	r, err := AddFrame(proj, DirLights, b, ModeSymlink)
+	if err != nil || r.Existed || filepath.Base(r.Path) != "Light_001_2.fit" {
+		t.Fatalf("r = %+v err = %v", r, err)
+	}
+	if r, _ := AddFrame(proj, DirLights, b, ModeSymlink); !r.Existed {
+		t.Error("re-adding b should be a no-op")
+	}
+	if calls != 0 {
+		t.Errorf("hashFull called %d times for symlink collisions, want 0", calls)
+	}
+}
+
+func TestAddFrameCopyModeHashesSourceOnce(t *testing.T) {
+	nas, proj := t.TempDir(), t.TempDir()
+	src := filepath.Join(nas, "Dark_001.fit")
+	writeFile(t, src, "aaaa")
+	// Two same-size, different-content copies occupy the first slots.
+	writeFile(t, filepath.Join(proj, DirDarks, "Dark_001.fit"), "bbbb")
+	writeFile(t, filepath.Join(proj, DirDarks, "Dark_001_2.fit"), "cccc")
+	srcHashes := 0
+	orig := hashFull
+	hashFull = func(p string) (string, error) {
+		if p == src {
+			srcHashes++
+		}
+		return orig(p)
+	}
+	t.Cleanup(func() { hashFull = orig })
+
+	r, err := AddFrame(proj, DirDarks, src, ModeCopy)
+	if err != nil || r.Existed || filepath.Base(r.Path) != "Dark_001_3.fit" {
+		t.Fatalf("r = %+v err = %v", r, err)
+	}
+	if srcHashes != 1 {
+		t.Errorf("source hashed %d times, want 1", srcHashes)
+	}
+}
+
 func TestAddFrameCopyMode(t *testing.T) {
 	nas, proj := t.TempDir(), t.TempDir()
 	a := filepath.Join(nas, "x", "Dark_001.fit")

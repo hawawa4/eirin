@@ -2,7 +2,7 @@
   import type * as app from "$models/app";
   import { RevealPath } from "$app";
   import { attempt } from "../../lib/toast.svelte";
-  import { formatBytes } from "../../lib/projects/frames";
+  import { formatBytes } from "../../lib/utils";
 
   interface Props {
     folder: string;

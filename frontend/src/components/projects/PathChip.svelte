@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { copyText } from "../../lib/projects/clipboard";
+  import { copyPath } from "../../lib/clipboard";
 
   interface Props {
     path: string;
@@ -8,7 +8,7 @@
 </script>
 
 <!-- Truncated at the start (the end of a path is the informative part); click copies. -->
-<button class="path-chip" title="{path}&#10;Click to copy" onclick={() => copyText(path)}>
+<button class="path-chip" title="{path}&#10;Click to copy" onclick={() => copyPath(path)}>
   <span class="path-text">{"‎" + path + "‎"}</span>
   <span class="copy-hint" aria-hidden="true">⧉</span>
 </button>
