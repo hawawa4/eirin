@@ -323,6 +323,20 @@ func (s *Store) SetFrameHash(path, hash string) error {
 	return err
 }
 
+// HasFrame reports whether path has a frame record.
+func (s *Store) HasFrame(path string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM frames WHERE nas_path=?`, path).Scan(&n)
+	return n > 0, err
+}
+
+// FrameCount returns the number of frame records.
+func (s *Store) FrameCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM frames`).Scan(&n)
+	return n, err
+}
+
 // SetFrameType updates the frame_type for the given path. This allows the user
 // to manually override the auto-detected type (e.g. to mark a file as "processed").
 func (s *Store) SetFrameType(path, frameType string) error {

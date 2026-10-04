@@ -427,3 +427,24 @@ func TestGetFramePathsByHash(t *testing.T) {
 		t.Errorf("empty hash returned %v", paths)
 	}
 }
+
+// ── HasFrame / FrameCount ─────────────────────────────────────────────────────
+
+func TestHasFrameAndFrameCount(t *testing.T) {
+	s := newTestStore(t)
+	if n, err := s.FrameCount(); err != nil || n != 0 {
+		t.Fatalf("FrameCount() on empty store = %d, %v", n, err)
+	}
+	must(t, s.UpsertFrame("/nas/a.fits", Frame{FrameType: FrameTypeStacked}))
+	must(t, s.UpsertFrame("/nas/b.fits", Frame{FrameType: FrameTypeLight}))
+
+	if ok, err := s.HasFrame("/nas/a.fits"); err != nil || !ok {
+		t.Errorf("HasFrame(known) = %v, %v", ok, err)
+	}
+	if ok, err := s.HasFrame("/nas/nope.fits"); err != nil || ok {
+		t.Errorf("HasFrame(unknown) = %v, %v", ok, err)
+	}
+	if n, err := s.FrameCount(); err != nil || n != 2 {
+		t.Errorf("FrameCount() = %d, %v, want 2", n, err)
+	}
+}

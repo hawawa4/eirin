@@ -22,6 +22,9 @@ const (
 	KeyProjectsFolder      = "projects_folder"
 	KeyTheme               = "theme"
 	KeyUIState             = "ui_state"
+	// KeySnapshotEnabled turns on publishing a library snapshot to
+	// <root>/.eirin/library.db for the read-only server viewer.
+	KeySnapshotEnabled = "snapshot_enabled"
 )
 
 // Prefs is the typed snapshot of all user preferences, serialised to/from the
@@ -40,6 +43,8 @@ type Prefs struct {
 	// UIState is an opaque JSON blob owned by the frontend (layout, last
 	// view, …). Empty by default.
 	UIState string `json:"uiState"`
+	// SnapshotEnabled: publish a library snapshot for the server viewer.
+	SnapshotEnabled bool `json:"snapshotEnabled"`
 }
 
 // DefaultPrefs returns the out-of-the-box preference values.
@@ -92,6 +97,9 @@ func (s *Store) Load() Prefs {
 	}
 	if v, ok := s.getString(KeyUIState); ok {
 		p.UIState = v
+	}
+	if v, ok := s.getString(KeySnapshotEnabled); ok {
+		p.SnapshotEnabled = v == "true"
 	}
 	return p
 }
