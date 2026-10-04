@@ -1,0 +1,178 @@
+---
+import { Picture } from "astro:assets";
+import type { ImageMetadata } from "astro";
+
+interface Props {
+  /** Shown first, and kept if the video can't play (no JS, unsupported codec, reduced motion). */
+  poster: ImageMetadata;
+  /** URL of the video, e.g. from `import clip from "…/clip.webm?url"`. */
+  video: string;
+  alt: string;
+  caption?: string;
+  sizes?: string;
+}
+
+const { poster, video, alt, caption, sizes = "(min-width: 72rem) 44rem, 100vw" } = Astro.props;
+---
+
+<figure class="vshot">
+  <div class="frame">
+    <Picture
+      src={poster}
+      alt={alt}
+      formats={["avif", "webp"]}
+      widths={[640, 960, 1280, 1920]}
+      sizes={sizes}
+      loading="lazy"
+    />
+    <video muted loop playsinline preload="none" aria-hidden="true" tabindex="-1">
+      <source src={video} type="video/webm" />
+    </video>
+  </div>
+  <figcaption>
+    <span>{caption}</span>
+    <button type="button" class="toggle" hidden>
+      <span class="icon" aria-hidden="true"></span>
+      <span class="label">Play</span>
+    </button>
+  </figcaption>
+</figure>
+
+<style>
+  .vshot {
+    margin: 0;
+  }
+
+  .frame {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-panel);
+    box-shadow: 0 16px 40px -20px rgb(0 0 0 / 0.8);
+  }
+
+  video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .vshot.playing video,
+  .vshot.paused video {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    video {
+      transition: none;
+    }
+  }
+
+  /* Kept outside the frame so it can't be mistaken for a control in the app screenshot. */
+  .toggle {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-accent);
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .toggle:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
+
+  /* Play triangle by default, pause bars while playing. */
+  .icon {
+    width: 0;
+    height: 0;
+    margin-left: 3px;
+    border-style: solid;
+    border-width: 5px 0 5px 8px;
+    border-color: transparent transparent transparent currentColor;
+  }
+
+  .vshot.playing .icon {
+    width: 8px;
+    height: 10px;
+    margin-left: 0;
+    border: 0;
+    border-left: 2.5px solid currentColor;
+    border-right: 2.5px solid currentColor;
+  }
+
+  figcaption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.6rem;
+    font-size: 0.875rem;
+    color: var(--text-dim);
+  }
+</style>
+
+<script>
+  // Videos load and play only once scrolled into view, and pause when scrolled away.
+  // With prefers-reduced-motion they never autoplay; the button still lets people start them.
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  for (const figure of document.querySelectorAll<HTMLElement>(".vshot")) {
+    const video = figure.querySelector("video");
+    const button = figure.querySelector<HTMLButtonElement>(".toggle");
+    const label = button?.querySelector(".label");
+    if (!video || !button || !label) continue;
+
+    // Set once the visitor presses pause, so scrolling back doesn't restart it.
+    let pausedByUser = false;
+
+    const setState = (playing: boolean) => {
+      figure.classList.toggle("playing", playing);
+      figure.classList.toggle("paused", !playing && video.currentTime > 0);
+      label.textContent = playing ? "Pause" : "Play";
+    };
+
+    const play = () => {
+      video.preload = "auto";
+      video.play().catch(() => {
+        // Autoplay blocked or format unsupported: leave the screenshot showing.
+      });
+    };
+
+    video.addEventListener("playing", () => setState(true));
+    video.addEventListener("pause", () => setState(false));
+
+    button.hidden = false;
+    button.addEventListener("click", () => {
+      if (video.paused) {
+        pausedByUser = false;
+        play();
+      } else {
+        pausedByUser = true;
+        video.pause();
+      }
+    });
+
+    new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!pausedByUser && !reducedMotion.matches) play();
+        } else if (!video.paused) {
+          video.pause();
+        }
+      },
+      { threshold: 0.5 },
+    ).observe(figure);
+  }
+</script>
