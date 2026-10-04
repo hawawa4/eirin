@@ -49,6 +49,27 @@ func TestPublishOverwrites(t *testing.T) {
 	}
 }
 
+func TestPublishCleansUpLocalTempFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	orig := localTempDir
+	localTempDir = func() string { return tmpDir }
+	t.Cleanup(func() { localTempDir = orig })
+
+	root := t.TempDir()
+	must(t, Publish(desktopStore(t, root), root))
+
+	left, err := os.ReadDir(tmpDir)
+	must(t, err)
+	if len(left) != 0 {
+		t.Errorf("local temp files left behind: %v", left)
+	}
+	entries, err := os.ReadDir(filepath.Dir(Path(root)))
+	must(t, err)
+	if len(entries) != 1 || entries[0].Name() != "library.db" {
+		t.Errorf("snapshot folder = %v, want only library.db", entries)
+	}
+}
+
 func TestPublishWithoutRoot(t *testing.T) {
 	if err := Publish(newTestStore(t), ""); err == nil {
 		t.Error("Publish with no root succeeded")
