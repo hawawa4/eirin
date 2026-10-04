@@ -25,9 +25,11 @@ build-backend:
 test:
     go test ./internal/...
 
-# Run Go unit tests against the headless server build (read-only viewer)
+# Run Go unit tests against the headless server build (read-only viewer).
+# CGO off like the Docker build: no GTK/WebKit needed, and -tags here would
+# otherwise replace GOFLAGS' gtk3 tag and pull in Wails' GTK4 cgo code.
 test-server:
-    go test -tags server ./internal/...
+    CGO_ENABLED=0 go test -tags server ./internal/...
 
 # Type-check Go and TypeScript without producing binaries
 check:
