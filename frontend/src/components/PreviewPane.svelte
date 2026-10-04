@@ -871,21 +871,23 @@ void main() {
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="image-viewport"
-    class:panning={isPanning && !showAsImage}
+    class:panning={isPanning}
     bind:this={viewportEl}
-    onwheel={showAsImage ? undefined : onWheel}
-    onmousedown={showAsImage ? undefined : onPanStart}
-    onmousemove={showAsImage ? undefined : onPanMove}
-    onmouseup={showAsImage ? undefined : onPanEnd}
-    onmouseleave={showAsImage ? undefined : onPanEnd}
-    ondblclick={showAsImage ? undefined : resetView}
+    onwheel={onWheel}
+    onmousedown={onPanStart}
+    onmousemove={onPanMove}
+    onmouseup={onPanEnd}
+    onmouseleave={onPanEnd}
+    ondblclick={resetView}
   >
     {#if showAsImage}
+      <!-- Zoom/pan as a transform about the centre: the same mapping imgToViewport uses. -->
       <img
         src={rasterDataUrl}
         alt={entry.name}
         class="raster-img"
         class:visible={hasImage}
+        style:transform="translate({panX}px, {panY}px) scale({zoom})"
         draggable="false"
       />
     {:else}
