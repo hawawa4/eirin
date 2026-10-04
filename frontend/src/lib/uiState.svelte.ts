@@ -1,7 +1,7 @@
 // ── Persisted UI state ──────────────────────────────────────────────────────
 // Small layout/view preferences stored as one JSON blob under the "ui_state" pref.
 
-import { SetPref } from "$app";
+import { savePref } from "./prefs";
 
 export const PREF_UI_STATE = "ui_state";
 
@@ -77,7 +77,7 @@ export function loadUiState(json: string | undefined): void {
       if (snapshot === lastSaved) return;
       timer = setTimeout(() => {
         lastSaved = snapshot;
-        SetPref(PREF_UI_STATE, snapshot);
+        savePref(PREF_UI_STATE, snapshot);
       }, SAVE_DEBOUNCE_MS);
     });
   });

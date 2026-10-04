@@ -23,7 +23,7 @@ func (a *App) GetAppInfo() AppInfo {
 		source = "EIRIN_PORT env var"
 	}
 	return AppInfo{
-		DBPath:       a.store.DBPath(),
+		DBPath:       a.store().DBPath(),
 		ServerPort:   port,
 		ServerURL:    fmt.Sprintf("http://localhost:%d", port),
 		PortSource:   source,

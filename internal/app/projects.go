@@ -27,7 +27,7 @@ type Project struct {
 
 // GetProjectsFolder returns the configured projects root folder.
 func (a *App) GetProjectsFolder() string {
-	return a.store.Load().ProjectsFolder
+	return a.store().Load().ProjectsFolder
 }
 
 // SelectProjectsFolder opens a directory picker for the projects root.
@@ -45,12 +45,15 @@ func (a *App) SelectProjectsFolder() (string, error) {
 
 // SetProjectsFolder persists the projects root folder preference.
 func (a *App) SetProjectsFolder(path string) error {
-	return a.store.Set(store.KeyProjectsFolder, path)
+	if err := a.requireWritable(); err != nil {
+		return err
+	}
+	return a.store().Set(store.KeyProjectsFolder, path)
 }
 
 // ListProjects returns all projects from the database.
 func (a *App) ListProjects() ([]Project, error) {
-	rows, err := a.store.ListProjects()
+	rows, err := a.store().ListProjects()
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +74,10 @@ func (a *App) ListProjects() ([]Project, error) {
 // darks/, flats/ and biases/ subfolders. It fails if the sanitized folder
 // already exists on disk (e.g. "M31 Ha" and "M31_Ha" map to the same folder).
 func (a *App) CreateProject(name, description string) (Project, error) {
-	pf := a.store.Load().ProjectsFolder
+	if err := a.requireWritable(); err != nil {
+		return Project{}, err
+	}
+	pf := a.store().Load().ProjectsFolder
 	if pf == "" {
 		return Project{}, fmt.Errorf("projects folder not configured — set it in Settings first")
 	}
@@ -79,7 +85,7 @@ func (a *App) CreateProject(name, description string) (Project, error) {
 	if err := projectfs.Create(folder); err != nil {
 		return Project{}, err
 	}
-	row, err := a.store.CreateProject(name, description, folder)
+	row, err := a.store().CreateProject(name, description, folder)
 	if err != nil {
 		return Project{}, err
 	}
@@ -94,7 +100,10 @@ func (a *App) CreateProject(name, description string) (Project, error) {
 
 // DeleteProject removes the project from the database (does not delete files).
 func (a *App) DeleteProject(id int64) error {
-	return a.store.DeleteProject(id)
+	if err := a.requireWritable(); err != nil {
+		return err
+	}
+	return a.store().DeleteProject(id)
 }
 
 // AddFramesResult summarises an AddFramesToProjectDetailed call.
@@ -112,6 +121,9 @@ type AddFramesResult struct {
 // error is returned only if frames were requested but none could be placed.
 // See AddFramesToProjectDetailed for per-call counts.
 func (a *App) AddFramesToProject(projectFolder string, nasPaths []string, mode string) error {
+	if err := a.requireWritable(); err != nil {
+		return err
+	}
 	res, err := a.AddFramesToProjectDetailed(projectFolder, nasPaths, mode)
 	if err != nil {
 		return err
@@ -126,11 +138,14 @@ func (a *App) AddFramesToProject(projectFolder string, nasPaths []string, mode s
 // An entry with the same name that refers to the same source is left alone;
 // one that refers to a different source gets a numeric suffix (name_2.fit).
 func (a *App) AddFramesToProjectDetailed(projectFolder string, nasPaths []string, mode string) (AddFramesResult, error) {
+	if err := a.requireWritable(); err != nil {
+		return AddFramesResult{}, err
+	}
 	res := AddFramesResult{Skipped: []string{}}
 	if !projectfs.ValidMode(mode) {
 		return res, fmt.Errorf("unknown mode %q — use symlink or copy", mode)
 	}
-	frames, err := a.store.GetFrames(nasPaths)
+	frames, err := a.store().GetFrames(nasPaths)
 	if err != nil {
 		return res, fmt.Errorf("looking up frame types: %w", err)
 	}
@@ -234,6 +249,9 @@ type ImportOutputsResult struct {
 // far (listed in Copied). Metadata (object, telescope, instrument, filter) is
 // inherited from the first project light frame found in the DB.
 func (a *App) ImportOutputFiles(filePaths []string, destFolder string) (ImportOutputsResult, error) {
+	if err := a.requireWritable(); err != nil {
+		return ImportOutputsResult{}, err
+	}
 	res := ImportOutputsResult{Copied: []string{}, Conflicts: []string{}}
 	if err := a.validateOutputDest(destFolder); err != nil {
 		return res, err
@@ -297,7 +315,7 @@ func (a *App) validateOutputDest(destFolder string) error {
 			return fmt.Errorf("destination can't contain \"..\": %q", destFolder)
 		}
 	}
-	if root := a.store.Load().RootFolder; root != "" {
+	if root := a.store().Load().RootFolder; root != "" {
 		rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(destFolder))
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("destination %q is outside the library root %q", destFolder, root)
@@ -314,7 +332,7 @@ func (a *App) projectLightMeta(projectFolder string) store.DirMeta {
 	for i, e := range entries {
 		paths[i] = e.SourcePath
 	}
-	frames, err := a.store.GetFrames(paths)
+	frames, err := a.store().GetFrames(paths)
 	if err != nil {
 		return store.DirMeta{}
 	}
@@ -355,7 +373,7 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) ([]LibraryFrame, err
 	for i, e := range entries {
 		nasPaths[i] = e.SourcePath
 	}
-	frameMap, err := a.store.GetFrames(nasPaths)
+	frameMap, err := a.store().GetFrames(nasPaths)
 	if err != nil {
 		slog.Warn("project frames: db lookup", "err", err)
 		return nil, fmt.Errorf("reading library: %w", err)
@@ -381,6 +399,9 @@ func (a *App) GetProjectLibraryFrames(projectFolder string) ([]LibraryFrame, err
 // any frame subfolder that refer to the given NAS paths. NAS files are never
 // touched.
 func (a *App) RemoveFramesFromProject(projectFolder string, nasPaths []string) error {
+	if err := a.requireWritable(); err != nil {
+		return err
+	}
 	failed, err := projectfs.RemoveFrames(projectFolder, nasPaths)
 	if err != nil {
 		return err

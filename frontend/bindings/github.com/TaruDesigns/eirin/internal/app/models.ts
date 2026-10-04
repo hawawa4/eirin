@@ -205,16 +205,24 @@ export class AtlasIndexEntry {
 /**
  * Capabilities describes which features are available in the current build.
  * Desktop builds (default) expose everything; headless builds (-tags server,
- * used for the Docker/NAS-mini-PC deployment) are read-only visualization
- * only — no import, no Siril processing, no project management.
+ * used for the Docker deployment) are a read-only viewer of final images fed
+ * by the desktop's library snapshot.
  */
 export class Capabilities {
     "desktopMode": boolean;
+
+    /**
+     * ReadOnly: every write method returns errReadOnly (see requireWritable).
+     */
+    "readOnly": boolean;
 
     /** Creates a new Capabilities instance. */
     constructor($$source: Partial<Capabilities> = {}) {
         if (!("desktopMode" in $$source)) {
             this["desktopMode"] = false;
+        }
+        if (!("readOnly" in $$source)) {
+            this["readOnly"] = false;
         }
 
         Object.assign(this, $$source);
@@ -739,6 +747,75 @@ export const SirilInfo = siril$0.SirilInfo;
  * Re-exported from the siril package for Wails binding compatibility.
  */
 export type SirilInfo = siril$0.SirilInfo;
+
+/**
+ * SnapshotStatus describes the library snapshot shared between the desktop
+ * app and the read-only server viewer. The desktop fills the publishing
+ * fields, the server the loading ones. Times are RFC 3339, empty if unset.
+ */
+export class SnapshotStatus {
+    /**
+     * Desktop: publishing.
+     */
+    "enabled": boolean;
+    "path": string;
+    "lastPublished": string;
+
+    /**
+     * Server: loading.
+     */
+    "root": string;
+    "loaded": boolean;
+    "sourceRoot": string;
+    "publishedAt": string;
+    "loadedAt": string;
+    "frames": number;
+    "lastError": string;
+
+    /** Creates a new SnapshotStatus instance. */
+    constructor($$source: Partial<SnapshotStatus> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("lastPublished" in $$source)) {
+            this["lastPublished"] = "";
+        }
+        if (!("root" in $$source)) {
+            this["root"] = "";
+        }
+        if (!("loaded" in $$source)) {
+            this["loaded"] = false;
+        }
+        if (!("sourceRoot" in $$source)) {
+            this["sourceRoot"] = "";
+        }
+        if (!("publishedAt" in $$source)) {
+            this["publishedAt"] = "";
+        }
+        if (!("loadedAt" in $$source)) {
+            this["loadedAt"] = "";
+        }
+        if (!("frames" in $$source)) {
+            this["frames"] = 0;
+        }
+        if (!("lastError" in $$source)) {
+            this["lastError"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SnapshotStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotStatus($$parsedSource as Partial<SnapshotStatus>);
+    }
+}
 
 /**
  * StorageNode is one node in the storage treemap hierarchy.

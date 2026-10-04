@@ -1,20 +1,20 @@
 <script lang="ts">
   import type { AppMode } from "../lib/types";
-  import { MODES, modeUnavailableReason } from "../lib/shell/modes";
+  import { visibleModes, modeUnavailableReason } from "../lib/shell/modes";
 
   interface Props {
     mode: AppMode;
     rootFolder: string;
-    desktopMode: boolean;
+    readOnly: boolean;
     onmodechange: (mode: AppMode) => void;
   }
 
-  let { mode, rootFolder, desktopMode, onmodechange }: Props = $props();
+  let { mode, rootFolder, readOnly, onmodechange }: Props = $props();
 </script>
 
 <nav class="mode-selector" aria-label="Views">
-  {#each MODES as m (m.value)}
-    {@const reason = modeUnavailableReason(m, rootFolder, desktopMode)}
+  {#each visibleModes(readOnly) as m (m.value)}
+    {@const reason = modeUnavailableReason(m, rootFolder)}
     <!-- aria-disabled (not `disabled`) so the explanatory tooltip still shows on hover. -->
     <button
       class="mode-btn"

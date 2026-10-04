@@ -29,13 +29,16 @@ func (a *App) SelectSirilExecutable() (string, error) {
 // SetSirilPath persists a custom siril executable path. Pass an empty string to
 // revert to the default PATH lookup.
 func (a *App) SetSirilPath(path string) error {
-	return a.store.Set(store.KeySirilPath, path)
+	if err := a.requireWritable(); err != nil {
+		return err
+	}
+	return a.store().Set(store.KeySirilPath, path)
 }
 
 func (a *App) sirilExecutable() string {
-	return siril.Executable(a.store.Load().SirilPath)
+	return siril.Executable(a.store().Load().SirilPath)
 }
 
 func (a *App) sirilCliExecutable() string {
-	return siril.CLIExecutable(a.store.Load().SirilPath)
+	return siril.CLIExecutable(a.store().Load().SirilPath)
 }

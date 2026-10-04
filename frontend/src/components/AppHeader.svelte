@@ -6,12 +6,12 @@
     rootFolder: string;
     appMode: AppMode;
     theme: Theme;
-    desktopMode: boolean;
+    readOnly: boolean;
     onmodechange: (mode: AppMode) => void;
     onthemechange: (theme: Theme) => void;
   }
 
-  let { rootFolder, appMode, theme, desktopMode, onmodechange, onthemechange }: Props = $props();
+  let { rootFolder, appMode, theme, readOnly, onmodechange, onthemechange }: Props = $props();
 
   // Swatch colours are each theme's own accent, so they can't come from the
   // (current-theme) CSS tokens.
@@ -26,7 +26,7 @@
   <span class="logo">✦ Eirin</span>
 
   <div class="mode-area">
-    <ModeSelector mode={appMode} {onmodechange} {rootFolder} {desktopMode} />
+    <ModeSelector mode={appMode} {onmodechange} {rootFolder} {readOnly} />
   </div>
 
   <div class="header-right">

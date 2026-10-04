@@ -23,6 +23,7 @@ export {
     Project,
     ProjectOutputFile,
     SirilInfo,
+    SnapshotStatus,
     StorageNode,
     SuggestResult
 } from "./models.js";

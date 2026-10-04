@@ -34,12 +34,12 @@ func (a *App) SelectSourceFolder() (string, error) {
 // Note: this scan is basename-only for speed. The actual hash-based duplicate
 // check happens during StartImport when files are read anyway.
 func (a *App) ScanImportCandidates(sourceFolder string, extensions []string) ([]ImportCandidate, error) {
-	nasRoot := a.store.Load().RootFolder
+	nasRoot := a.store().Load().RootFolder
 	if nasRoot == "" {
 		return nil, fmt.Errorf("no NAS root folder configured")
 	}
 
-	known, err := a.store.GetAllFrameBasenames()
+	known, err := a.store().GetAllFrameBasenames()
 	if err != nil {
 		return nil, fmt.Errorf("querying database: %w", err)
 	}
@@ -101,7 +101,7 @@ func (a *App) StartImport(sourceFolder string, extensions []string, deleteAfterC
 		return err
 	}
 
-	nasRoot := a.store.Load().RootFolder
+	nasRoot := a.store().Load().RootFolder
 	if nasRoot == "" {
 		return fail(errors.New("no NAS root folder configured"))
 	}
@@ -112,7 +112,7 @@ func (a *App) StartImport(sourceFolder string, extensions []string, deleteAfterC
 	if err != nil {
 		return fail(err)
 	}
-	knownHashes, err := a.store.GetAllFrameHashes()
+	knownHashes, err := a.store().GetAllFrameHashes()
 	if err != nil {
 		return fail(fmt.Errorf("querying hashes: %w", err))
 	}
@@ -135,7 +135,7 @@ type importLibrary struct {
 func (l importLibrary) HasPrefixHash(hash string) bool { return l.knownHashes[hash] }
 
 func (l importLibrary) PathsWithPrefixHash(hash string) ([]string, error) {
-	return l.app.store.GetFramePathsByHash(hash)
+	return l.app.store().GetFramePathsByHash(hash)
 }
 
 func (l importLibrary) FileImported(c ImportCandidate) { l.app.indexImportedFile(c) }

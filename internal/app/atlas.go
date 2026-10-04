@@ -58,7 +58,7 @@ func (a *App) GetCatalog() []CatalogObject {
 // fast DB-only query that returns immediately even for large libraries.
 // Light frames are never included in the Atlas.
 func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
-	frames, err := a.store.GetAtlasIndexFrames(rootPath)
+	frames, err := a.store().GetAtlasIndexFrames(rootPath)
 	if err != nil {
 		slog.Error("atlas: get index", "err", err)
 		return nil
@@ -91,6 +91,9 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 // For FITS files the header is parsed; for PNG/TIFF the image config is decoded
 // (much cheaper — no full pixel decode). Called lazily by the frontend.
 func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
+	if err := a.checkServable(nasPath); err != nil {
+		return AtlasFrameSize{}, err
+	}
 	if indexer.IsRasterFile(nasPath) {
 		f, err := os.Open(nasPath)
 		if err != nil {

@@ -64,6 +64,11 @@ export class Prefs {
      */
     "uiState": string;
 
+    /**
+     * SnapshotEnabled: publish a library snapshot for the server viewer.
+     */
+    "snapshotEnabled": boolean;
+
     /** Creates a new Prefs instance. */
     constructor($$source: Partial<Prefs> = {}) {
         if (!("rootFolder" in $$source)) {
@@ -98,6 +103,9 @@ export class Prefs {
         }
         if (!("uiState" in $$source)) {
             this["uiState"] = "";
+        }
+        if (!("snapshotEnabled" in $$source)) {
+            this["snapshotEnabled"] = false;
         }
 
         Object.assign(this, $$source);

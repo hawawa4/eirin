@@ -7,6 +7,8 @@
   import AppearanceSection from "./settings/AppearanceSection.svelte";
   import DatabaseSection from "./settings/DatabaseSection.svelte";
   import ApiServerSection from "./settings/ApiServerSection.svelte";
+  import SnapshotPublishSection from "./settings/SnapshotPublishSection.svelte";
+  import SnapshotStatusSection from "./settings/SnapshotStatusSection.svelte";
 
   interface Props {
     rootFolder: string;
@@ -35,37 +37,35 @@
   }: Props = $props();
 
   let desktopMode = $derived(appInfo.capabilities.desktopMode);
+  let readOnly = $derived(appInfo.capabilities.readOnly);
 </script>
 
 <div class="settings-view">
   <div class="settings-body">
-    <RootFolderSection
-      {rootFolder}
-      {desktopMode}
-      {indexRunning}
-      {onselectfolder}
-      onscan={() => onbuildindex()}
-      onrescanall={() => onrebuildindex()}
-      onreveal={desktopMode ? (p) => openFolder(p) : undefined}
-    />
-
-    {#if !desktopMode}
-      <section class="card">
-        <h2 class="section-title">Server Mode</h2>
-        <p class="section-desc">
-          Eirin is running in headless server mode — read-only visualization only. Import, Siril
-          processing, and project management are only available in the desktop app.
-        </p>
-      </section>
+    {#if readOnly}
+      <SnapshotStatusSection />
+    {:else}
+      <RootFolderSection
+        {rootFolder}
+        {desktopMode}
+        {indexRunning}
+        {onselectfolder}
+        onscan={() => onbuildindex()}
+        onrescanall={() => onrebuildindex()}
+        onreveal={desktopMode ? (p) => openFolder(p) : undefined}
+      />
     {/if}
 
     {#if desktopMode}
       <ProjectsFolderSection {projectsFolder} {onprojectsfolderset} />
       <SirilSection {onsirilchange} />
+      <SnapshotPublishSection />
     {/if}
 
     <AppearanceSection />
-    <DatabaseSection dbPath={appInfo.dbPath} {desktopMode} />
+    {#if !readOnly}
+      <DatabaseSection dbPath={appInfo.dbPath} {desktopMode} />
+    {/if}
     <ApiServerSection {appInfo} />
   </div>
 </div>

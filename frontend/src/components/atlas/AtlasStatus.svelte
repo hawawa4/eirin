@@ -9,9 +9,21 @@
     onretry: () => void;
     onshowall: () => void;
     onscan?: () => void;
+    /** Read-only server viewer: nothing to scan, the desktop app publishes the library. */
+    readOnly?: boolean;
   }
 
-  let { rootPath, loading, error, indexed, visible, onretry, onshowall, onscan }: Props = $props();
+  let {
+    rootPath,
+    loading,
+    error,
+    indexed,
+    visible,
+    onretry,
+    onshowall,
+    onscan,
+    readOnly = false,
+  }: Props = $props();
 </script>
 
 {#if loading}
@@ -46,11 +58,18 @@
     <div class="status-card">
       <div class="icon" aria-hidden="true">◎</div>
       <p class="title">No frames with sky coordinates yet</p>
-      <p class="detail">
-        The atlas shows stacked and processed frames whose FITS headers contain WCS (plate-solve)
-        coordinates. Scan your library to pick them up — frames without coordinates can be
-        plate-solved with <strong>Analyze</strong> in the Library.
-      </p>
+      {#if readOnly}
+        <p class="detail">
+          The atlas shows the plate-solved images from the library the desktop app publishes. Once
+          it has published a snapshot with some, they'll appear here.
+        </p>
+      {:else}
+        <p class="detail">
+          The atlas shows stacked and processed frames whose FITS headers contain WCS (plate-solve)
+          coordinates. Scan your library to pick them up — frames without coordinates can be
+          plate-solved with <strong>Analyze</strong> in the Library.
+        </p>
+      {/if}
       {#if onscan}
         <div class="actions">
           <button class="btn primary" onclick={onscan}>Scan library</button>

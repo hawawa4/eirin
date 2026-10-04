@@ -7,7 +7,7 @@ func TestNewApp(t *testing.T) {
 	if a == nil {
 		t.Fatal("NewApp() returned nil")
 	}
-	if a.store != nil {
+	if a.store() != nil {
 		t.Error("prefs should be nil before Startup")
 	}
 	if a.wails != nil {

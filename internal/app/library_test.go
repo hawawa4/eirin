@@ -27,9 +27,10 @@ func TestDerefInt64(t *testing.T) {
 }
 
 func TestSetFrameTypeValidTypes(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	path := "/nas/root/output.fits"
-	a.store.UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked})
+	a.store().UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked})
 
 	for _, ft := range []string{
 		store.FrameTypeLight, store.FrameTypeDark, store.FrameTypeFlat,
@@ -42,16 +43,17 @@ func TestSetFrameTypeValidTypes(t *testing.T) {
 }
 
 func TestSetFrameTypeInvalidIsNoop(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	path := "/nas/root/output.fits"
-	a.store.UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked})
+	a.store().UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked})
 
 	// Invalid type is silently ignored (returns nil).
 	if err := a.SetFrameType(path, "unknown_type"); err != nil {
 		t.Errorf("SetFrameType(invalid) should return nil, got: %v", err)
 	}
 	// Frame type should be unchanged.
-	frames, _ := a.store.GetFrames([]string{path})
+	frames, _ := a.store().GetFrames([]string{path})
 	if frames[path].FrameType != store.FrameTypeStacked {
 		t.Errorf("FrameType changed after invalid SetFrameType: %q", frames[path].FrameType)
 	}

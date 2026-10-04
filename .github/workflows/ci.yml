@@ -52,3 +52,7 @@ jobs:
 
       - name: Test
         run: just test
+
+      # The headless viewer (-tags server) compiles different files and must stay read-only
+      - name: Test (server build)
+        run: just test-server

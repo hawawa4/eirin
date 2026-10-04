@@ -48,8 +48,8 @@ func TestGetAppInfoCustomPort(t *testing.T) {
 func TestGetAppInfoDBPathMatchesStore(t *testing.T) {
 	a := newTestApp(t)
 	info := a.GetAppInfo()
-	if info.DBPath != a.store.DBPath() {
+	if info.DBPath != a.store().DBPath() {
 		t.Errorf("AppInfo.DBPath = %q, store.DBPath() = %q — should match",
-			info.DBPath, a.store.DBPath())
+			info.DBPath, a.store().DBPath())
 	}
 }

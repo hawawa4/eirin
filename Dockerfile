@@ -1,6 +1,9 @@
-# Headless/server build for Docker deployment — read-only visualization only
-# (library browse, FITS preview, sky atlas, storage stats). No import, no
-# Siril processing, no project management: those require the desktop app.
+# Headless/server build for Docker deployment: a read-only viewer of the final
+# images (stacked/processed/raster) and the Sky Atlas. It reads the library
+# snapshot the desktop app publishes to <library>/.eirin/library.db (enable it
+# in the desktop app's Settings → Server viewer) and never writes to the
+# library. Mount the library at EIRIN_ROOT (read-only is fine) and /data for
+# the server's local copy of the snapshot.
 
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
@@ -27,6 +30,9 @@ COPY --from=backend-builder /out/eirin-server /usr/local/bin/eirin-server
 ENV WAILS_SERVER_HOST=0.0.0.0
 ENV WAILS_SERVER_PORT=8080
 ENV EIRIN_PORT=7070
+ENV EIRIN_ROOT=/library
+ENV EIRIN_DB_PATH=/data/library.db
+VOLUME /data
 EXPOSE 8080 7070
 
 ENTRYPOINT ["eirin-server"]

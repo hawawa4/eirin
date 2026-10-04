@@ -115,3 +115,25 @@ func TestUIStatePref(t *testing.T) {
 		t.Errorf("UIState = %q, want %q", p.UIState, blob)
 	}
 }
+
+func TestGetRawPref(t *testing.T) {
+	s := newTestStore(t)
+	if _, ok := s.Get("custom_key"); ok {
+		t.Error("Get on a missing key reported ok")
+	}
+	must(t, s.Set("custom_key", "v"))
+	if v, ok := s.Get("custom_key"); !ok || v != "v" {
+		t.Errorf("Get = %q, %v, want \"v\", true", v, ok)
+	}
+}
+
+func TestSnapshotEnabledPref(t *testing.T) {
+	s := newTestStore(t)
+	if s.Load().SnapshotEnabled {
+		t.Error("SnapshotEnabled defaults to true, want false")
+	}
+	must(t, s.Set(KeySnapshotEnabled, "true"))
+	if !s.Load().SnapshotEnabled {
+		t.Error("SnapshotEnabled = false after setting it")
+	}
+}

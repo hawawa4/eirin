@@ -81,7 +81,27 @@ Not yet published. Build from source (see [Development](#development) below).
 
 ### Headless (Docker)
 
-A read-only server build (library browsing, FITS preview, sky atlas, storage stats; no import, projects or Siril) is published to `ghcr.io/hawawa4/eirin-server` on tagged releases. See [Headless/server mode](#headlessserver-mode).
+A read-only viewer for your finished images and the Sky Atlas, for running on another machine (e.g. next to the NAS), is published to `ghcr.io/hawawa4/eirin-server` on tagged releases. All the work still happens in the desktop app; the server shows what it publishes.
+
+1. In the desktop app, turn on **Settings → Server viewer**. It writes a snapshot of your library to `<library>/.eirin/library.db`.
+2. Run the server with the library mounted at `/library`, e.g. with Docker Compose:
+
+```yaml
+services:
+  eirin-server:
+    image: ghcr.io/hawawa4/eirin-server:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # web UI
+      - "7070:7070"   # REST API (/api/status, /api/frames, /api/image); optional
+    volumes:
+      - /mnt/nas/Astro:/library:ro   # your library; the path inside doesn't need to match the desktop's
+      - ./eirin-data:/data           # the server's local copy of the snapshot
+```
+
+3. Open `http://<server>:8080`. New snapshots are picked up automatically within a minute.
+
+There's no login or TLS in the container; put it behind your own reverse proxy if you expose it. More details in [Headless/server mode](#headlessserver-mode).
 
 ## Development
 
@@ -127,6 +147,7 @@ Other useful build recipes:
 - `just build-backend`: Go backend only, no frontend/Wails packaging (`go build ./`)
 - `just build-frontend`: Svelte frontend only (`npm run build` in `frontend/`)
 - `just build-server`: headless server binary for Docker (`eirin-server`, see [Headless/server mode](#headlessserver-mode) below)
+- `just test` / `just test-server`: Go unit tests for the desktop and the headless server build
 - `just check`: type-check only (`go build ./...` + `svelte-check`/`tsc`), no binaries produced
 - `just lint` / `just format`: staticcheck + ESLint/Prettier
 
@@ -173,14 +194,23 @@ Due to the `wails` architecture, Eirin will start a webserver on a local port. I
 
 ### Headless/server mode
 
-`just build-server` builds a `-tags server` binary intended for headless Docker deployment: read-only visualization (library browse, FITS preview, sky atlas, storage stats) with no import, no Siril processing, and no project management. Those require the desktop app.
+`just build-server` builds a `-tags server` binary for headless Docker deployment (run `just build-frontend` first; the binary embeds `frontend/dist`). It's a **read-only viewer**: the stacked, processed and raster images in your library, one at a time, plus the Sky Atlas. No import, culling, Siril processing, projects, storage stats or file browsing, and nothing it can write: every write method returns an error in this build, and it only serves files that are in its library.
 
-Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases:
-```
-docker run -p 8080:8080 -p 7070:7070 -v /path/to/nas:/mnt/nas -v /path/to/prefs.db:/root/.config/eirin/prefs.db ghcr.io/hawawa4/eirin-server:latest
-```
+It doesn't share the desktop's database. Instead:
 
-Note the root folder path and everything else is stored in the prefs SQLite DB (no env var or flag sets it directly). The DB is written by the desktop app's folder picker, so mount a `prefs.db` that already has `RootFolder` pointed at wherever you mount the NAS inside the container (or override the DB location with `EIRIN_DB_PATH`). There's currently no way to configure a from-scratch headless container without running the desktop app once first.
+1. In the desktop app, turn on **Settings → Server viewer**. The app then writes a copy of its library database to `<library>/.eirin/library.db`, a couple of minutes after changes and when it closes.
+2. The server watches that file (once a minute), copies it locally, rewrites the paths to where the library is mounted on the server (`EIRIN_ROOT`), keeps only the final images, and swaps it in. Open browser tabs refresh by themselves.
+
+Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases; see [Headless (Docker)](#headless-docker) for a compose example. Configuration:
+
+| Variable | Default (in the image) | |
+|---|---|---|
+| `EIRIN_ROOT` | `/library` | Where the library is mounted. Required. |
+| `EIRIN_DB_PATH` | `/data/library.db` | The server's local copy of the snapshot. Disposable: it's rebuilt from the next snapshot. |
+| `WAILS_SERVER_PORT` | `8080` | Web UI port. |
+| `EIRIN_PORT` | `7070` | REST API port. |
+
+The viewer has no login. Theme and layout preferences are kept per browser.
 
 To build the image locally instead: `docker build -t eirin-server .` (`just docker-build` uses buildx's `local` output instead, extracting the static `eirin-server` binary to `./dist/` rather than producing a runnable image).
 

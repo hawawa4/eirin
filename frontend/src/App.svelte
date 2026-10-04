@@ -1,13 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import {
-    SelectRootFolder,
-    LoadPrefs,
-    SetPref,
-    GetAppInfo,
-    CheckSiril,
-    GetProjectsFolder,
-  } from "$app";
+  import { SelectRootFolder, GetAppInfo, CheckSiril, GetProjectsFolder } from "$app";
   import {
     DEFAULT_COLUMNS,
     DEFAULT_LIBRARY_COLUMNS,
@@ -21,6 +14,7 @@
   import AppHeader from "./components/AppHeader.svelte";
   import IndexProgressBar from "./components/IndexProgressBar.svelte";
   import LibraryView from "./components/LibraryView.svelte";
+  import ViewerLibrary from "./components/viewer/ViewerLibrary.svelte";
   import ImportView from "./components/ImportView.svelte";
   import ProjectsView from "./components/ProjectsView.svelte";
   import SettingsView from "./components/SettingsView.svelte";
@@ -32,8 +26,9 @@
   import { installUiScaleShortcuts } from "./lib/uiScale.svelte";
   import { loadPreviewPrefs } from "./lib/previewPrefs.svelte";
   import { toast } from "./lib/toast.svelte";
+  import { loadPrefs, savePref, usePrefsLocally } from "./lib/prefs";
   import { indexer, type IndexOutcome, type StartOptions } from "./lib/shell/indexing.svelte";
-  import { DEFAULT_MODE, MODES } from "./lib/shell/modes";
+  import { DEFAULT_MODE, MODES, visibleModes } from "./lib/shell/modes";
 
   const PREF_ROOT_FOLDER = "root_folder";
   const PREF_COLUMN_CONFIG = "column_config";
@@ -60,14 +55,17 @@
   let libraryColumns = $state<ColumnDef[]>(DEFAULT_LIBRARY_COLUMNS.map((c) => ({ ...c })));
 
   // ── App info (DB path, server URL) ────────────────────────────────────────
+  // Starts out read-only so a server visitor never sees desktop controls
+  // before GetAppInfo answers; views only mount once the prefs have loaded.
   let appInfo = $state<AppInfo>({
     dbPath: "",
     serverPort: 7070,
     serverUrl: "",
     portSource: "",
-    capabilities: { desktopMode: true },
+    capabilities: { desktopMode: false, readOnly: true },
   });
   let desktopMode = $derived(appInfo.capabilities.desktopMode);
+  let readOnly = $derived(appInfo.capabilities.readOnly);
 
   // ── Siril ─────────────────────────────────────────────────────────────────
   let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
@@ -85,10 +83,11 @@
   );
   let projectsView = $state<{ selectProjectById: (id: number) => void } | null>(null);
   let browseView = $state<{ reload: () => void } | null>(null);
+  let skyAtlas = $state<{ focusFrame: (nasPath: string) => void } | null>(null);
 
-  // ── Server mode guard — Import/Projects are desktop-only ─────────────────
+  // ── Read-only viewer guard — only the viewer's tabs ───────────────────────
   $effect(() => {
-    if (!desktopMode && (appMode === "import" || appMode === "projects")) setMode("library");
+    if (readOnly && !visibleModes(true).some((m) => m.value === appMode)) setMode("library");
   });
 
   onMount(() => installUiScaleShortcuts());
@@ -98,15 +97,21 @@
   onMount(() => indexer.listen(onIndexFinished));
 
   onMount(async () => {
-    const [p, info, siril, pf] = await Promise.all([
-      LoadPrefs(),
-      GetAppInfo(),
-      CheckSiril(),
-      GetProjectsFolder(),
-    ]);
-    appInfo = info;
-    sirilInfo = siril;
-    projectsFolder = pf;
+    let p;
+    try {
+      const info = await GetAppInfo();
+      appInfo = info;
+      usePrefsLocally(info.capabilities.readOnly);
+      p = await loadPrefs();
+    } catch (e) {
+      toast.error(`Couldn't load settings: ${String(e)}`);
+      return;
+    }
+    if (desktopMode) {
+      const [siril, pf] = await Promise.allSettled([CheckSiril(), GetProjectsFolder()]);
+      if (siril.status === "fulfilled") sirilInfo = siril.value;
+      if (pf.status === "fulfilled") projectsFolder = pf.value;
+    }
 
     loadPreviewPrefs(p);
     if (p.theme === "red" || p.theme === "grey") theme = p.theme;
@@ -123,7 +128,7 @@
     } else {
       document.documentElement.setAttribute("data-theme", theme);
     }
-    if (prefsLoaded) SetPref(PREF_THEME, theme);
+    if (prefsLoaded) savePref(PREF_THEME, theme);
   });
 
   function mergeColumns(defaults: ColumnDef[], json: string | undefined): ColumnDef[] {
@@ -142,11 +147,11 @@
   }
 
   function saveColumnConfig() {
-    if (prefsLoaded) SetPref(PREF_COLUMN_CONFIG, JSON.stringify(columns));
+    if (prefsLoaded) savePref(PREF_COLUMN_CONFIG, JSON.stringify(columns));
   }
 
   function saveLibraryColumnConfig() {
-    if (prefsLoaded) SetPref(PREF_LIBRARY_COLUMN_CONFIG, JSON.stringify(libraryColumns));
+    if (prefsLoaded) savePref(PREF_LIBRARY_COLUMN_CONFIG, JSON.stringify(libraryColumns));
   }
 
   // ── Library scan (index) ──────────────────────────────────────────────────
@@ -187,7 +192,7 @@
     }
     if (!path || path === rootFolder) return;
     rootFolder = path;
-    if (prefsLoaded) SetPref(PREF_ROOT_FOLDER, path);
+    if (prefsLoaded) savePref(PREF_ROOT_FOLDER, path);
     // Pick up whatever is already in the new root; supersedes a scan of the old one.
     startScan({ ifRunning: "supersede" });
   }
@@ -197,6 +202,12 @@
     setMode("library");
     await tick();
     libraryView?.focusFile(nasPath);
+  }
+
+  async function showOnAtlas(nasPath: string) {
+    setMode("atlas");
+    await tick();
+    skyAtlas?.focusFrame(nasPath);
   }
 
   async function openProject(project: Project) {
@@ -211,7 +222,7 @@
     {rootFolder}
     {appMode}
     {theme}
-    {desktopMode}
+    {readOnly}
     onmodechange={setMode}
     onthemechange={(t) => {
       theme = t;
@@ -233,8 +244,8 @@
           <button class="btn-primary btn-large" onclick={selectFolder}>Select Root Folder</button>
         {:else}
           <p class="empty-sub">
-            No root folder is configured on this server. It's read from the preferences database —
-            set it once with the desktop app.
+            No library folder is configured on this server. Set <code>EIRIN_ROOT</code> to where the library
+            is mounted.
           </p>
         {/if}
       </div>
@@ -245,17 +256,26 @@
       {#key rootFolder}
         {#if visited.library}
           <div class="view" class:hidden={appMode !== "library"}>
-            <LibraryView
-              bind:this={libraryView}
-              {rootFolder}
-              columns={libraryColumns}
-              {sirilAvailable}
-              active={appMode === "library"}
-              indexRunning={indexer.running}
-              onscan={() => startScan()}
-              onsavecolumns={saveLibraryColumnConfig}
-              oncreateproject={openProject}
-            />
+            {#if readOnly}
+              <ViewerLibrary
+                bind:this={libraryView}
+                {rootFolder}
+                active={appMode === "library"}
+                onshowonatlas={showOnAtlas}
+              />
+            {:else}
+              <LibraryView
+                bind:this={libraryView}
+                {rootFolder}
+                columns={libraryColumns}
+                {sirilAvailable}
+                active={appMode === "library"}
+                indexRunning={indexer.running}
+                onscan={() => startScan()}
+                onsavecolumns={saveLibraryColumnConfig}
+                oncreateproject={openProject}
+              />
+            {/if}
           </div>
         {/if}
 
@@ -286,16 +306,18 @@
         {#if visited.atlas}
           <div class="view" class:hidden={appMode !== "atlas"}>
             <SkyAtlas
+              bind:this={skyAtlas}
               rootPath={rootFolder}
               active={appMode === "atlas"}
               {theme}
-              onscan={() => startScan()}
+              {readOnly}
+              onscan={readOnly ? undefined : () => startScan()}
               onframeopen={openInLibrary}
             />
           </div>
         {/if}
 
-        {#if visited.storage}
+        {#if !readOnly && visited.storage}
           <div class="view" class:hidden={appMode !== "storage"}>
             <StorageView
               rootPath={rootFolder}
@@ -305,7 +327,7 @@
           </div>
         {/if}
 
-        {#if visited.browser}
+        {#if !readOnly && visited.browser}
           <div class="view" class:hidden={appMode !== "browser"}>
             <BrowseView
               bind:this={browseView}
