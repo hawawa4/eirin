@@ -119,6 +119,12 @@ func (s *Store) Set(key, value string) error {
 	return err
 }
 
+// Get returns the raw value stored under key, and whether it exists. For keys
+// outside the typed Prefs struct (e.g. snapshot metadata).
+func (s *Store) Get(key string) (string, bool) {
+	return s.getString(key)
+}
+
 func (s *Store) getString(key string) (string, bool) {
 	query, args, err := s.qb.
 		Select("value").
