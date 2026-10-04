@@ -227,6 +227,38 @@ export class RawPreviewData {
     }
 }
 
+/**
+ * RenderedPreview is a preview image ready to show, with its pixel size.
+ */
+export class RenderedPreview {
+    "dataUrl": string;
+    "width": number;
+    "height": number;
+
+    /** Creates a new RenderedPreview instance. */
+    constructor($$source: Partial<RenderedPreview> = {}) {
+        if (!("dataUrl" in $$source)) {
+            this["dataUrl"] = "";
+        }
+        if (!("width" in $$source)) {
+            this["width"] = 0;
+        }
+        if (!("height" in $$source)) {
+            this["height"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RenderedPreview instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RenderedPreview {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RenderedPreview($$parsedSource as Partial<RenderedPreview>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = ChannelStats.createFrom;

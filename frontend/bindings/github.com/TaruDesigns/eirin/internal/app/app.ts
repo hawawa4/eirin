@@ -192,8 +192,8 @@ export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
 
 /**
  * GetAtlasFrameSize reads pixel dimensions for any supported file type.
- * For FITS files the header is parsed; for PNG/TIFF the image config is decoded
- * (much cheaper — no full pixel decode). Called lazily by the frontend.
+ * For FITS files the header is parsed; for PNG/JPEG/TIFF just the image size
+ * is read (much cheaper — no full pixel decode). Called lazily by the frontend.
  */
 export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
     return $Call.ByID(2946490455, nasPath).then(($result: any) => {
@@ -343,6 +343,19 @@ export function GetStorageStats(rootPath: string): $CancellablePromise<$models.S
 }
 
 /**
+ * GetViewerPreview renders a preview on the server for the read-only viewer,
+ * which reaches the backend over the network: a JPEG of at most
+ * viewerPreviewSize pixels (~1 MB) instead of the raw float pixels or the
+ * original file (tens of MB). FITS files are stretched at stretchLevel
+ * (0=linear … 3=strong); raster images are shown as they are.
+ */
+export function GetViewerPreview(path: string, stretchLevel: number): $CancellablePromise<fits$0.RenderedPreview> {
+    return $Call.ByID(2068264024, path, stretchLevel).then(($result: any) => {
+        return $$createType22($result);
+    });
+}
+
+/**
  * HardDeleteFile permanently removes a file from disk and cleans up its frame record.
  */
 export function HardDeleteFile(path: string): $CancellablePromise<void> {
@@ -363,13 +376,13 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
     return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType23($result);
     });
 }
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(3367487933, path).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType25($result);
     });
 }
 
@@ -380,7 +393,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(483950001, path).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType27($result);
     });
 }
 
@@ -389,7 +402,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(2159218332).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType28($result);
     });
 }
 
@@ -398,13 +411,14 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(2572957756).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType29($result);
     });
 }
 
 /**
- * LoadRasterImage reads a PNG file from disk and returns it as a base64-encoded
- * PNG data URL. The file must be under the configured NAS root.
+ * LoadRasterImage returns a PNG, JPEG or TIFF file as a data URL a browser
+ * can display (TIFF is converted to PNG). The file must be under the
+ * configured NAS root.
  */
 export function LoadRasterImage(path: string): $CancellablePromise<string> {
     return $Call.ByID(1706285520, path);
@@ -442,7 +456,7 @@ export function PublishSnapshot(): $CancellablePromise<void> {
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(3225654599, path).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType31($result);
     });
 }
 
@@ -488,7 +502,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(3873197428, sourceFolder, extensions).then(($result: any) => {
-        return $$createType32($result);
+        return $$createType33($result);
     });
 }
 
@@ -571,7 +585,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(1563214480, rootPath, threshold).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType35($result);
     });
 }
 
@@ -613,16 +627,17 @@ const $$createType18 = $Create.Array($Create.Any);
 const $$createType19 = $models.ProjectOutputFile.createFrom;
 const $$createType20 = $Create.Array($$createType19);
 const $$createType21 = $models.SnapshotStatus.createFrom;
-const $$createType22 = $models.ImportOutputsResult.createFrom;
-const $$createType23 = $models.FileEntry.createFrom;
-const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = $models.EnrichedFileEntry.createFrom;
-const $$createType26 = $Create.Array($$createType25);
-const $$createType27 = $Create.Array($$createType2);
-const $$createType28 = store$0.Prefs.createFrom;
-const $$createType29 = fits$0.FITSHeader.createFrom;
-const $$createType30 = $Create.Nullable($$createType29);
-const $$createType31 = importer$0.Candidate.createFrom;
-const $$createType32 = $Create.Array($$createType31);
-const $$createType33 = $models.SuggestResult.createFrom;
-const $$createType34 = $Create.Array($$createType33);
+const $$createType22 = fits$0.RenderedPreview.createFrom;
+const $$createType23 = $models.ImportOutputsResult.createFrom;
+const $$createType24 = $models.FileEntry.createFrom;
+const $$createType25 = $Create.Array($$createType24);
+const $$createType26 = $models.EnrichedFileEntry.createFrom;
+const $$createType27 = $Create.Array($$createType26);
+const $$createType28 = $Create.Array($$createType2);
+const $$createType29 = store$0.Prefs.createFrom;
+const $$createType30 = fits$0.FITSHeader.createFrom;
+const $$createType31 = $Create.Nullable($$createType30);
+const $$createType32 = importer$0.Candidate.createFrom;
+const $$createType33 = $Create.Array($$createType32);
+const $$createType34 = $models.SuggestResult.createFrom;
+const $$createType35 = $Create.Array($$createType34);

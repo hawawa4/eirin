@@ -1,9 +1,7 @@
 package app
 
 import (
-	"encoding/base64"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -41,8 +39,13 @@ func (a *App) GeneratePreviewRawSized(path string, maxSize int) (fits.RawPreview
 	return fits.GeneratePreviewRaw(path, maxSize)
 }
 
-// LoadRasterImage reads a PNG file from disk and returns it as a base64-encoded
-// PNG data URL. The file must be under the configured NAS root.
+// viewerPreviewSize is the longest side of the server viewer's previews:
+// the same size the desktop renders FITS previews at.
+const viewerPreviewSize = 2048
+
+// LoadRasterImage returns a PNG, JPEG or TIFF file as a data URL a browser
+// can display (TIFF is converted to PNG). The file must be under the
+// configured NAS root.
 func (a *App) LoadRasterImage(path string) (string, error) {
 	if err := a.checkServable(path); err != nil {
 		return "", err
@@ -59,9 +62,20 @@ func (a *App) LoadRasterImage(path string) (string, error) {
 		return "", fmt.Errorf("path outside NAS root")
 	}
 
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return "", fmt.Errorf("read file: %w", err)
+	return fits.RasterDataURL(absPath)
+}
+
+// GetViewerPreview renders a preview on the server for the read-only viewer,
+// which reaches the backend over the network: a JPEG of at most
+// viewerPreviewSize pixels (~1 MB) instead of the raw float pixels or the
+// original file (tens of MB). FITS files are stretched at stretchLevel
+// (0=linear … 3=strong); raster images are shown as they are.
+func (a *App) GetViewerPreview(path string, stretchLevel int) (fits.RenderedPreview, error) {
+	if err := a.checkServable(path); err != nil {
+		return fits.RenderedPreview{}, err
 	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data), nil
+	if indexer.IsRasterFile(path) {
+		return a.previews.Raster(path, viewerPreviewSize)
+	}
+	return a.previews.Rendered(path, viewerPreviewSize, stretchLevel)
 }
