@@ -81,7 +81,27 @@ Not yet published. Build from source (see [Development](#development) below).
 
 ### Headless (Docker)
 
-A read-only viewer for your finished images and the Sky Atlas, for running on another machine (e.g. next to the NAS), is published to `ghcr.io/hawawa4/eirin-server` on tagged releases. All the work still happens in the desktop app; the server shows what it publishes. See [Headless/server mode](#headlessserver-mode).
+A read-only viewer for your finished images and the Sky Atlas, for running on another machine (e.g. next to the NAS), is published to `ghcr.io/hawawa4/eirin-server` on tagged releases. All the work still happens in the desktop app; the server shows what it publishes.
+
+1. In the desktop app, turn on **Settings → Server viewer**. It writes a snapshot of your library to `<library>/.eirin/library.db`.
+2. Run the server with the library mounted at `/library`, e.g. with Docker Compose:
+
+```yaml
+services:
+  eirin-server:
+    image: ghcr.io/hawawa4/eirin-server:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # web UI
+      - "7070:7070"   # REST API (/api/status, /api/frames, /api/image); optional
+    volumes:
+      - /mnt/nas/Astro:/library:ro   # your library; the path inside doesn't need to match the desktop's
+      - ./eirin-data:/data           # the server's local copy of the snapshot
+```
+
+3. Open `http://<server>:8080`. New snapshots are picked up automatically within a minute.
+
+There's no login or TLS in the container; put it behind your own reverse proxy if you expose it. More details in [Headless/server mode](#headlessserver-mode).
 
 ## Development
 
@@ -181,20 +201,7 @@ It doesn't share the desktop's database. Instead:
 1. In the desktop app, turn on **Settings → Server viewer**. The app then writes a copy of its library database to `<library>/.eirin/library.db`, a couple of minutes after changes and when it closes.
 2. The server watches that file (once a minute), copies it locally, rewrites the paths to where the library is mounted on the server (`EIRIN_ROOT`), keeps only the final images, and swaps it in. Open browser tabs refresh by themselves.
 
-Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases:
-
-```yaml
-services:
-  eirin-server:
-    image: ghcr.io/hawawa4/eirin-server:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"   # web UI
-      - "7070:7070"   # REST API (/api/status, /api/frames, /api/image); optional
-    volumes:
-      - /mnt/nas/Astro:/library:ro   # your library; the path inside doesn't need to match the desktop's
-      - ./eirin-data:/data           # the server's local copy of the snapshot
-```
+Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases; see [Headless (Docker)](#headless-docker) for a compose example. Configuration:
 
 | Variable | Default (in the image) | |
 |---|---|---|
