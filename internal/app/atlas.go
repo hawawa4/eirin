@@ -1,9 +1,6 @@
 package app
 
 import (
-	"fmt"
-	"image"
-	"os"
 	"path/filepath"
 
 	"log/slog"
@@ -88,23 +85,18 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 }
 
 // GetAtlasFrameSize reads pixel dimensions for any supported file type.
-// For FITS files the header is parsed; for PNG/TIFF the image config is decoded
-// (much cheaper — no full pixel decode). Called lazily by the frontend.
+// For FITS files the header is parsed; for PNG/JPEG/TIFF just the image size
+// is read (much cheaper — no full pixel decode). Called lazily by the frontend.
 func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
 	if err := a.checkServable(nasPath); err != nil {
 		return AtlasFrameSize{}, err
 	}
 	if indexer.IsRasterFile(nasPath) {
-		f, err := os.Open(nasPath)
+		w, h, err := fits.RasterSize(nasPath)
 		if err != nil {
 			return AtlasFrameSize{}, err
 		}
-		defer f.Close()
-		cfg, _, err := image.DecodeConfig(f)
-		if err != nil {
-			return AtlasFrameSize{}, fmt.Errorf("decode config: %w", err)
-		}
-		return AtlasFrameSize{Width: cfg.Width, Height: cfg.Height}, nil
+		return AtlasFrameSize{Width: w, Height: h}, nil
 	}
 	hdr, err := fits.ReadFITSHeader(nasPath)
 	if err != nil {

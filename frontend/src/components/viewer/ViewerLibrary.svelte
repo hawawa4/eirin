@@ -236,6 +236,7 @@
         onnext={nextPath ? () => select(nextPath) : undefined}
         onshowonatlas={onAtlas && onshowonatlas ? () => onshowonatlas(selected.nasPath) : undefined}
         prefetch={nextPath}
+        serverRendered
       />
     {/if}
   {/snippet}

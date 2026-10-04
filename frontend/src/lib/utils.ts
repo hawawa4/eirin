@@ -6,6 +6,14 @@ export function isFits(name: string): boolean {
   return l.endsWith(".fits") || l.endsWith(".fit");
 }
 
+const RASTER_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tif", ".tiff"];
+
+/** PNG/JPEG/TIFF images, shown through LoadRasterImage (matches indexer.IsRasterFile). */
+export function isRasterFile(path: string): boolean {
+  const l = path.toLowerCase();
+  return RASTER_EXTENSIONS.some((ext) => l.endsWith(ext));
+}
+
 export function truncatePath(path: string, maxLen = 60): string {
   if (path.length <= maxLen) return path;
   const parts = path.split("/");

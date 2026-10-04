@@ -45,6 +45,7 @@ func TestServerRefusesPathsOutsideLibrary(t *testing.T) {
 		"GeneratePreviewRawSized": func() error { _, err := a.GeneratePreviewRawSized(other, 0); return err },
 		"LoadRasterImage":         func() error { _, err := a.LoadRasterImage(other); return err },
 		"GetAtlasFrameSize":       func() error { _, err := a.GetAtlasFrameSize(other); return err },
+		"GetViewerPreview":        func() error { _, err := a.GetViewerPreview(other, 2); return err },
 		"ListDirectory":           func() error { _, err := a.ListDirectory(dir); return err },
 		"ListDirectoryEnriched":   func() error { _, err := a.ListDirectoryEnriched(dir); return err },
 	}

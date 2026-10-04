@@ -3,8 +3,8 @@
   import type * as app from "$models/app";
   import type * as fits from "$models/fits";
   import type * as catalog from "$models/catalog";
-  import { LoadRasterImage, GetAnnotations } from "$app";
-  import { basicRows, advancedRows, formatRA, formatDec } from "../lib/utils";
+  import { LoadRasterImage, GetAnnotations, ReadFITSHeader } from "$app";
+  import { basicRows, advancedRows, formatRA, formatDec, isRasterFile } from "../lib/utils";
   import { computeStretch } from "../lib/stretchPreview";
   import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
   import {
@@ -14,6 +14,7 @@
     type DecodedPreview,
     type HistBins,
   } from "../lib/library/previewCache";
+  import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
 
   interface Props {
     entry: app.EnrichedFileEntry;
@@ -32,6 +33,11 @@
     blinkTitle?: string;
     /** Path of the frame likely to be shown next; warmed into the preview cache. */
     prefetch?: string | null;
+    /**
+     * Read-only server viewer: show JPEGs rendered by the server (GetViewerPreview)
+     * instead of loading raw pixels, which are tens of MB per frame over the network.
+     */
+    serverRendered?: boolean;
   }
 
   let {
@@ -48,17 +54,16 @@
     onshowonatlas,
     blinkTitle = "Blink (b)",
     prefetch = null,
+    serverRendered = false,
   }: Props = $props();
 
   let isRejected = $derived(qualityFrame?.isRejected ?? entry.isRejected);
 
-  function isRasterFile(path: string): boolean {
-    return path.toLowerCase().endsWith(".png");
-  }
-
   // Primitive derived: a new entry object for the same file must not retrigger loading.
   let entryPath = $derived(entry.path);
   let isRaster = $derived(isRasterFile(entryPath));
+  /** Shown as an <img> (raster files, and every frame when server-rendered). */
+  let showAsImage = $derived(isRaster || serverRendered);
 
   let isProcessed = $derived(qualityFrame?.frameType === "processed");
 
@@ -97,6 +102,8 @@
   let previewReqId = 0;
   let hasImage = $state(false);
   let rasterDataUrl = $state("");
+  /** Pixel size of a server-rendered FITS preview (the raw preview's size; used for labels). */
+  let serverSize = $state<{ width: number; height: number } | null>(null);
 
   // ── Zoom / pan ────────────────────────────────────────────────────────────
   let zoom = $state(1);
@@ -134,6 +141,8 @@
     stats: fits.ChannelStats[];
     balance: number[];
   } | null>(null);
+  /** Size the annotation labels are positioned against. */
+  let imageSize = $derived(rawInfo ?? serverSize);
 
   let displayCanvas: HTMLCanvasElement;
   let ctx2d: CanvasRenderingContext2D | null = null;
@@ -383,6 +392,7 @@ void main() {
     previewError = "";
     fitsHeader = null;
     rawInfo = null;
+    serverSize = null;
     hasImage = false;
     rasterDataUrl = "";
     histBins = null;
@@ -391,6 +401,20 @@ void main() {
     resetView();
 
     const id = ++previewReqId;
+
+    if (serverRendered) {
+      if (!isRasterFile(path)) {
+        ReadFITSHeader(path)
+          .then((h) => {
+            if (id === previewReqId) fitsHeader = h;
+          })
+          .catch(() => {
+            /* the header panel just stays empty */
+          });
+      }
+      loadServerImage(path, id);
+      return;
+    }
 
     if (isRasterFile(path)) {
       previewLoading = true;
@@ -432,6 +456,31 @@ void main() {
     }, LOAD_DELAY_MS);
   }
 
+  /** Stretch level for a server-rendered preview: processed frames and raster images as they are. */
+  function serverLevel(path: string, processed: boolean): number {
+    if (isRasterFile(path) || processed || !pp.stretchEnabled) return 0;
+    return pp.stretchLevel;
+  }
+
+  /** Loads (or re-stretches) the server-rendered preview; the current image stays up meanwhile. */
+  function loadServerImage(path: string, id: number) {
+    previewLoading = true;
+    previewError = "";
+    loadViewerPreview(path, serverLevel(path, isProcessed))
+      .then((p) => {
+        if (id !== previewReqId) return;
+        rasterDataUrl = p.dataUrl;
+        serverSize = isRasterFile(path) ? null : { width: p.width, height: p.height };
+        hasImage = true;
+        previewLoading = false;
+      })
+      .catch((err: unknown) => {
+        if (id !== previewReqId) return;
+        previewError = (err instanceof Error ? err.message : String(err)) || "Preview failed";
+        previewLoading = false;
+      });
+  }
+
   function showPreview(p: DecodedPreview, id: number) {
     previewLoading = false;
     fitsHeader = p.header;
@@ -461,7 +510,14 @@ void main() {
   // Warm the cache for the likely-next frame once the current one is on screen.
   $effect(() => {
     const next = prefetch;
-    if (!next || previewLoading || next === entryPath || isRasterFile(next)) return;
+    if (!next || previewLoading || next === entryPath) return;
+    if (serverRendered) {
+      // The next frame's type isn't known here; assume it's stretched like this one.
+      const level = serverLevel(next, false);
+      const t = setTimeout(() => prefetchViewerPreview(next, level), 120);
+      return () => clearTimeout(t);
+    }
+    if (isRasterFile(next)) return;
     const t = setTimeout(() => prefetchPreview(next), 120);
     return () => clearTimeout(t);
   });
@@ -474,6 +530,15 @@ void main() {
     void pp.stretchEnabled;
     void pp.stretchLevel;
     scheduleRender();
+  });
+  // Server-rendered FITS: a different stretch is a different image from the server.
+  $effect(() => {
+    void pp.stretchEnabled;
+    void pp.stretchLevel;
+    if (!serverRendered) return;
+    untrack(() => {
+      if (hasImage && !isRaster && !isProcessed) loadServerImage(entryPath, previewReqId);
+    });
   });
   function setStretch(l: number) {
     pp.stretchLevel = l;
@@ -589,13 +654,13 @@ void main() {
   const ANNOTATION_DELAY_MS = 150;
 
   $effect(() => {
-    if (!canAnnotate || !rawInfo) return;
+    if (!canAnnotate || !imageSize) return;
     const solved = !!qualityFrame?.wcsSolved;
     const ra = solved ? qualityFrame!.ra : (fitsHeader?.ra ?? 0);
     const dec = solved ? qualityFrame!.dec : (fitsHeader?.dec ?? 0);
     const scale = solved ? qualityFrame!.pixelScale : (fitsHeader?.pixelScale ?? 0);
     const rot = solved ? qualityFrame!.rotation : (fitsHeader?.rotation ?? 0);
-    const { width, height } = rawInfo;
+    const { width, height } = imageSize;
     // Cleanup runs when the frame or its WCS changes, so a late reply can't
     // land on the wrong frame.
     let stale = false;
@@ -615,12 +680,12 @@ void main() {
   });
 
   function imgToViewport(imgX: number, imgY: number): { x: number; y: number } {
-    if (!rawInfo || viewportW === 0 || viewportH === 0) return { x: -9999, y: -9999 };
-    const cssScale = Math.min(viewportW / rawInfo.width, viewportH / rawInfo.height, 1);
+    if (!imageSize || viewportW === 0 || viewportH === 0) return { x: -9999, y: -9999 };
+    const cssScale = Math.min(viewportW / imageSize.width, viewportH / imageSize.height, 1);
     const cx = viewportW / 2;
     const cy = viewportH / 2;
-    const dx = (imgX - rawInfo.width / 2) * cssScale;
-    const dy = (imgY - rawInfo.height / 2) * cssScale;
+    const dx = (imgX - imageSize.width / 2) * cssScale;
+    const dy = (imgY - imageSize.height / 2) * cssScale;
     return {
       x: cx + dx * zoom + panX,
       y: cy + dy * zoom + panY,
@@ -806,16 +871,16 @@ void main() {
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="image-viewport"
-    class:panning={isPanning && !isRaster}
+    class:panning={isPanning && !showAsImage}
     bind:this={viewportEl}
-    onwheel={isRaster ? undefined : onWheel}
-    onmousedown={isRaster ? undefined : onPanStart}
-    onmousemove={isRaster ? undefined : onPanMove}
-    onmouseup={isRaster ? undefined : onPanEnd}
-    onmouseleave={isRaster ? undefined : onPanEnd}
-    ondblclick={isRaster ? undefined : resetView}
+    onwheel={showAsImage ? undefined : onWheel}
+    onmousedown={showAsImage ? undefined : onPanStart}
+    onmousemove={showAsImage ? undefined : onPanMove}
+    onmouseup={showAsImage ? undefined : onPanEnd}
+    onmouseleave={showAsImage ? undefined : onPanEnd}
+    ondblclick={showAsImage ? undefined : resetView}
   >
-    {#if isRaster}
+    {#if showAsImage}
       <img
         src={rasterDataUrl}
         alt={entry.name}
@@ -833,7 +898,7 @@ void main() {
     {/if}
 
     <!-- Annotation overlay — absolute, viewport-space coordinates computed by imgToViewport() -->
-    {#if showAnnotations && annotations.length > 0 && rawInfo && viewportW > 0}
+    {#if showAnnotations && annotations.length > 0 && imageSize && viewportW > 0}
       <svg class="annotation-svg" width={viewportW} height={viewportH}>
         {#if annotationsApprox}
           <text x="8" y={viewportH - 8} font-size="12" fill="rgba(255,200,50,0.55)"

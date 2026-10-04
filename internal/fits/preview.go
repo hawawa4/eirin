@@ -108,9 +108,16 @@ func loadPreviewImage(path string, maxSize int) (previewImage, error) {
 // JPEG rather than PNG: ~4× faster to encode and ~5× smaller to send, which
 // matters when blinking; quality 90 is indistinguishable for culling.
 func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
+	p, err := RenderPreview(path, maxSize, stretchLevel)
+	return p.DataURL, err
+}
+
+// RenderPreview is GeneratePreview with the preview's pixel size, which is
+// the same as GeneratePreviewRaw's for the same maxSize.
+func RenderPreview(path string, maxSize, stretchLevel int) (RenderedPreview, error) {
 	pi, err := loadPreviewImage(path, maxSize)
 	if err != nil {
-		return "", err
+		return RenderedPreview{}, err
 	}
 	p := linkedStretch(pi.stats, pi.gains, stretchLevel)
 	w, h := pi.w, pi.h
@@ -145,9 +152,9 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, outImg, &jpeg.Options{Quality: previewJPEGQuality}); err != nil {
-		return "", fmt.Errorf("encode JPEG: %w", err)
+		return RenderedPreview{}, fmt.Errorf("encode JPEG: %w", err)
 	}
-	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+	return RenderedPreview{DataURL: dataURL("image/jpeg", buf.Bytes()), Width: w, Height: h}, nil
 }
 
 // GeneratePreviewRaw returns the normalised (unstretched) preview pixels plus

@@ -133,3 +133,26 @@ func TestGeneratePreviewJPEG(t *testing.T) {
 		t.Errorf("width = %d, want 16 (fitted to maxSize)", got)
 	}
 }
+
+func TestRenderPreviewMatchesRawSize(t *testing.T) {
+	path := writeBayerSky(t, 64, 48)
+	p, err := RenderPreview(path, 20, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := GeneratePreviewRaw(path, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Annotations are positioned from these sizes in both preview paths.
+	if p.Width != raw.Width || p.Height != raw.Height {
+		t.Errorf("RenderPreview size %dx%d, raw preview %dx%d", p.Width, p.Height, raw.Width, raw.Height)
+	}
+	url, err := GeneratePreview(path, 20, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url != p.DataURL {
+		t.Error("GeneratePreview and RenderPreview disagree")
+	}
+}

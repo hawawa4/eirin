@@ -6,14 +6,11 @@
 import type * as app from "$models/app";
 import { GeneratePreviewRawSized, LoadRasterImage } from "$app";
 import { renderStretched } from "../stretchPreview";
+import { isRasterFile } from "../utils";
 
 const PREVIEW_MAX_SIZE = 2048;
 /** Extra (non-overlaid) previews kept around for quick re-selection. */
 const SPARE_PREVIEWS = 4;
-
-function isRasterFile(path: string): boolean {
-  return path.toLowerCase().endsWith(".png");
-}
 
 function loadRaster(path: string): Promise<HTMLCanvasElement> {
   return LoadRasterImage(path).then(
