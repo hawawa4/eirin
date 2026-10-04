@@ -12,6 +12,9 @@ import (
 )
 
 func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {
+	if err := a.checkServable(path); err != nil {
+		return nil, err
+	}
 	return fits.ReadFITSHeader(path)
 }
 
@@ -19,6 +22,9 @@ func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {
 // 1024 px and cached in memory (Blink loops over the same frames).
 // stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong
 func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
+	if err := a.checkServable(path); err != nil {
+		return "", err
+	}
 	return a.previews.Preview(path, 1024, stretchLevel)
 }
 
@@ -26,6 +32,9 @@ func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 // per-channel statistics for CPU/GPU-based MTF rendering on the frontend.
 // maxSize=0 means native resolution (no downscaling).
 func (a *App) GeneratePreviewRawSized(path string, maxSize int) (fits.RawPreviewData, error) {
+	if err := a.checkServable(path); err != nil {
+		return fits.RawPreviewData{}, err
+	}
 	if maxSize <= 0 {
 		maxSize = 1<<31 - 1
 	}
@@ -35,12 +44,15 @@ func (a *App) GeneratePreviewRawSized(path string, maxSize int) (fits.RawPreview
 // LoadRasterImage reads a PNG file from disk and returns it as a base64-encoded
 // PNG data URL. The file must be under the configured NAS root.
 func (a *App) LoadRasterImage(path string) (string, error) {
+	if err := a.checkServable(path); err != nil {
+		return "", err
+	}
 	if !indexer.IsRasterFile(path) {
 		return "", fmt.Errorf("not a supported raster file: %s", filepath.Base(path))
 	}
 
 	// Security: only serve files under the configured NAS root.
-	rootFolder := a.store.Load().RootFolder
+	rootFolder := a.store().Load().RootFolder
 	absPath := filepath.Clean(path)
 	absRoot := filepath.Clean(rootFolder)
 	if !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) {

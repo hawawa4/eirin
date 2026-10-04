@@ -99,7 +99,7 @@ func (a *App) CancelImport() {
 // existing light frames in the same directory (e.g. Seestar files lack telescope).
 // PNG/TIFF are stored as processed frames with metadata inferred from the directory.
 func (a *App) indexImportedFile(c ImportCandidate) {
-	a.indexImportedFileWithMeta(c, a.store.GetDirMeta(filepath.Dir(c.DestPath)))
+	a.indexImportedFileWithMeta(c, a.store().GetDirMeta(filepath.Dir(c.DestPath)))
 }
 
 func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta) {
@@ -153,7 +153,7 @@ func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta
 			frame.PixelScale = &ps
 			frame.Rotation = &rot
 		}
-		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
+		if err := a.store().UpsertFrame(c.DestPath, frame); err != nil {
 			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
 	case indexer.IsRasterFile(c.DestPath):
@@ -170,7 +170,7 @@ func (a *App) indexImportedFileWithMeta(c ImportCandidate, dirMeta store.DirMeta
 			Telescope:  dirMeta.Telescope,
 			Instrument: dirMeta.Instrument,
 		}
-		if err := a.store.UpsertFrame(c.DestPath, frame); err != nil {
+		if err := a.store().UpsertFrame(c.DestPath, frame); err != nil {
 			slog.Warn("import: upsert", "path", c.DestPath, "err", err)
 		}
 		// Siril cannot load PNG/TIFF for plate-solving, so no analysis is spawned here.

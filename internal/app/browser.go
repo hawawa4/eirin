@@ -7,6 +7,7 @@ import (
 
 	"log/slog"
 
+	"github.com/TaruDesigns/eirin/internal/snapshot"
 	"github.com/TaruDesigns/eirin/internal/store"
 )
 
@@ -48,6 +49,9 @@ func (a *App) SelectRootFolder() string {
 }
 
 func (a *App) ListDirectory(path string) ([]FileEntry, error) {
+	if err := a.checkServable(path); err != nil {
+		return nil, err
+	}
 	return listDirectory(path)
 }
 
@@ -55,12 +59,15 @@ func (a *App) ListDirectory(path string) ([]FileEntry, error) {
 // header metadata. It is cache-only and returns immediately — files not yet in
 // the cache will have HasMeta=false. Run BuildIndex to populate the cache.
 func (a *App) ListDirectoryEnriched(path string) ([]EnrichedFileEntry, error) {
+	if err := a.checkServable(path); err != nil {
+		return nil, err
+	}
 	entries, err := listDirectory(path)
 	if err != nil {
 		return nil, err
 	}
 
-	if a.store == nil {
+	if a.store() == nil {
 		result := make([]EnrichedFileEntry, len(entries))
 		for i, e := range entries {
 			result[i] = EnrichedFileEntry{FileEntry: e}
@@ -75,7 +82,7 @@ func (a *App) ListDirectoryEnriched(path string) ([]EnrichedFileEntry, error) {
 		}
 	}
 
-	frames, err := a.store.GetFrames(allPaths)
+	frames, err := a.store().GetFrames(allPaths)
 	if err != nil {
 		slog.Error("frames: get", "err", err)
 		frames = map[string]store.Frame{}
@@ -112,6 +119,9 @@ func listDirectory(path string) ([]FileEntry, error) {
 
 	files := make([]FileEntry, 0, len(entries))
 	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() == snapshot.DirName {
+			continue // Eirin's own snapshot folder, not library content
+		}
 		info, err := entry.Info()
 		if err != nil {
 			continue

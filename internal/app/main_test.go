@@ -32,5 +32,24 @@ func newTestApp(t *testing.T) *App {
 		t.Fatalf("newTestApp: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	return &App{store: s}
+	a := &App{}
+	a.db.Store(s)
+	return a
+}
+
+// skipInServer skips tests of write methods, which return errReadOnly in
+// server builds (covered by writable_test.go instead).
+func skipInServer(t *testing.T) {
+	t.Helper()
+	if !desktopModeEnabled {
+		t.Skip("writes are disabled in server builds")
+	}
+}
+
+// must fatals if err is non-nil. Use for test setup calls that must succeed.
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

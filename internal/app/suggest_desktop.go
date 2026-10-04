@@ -27,7 +27,7 @@ func (a *App) SuggestRejects(rootPath string, threshold float64) []SuggestResult
 		threshold = 2.0
 	}
 
-	frames, err := a.store.GetAllFramesUnder(rootPath)
+	frames, err := a.store().GetAllFramesUnder(rootPath)
 	if err != nil {
 		slog.Error("suggest: get frames", "err", err)
 		return nil

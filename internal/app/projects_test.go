@@ -52,6 +52,7 @@ func writeTestFile(t *testing.T, path, data string) {
 }
 
 func TestAddFramesToProjectRoutesByFrameType(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	nas, proj := t.TempDir(), t.TempDir()
 	frames := map[string]string{
@@ -66,7 +67,7 @@ func TestAddFramesToProjectRoutesByFrameType(t *testing.T) {
 	for name, ft := range frames {
 		p := filepath.Join(nas, name)
 		writeTestFile(t, p, name)
-		if err := a.store.UpsertFrame(p, store.Frame{FrameType: ft}); err != nil {
+		if err := a.store().UpsertFrame(p, store.Frame{FrameType: ft}); err != nil {
 			t.Fatal(err)
 		}
 		paths = append(paths, p)
@@ -98,6 +99,7 @@ func TestAddFramesToProjectRoutesByFrameType(t *testing.T) {
 }
 
 func TestAddFramesToProjectUnindexedFallsBackToPath(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	nas, proj := t.TempDir(), t.TempDir()
 	p := filepath.Join(nas, "Flat_001.fit") // not in DB → classified by name
@@ -111,6 +113,7 @@ func TestAddFramesToProjectUnindexedFallsBackToPath(t *testing.T) {
 }
 
 func TestGetProjectLibraryFramesLegacyAndTypes(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	nas, proj := t.TempDir(), t.TempDir()
 	light := filepath.Join(nas, "l.fit")
@@ -119,8 +122,8 @@ func TestGetProjectLibraryFramesLegacyAndTypes(t *testing.T) {
 	for _, p := range []string{light, dark, unknown} {
 		writeTestFile(t, p, filepath.Base(p))
 	}
-	_ = a.store.UpsertFrame(light, store.Frame{FrameType: store.FrameTypeLight})
-	_ = a.store.UpsertFrame(dark, store.Frame{FrameType: store.FrameTypeDark})
+	_ = a.store().UpsertFrame(light, store.Frame{FrameType: store.FrameTypeLight})
+	_ = a.store().UpsertFrame(dark, store.Frame{FrameType: store.FrameTypeDark})
 	// Legacy layout: everything in lights/, plus an unindexed frame in flats/.
 	_ = os.MkdirAll(filepath.Join(proj, "lights"), 0o755)
 	_ = os.MkdirAll(filepath.Join(proj, "flats"), 0o755)
@@ -156,9 +159,10 @@ func TestGetProjectLibraryFramesLegacyAndTypes(t *testing.T) {
 }
 
 func TestCreateProjectFolderCollision(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	pf := t.TempDir()
-	if err := a.store.Set(store.KeyProjectsFolder, pf); err != nil {
+	if err := a.store().Set(store.KeyProjectsFolder, pf); err != nil {
 		t.Fatal(err)
 	}
 	p, err := a.CreateProject("M31 Ha", "")
@@ -179,6 +183,7 @@ func TestCreateProjectFolderCollision(t *testing.T) {
 }
 
 func TestImportOutputFilesNoOverwrite(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	proj, dest := t.TempDir(), t.TempDir()
 	out1 := filepath.Join(proj, "result.png")
@@ -214,6 +219,7 @@ func TestImportOutputFilesNoOverwrite(t *testing.T) {
 }
 
 func TestImportOutputFilesDuplicateNamesConflict(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	proj, dest := t.TempDir(), t.TempDir()
 	a1 := filepath.Join(proj, "a", "out.png")
@@ -227,9 +233,10 @@ func TestImportOutputFilesDuplicateNamesConflict(t *testing.T) {
 }
 
 func TestImportOutputFilesRejectsBadDest(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	root := t.TempDir()
-	if err := a.store.Set(store.KeyRootFolder, root); err != nil {
+	if err := a.store().Set(store.KeyRootFolder, root); err != nil {
 		t.Fatal(err)
 	}
 	src := filepath.Join(t.TempDir(), "out.png")

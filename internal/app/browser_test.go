@@ -97,3 +97,17 @@ func TestListDirectoryModTimeAndSize(t *testing.T) {
 		t.Error("ModTime should not be zero")
 	}
 }
+
+func TestListDirectorySkipsSnapshotFolder(t *testing.T) {
+	dir := t.TempDir()
+	os.Mkdir(filepath.Join(dir, ".eirin"), 0755)
+	os.WriteFile(filepath.Join(dir, "a.fits"), []byte(""), 0644)
+
+	entries, err := listDirectory(dir)
+	if err != nil {
+		t.Fatalf("listDirectory: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name != "a.fits" {
+		t.Errorf("entries = %+v, want only a.fits", entries)
+	}
+}

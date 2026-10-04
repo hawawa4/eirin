@@ -41,7 +41,7 @@ func (a *App) stopServer() {
 func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	rootFolder := a.store.Load().RootFolder
+	rootFolder := a.store().Load().RootFolder
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":      "ok",
 		"root_folder": rootFolder,
@@ -51,12 +51,12 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleFrames(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	rootFolder := a.store.Load().RootFolder
+	rootFolder := a.store().Load().RootFolder
 	if rootFolder == "" {
 		http.Error(w, `{"error":"no root folder configured"}`, http.StatusBadRequest)
 		return
 	}
-	frames, err := a.store.GetAllFramesUnder(rootFolder)
+	frames, err := a.store().GetAllFramesUnder(rootFolder)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 		return
@@ -74,8 +74,13 @@ func (a *App) handleImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := a.checkServable(path); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	// Security: only serve files under the configured NAS root.
-	rootFolder := a.store.Load().RootFolder
+	rootFolder := a.store().Load().RootFolder
 	absPath := filepath.Clean(path)
 	absRoot := filepath.Clean(rootFolder)
 	if !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) {

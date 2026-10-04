@@ -11,16 +11,19 @@ import (
 // changes still in the WAL) to the same directory with a timestamp suffix,
 // e.g. prefs_2026-06-05T153000.db. Returns the backup path.
 func (a *App) BackupDatabase() (string, error) {
-	if a.store == nil {
+	if err := a.requireWritable(); err != nil {
+		return "", err
+	}
+	if a.store() == nil {
 		return "", fmt.Errorf("store not initialised")
 	}
-	src := a.store.DBPath()
+	src := a.store().DBPath()
 	ext := filepath.Ext(src)
 	base := src[:len(src)-len(ext)]
 	stamp := time.Now().Format("2006-01-02T150405")
 	dst := fmt.Sprintf("%s_%s%s", base, stamp, ext)
 
-	if err := a.store.VacuumInto(dst); err != nil {
+	if err := a.store().VacuumInto(dst); err != nil {
 		return "", fmt.Errorf("backup: %w", err)
 	}
 	return dst, nil

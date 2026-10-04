@@ -7,6 +7,7 @@ import (
 )
 
 func TestUIStateRoundTrip(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	if got := a.LoadPrefs().UIState; got != "" {
 		t.Errorf("default UIState = %q, want empty", got)

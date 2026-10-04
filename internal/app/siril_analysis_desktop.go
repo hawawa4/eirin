@@ -59,7 +59,7 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 
 	// Pre-fetch DB records so we can pass stored RA/Dec as a plate-solve hint.
 	// This is essential for raster files (PNG/TIFF) which have no embedded WCS.
-	frameMap, _ := a.store.GetFrames(nasPaths)
+	frameMap, _ := a.store().GetFrames(nasPaths)
 
 	for i, path := range nasPaths {
 		select {
@@ -93,7 +93,7 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 		}
 		// Raster files may have been indexed before FrameTypeImage existed; correct it now.
 		if indexer.IsRasterFile(path) {
-			if uerr := a.store.SetFrameType(path, store.ClassifyRasterType(path)); uerr != nil {
+			if uerr := a.store().SetFrameType(path, store.ClassifyRasterType(path)); uerr != nil {
 				slog.Warn("analysis: set frame type image", "err", uerr)
 			}
 		}
@@ -110,12 +110,12 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 			slog.Warn("analysis", "err", err)
 			errCount++
 		} else {
-			if uerr := a.store.UpdateFrameQuality(path, quality); uerr != nil {
+			if uerr := a.store().UpdateFrameQuality(path, quality); uerr != nil {
 				slog.Warn("analysis: db quality update", "err", uerr)
 				errCount++
 			}
 			if wcsSolved {
-				if uerr := a.store.UpdateWCS(path, wcs); uerr != nil {
+				if uerr := a.store().UpdateWCS(path, wcs); uerr != nil {
 					slog.Warn("analysis: db wcs update", "err", uerr)
 				}
 			}

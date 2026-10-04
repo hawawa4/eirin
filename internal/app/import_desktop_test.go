@@ -31,7 +31,7 @@ func waitImportFinished(t *testing.T, a *App) ImportProgress {
 func TestStartImportEndToEnd(t *testing.T) {
 	a := newTestApp(t)
 	nas, src := t.TempDir(), t.TempDir()
-	if err := a.store.Set(store.KeyRootFolder, nas); err != nil {
+	if err := a.store().Set(store.KeyRootFolder, nas); err != nil {
 		t.Fatal(err)
 	}
 	writeTestFile(t, filepath.Join(src, "M31", "a.png"), "frame a")
@@ -67,7 +67,7 @@ func TestStartImportRejectsConcurrentRun(t *testing.T) {
 
 func TestStartImportFatalRootError(t *testing.T) {
 	a := newTestApp(t)
-	if err := a.store.Set(store.KeyRootFolder, filepath.Join(t.TempDir(), "missing")); err != nil {
+	if err := a.store().Set(store.KeyRootFolder, filepath.Join(t.TempDir(), "missing")); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.StartImport(t.TempDir(), nil, false); err == nil {

@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/TaruDesigns/eirin/internal/store"
@@ -11,37 +11,44 @@ import (
 )
 
 type App struct {
-	wails   *application.App
-	store   *store.Store
+	wails *application.App
+	// db holds the current store. The server viewer swaps it whenever it loads
+	// a new library snapshot, so always read it through store().
+	db      atomic.Pointer[store.Store]
 	indexer appIndexer
 	server  *http.Server
 	imports importJob
 	// previews caches Blink previews across calls (see fits.PreviewCache).
 	previews fits.PreviewCache
+	// snapshots is the build-specific half of the library snapshot: the
+	// publisher on the desktop, the loader on the server.
+	snapshots snapshotSide
 }
 
 func NewApp() *App {
 	return &App{}
 }
 
+// store returns the current store, or nil before startup.
+func (a *App) store() *store.Store {
+	return a.db.Load()
+}
+
 func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	a.wails = application.Get()
-	s, err := store.NewStore()
-	if err != nil {
-		slog.Error("store: failed to open", "err", err)
+	if err := a.startup(); err != nil {
 		return err
 	}
-	a.store = s
 	a.startServer()
-	a.startAutoBackup()
 	return nil
 }
 
 func (a *App) ServiceShutdown() error {
 	a.CancelIndex()
 	a.stopServer()
-	if a.store != nil {
-		_ = a.store.Close()
+	a.shutdown()
+	if st := a.store(); st != nil {
+		_ = st.Close()
 	}
 	return nil
 }

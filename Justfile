@@ -25,6 +25,10 @@ build-backend:
 test:
     go test ./internal/...
 
+# Run Go unit tests against the headless server build (read-only viewer)
+test-server:
+    go test -tags server ./internal/...
+
 # Type-check Go and TypeScript without producing binaries
 check:
     go build ./...

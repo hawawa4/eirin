@@ -41,6 +41,9 @@ func (ix *appIndexer) isCurrent(gen uint64) bool {
 // Every run ends with a "done" or "cancelled" event — if rootPath is empty or
 // not an accessible directory, a "done" event carrying Error is emitted.
 func (a *App) BuildIndex(rootPath string, force bool) {
+	if a.requireWritable() != nil {
+		return
+	}
 	a.indexer.mu.Lock()
 	if a.indexer.cancel != nil {
 		a.indexer.cancel()
@@ -158,7 +161,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 
 		// ── Phase 2: find which paths are NOT yet indexed ────────────────────
 		allPaths := append(fitsPaths, rasterPaths...)
-		indexed0, err := a.store.GetFrames(allPaths)
+		indexed0, err := a.store().GetFrames(allPaths)
 		if err != nil {
 			slog.Error("index: get frames", "err", err)
 			indexed0 = map[string]store.Frame{}
@@ -205,7 +208,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			if len(batch) == 0 {
 				return
 			}
-			if err := a.store.BatchUpsertFrames(batch); err != nil {
+			if err := a.store().BatchUpsertFrames(batch); err != nil {
 				slog.Error("index: batch upsert", "err", err)
 			}
 			batch = make(map[string]store.Frame, batchSize)
@@ -272,7 +275,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			if statErr == nil {
 				fileSize = info.Size()
 			}
-			dm := a.store.GetDirMeta(filepath.Dir(p))
+			dm := a.store().GetDirMeta(filepath.Dir(p))
 			obj := dm.Object
 			if obj == "" {
 				obj = filepath.Base(filepath.Dir(p))
@@ -321,7 +324,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 				slog.Warn("index: hash", "path", p, "err", err)
 				continue
 			}
-			if err := a.store.SetFrameHash(p, hash); err != nil {
+			if err := a.store().SetFrameHash(p, hash); err != nil {
 				slog.Warn("index: set hash", "path", p, "err", err)
 			}
 		}

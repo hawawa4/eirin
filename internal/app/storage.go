@@ -22,7 +22,7 @@ type storageLeaf struct {
 // GetStorageStats returns a two-level tree of disk usage:
 // root → objects → dates (YYYY-MM-DD), each leaf summing file_size and frame count.
 func (a *App) GetStorageStats(rootPath string) StorageNode {
-	frames, err := a.store.GetAllFramesUnder(rootPath)
+	frames, err := a.store().GetAllFramesUnder(rootPath)
 	if err != nil {
 		slog.Error("storage: get frames", "err", err)
 		return StorageNode{Label: rootPath}
@@ -82,7 +82,7 @@ func (a *App) GetStorageStats(rootPath string) StorageNode {
 
 // GetFrameTypeSummary returns a breakdown of frame counts and total size by frame type under rootPath.
 func (a *App) GetFrameTypeSummary(rootPath string) []StorageNode {
-	frames, err := a.store.GetAllFramesUnder(rootPath)
+	frames, err := a.store().GetAllFramesUnder(rootPath)
 	if err != nil {
 		slog.Error("storage: frame type summary", "err", err)
 		return nil

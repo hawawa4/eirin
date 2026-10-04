@@ -49,7 +49,7 @@ type LibraryFrame struct {
 // GetLibraryFrames returns all indexed frames under rootPath, converted to the
 // LibraryFrame shape for the frontend library view.
 func (a *App) GetLibraryFrames(rootPath string) ([]LibraryFrame, error) {
-	frames, err := a.store.GetAllFramesUnder(rootPath)
+	frames, err := a.store().GetAllFramesUnder(rootPath)
 	if err != nil {
 		slog.Error("library: get frames", "err", err)
 		return nil, fmt.Errorf("reading library: %w", err)
@@ -61,7 +61,7 @@ func (a *App) GetLibraryFrames(rootPath string) ([]LibraryFrame, error) {
 // dark, flat, bias, …) under rootPath — e.g. calibration frames for the
 // project frame picker, without loading the whole library.
 func (a *App) GetLibraryFramesByType(rootPath string, frameType string) ([]LibraryFrame, error) {
-	frames, err := a.store.GetFramesUnderByType(rootPath, frameType)
+	frames, err := a.store().GetFramesUnderByType(rootPath, frameType)
 	if err != nil {
 		slog.Error("library: get frames by type", "type", frameType, "err", err)
 		return nil, fmt.Errorf("reading library: %w", err)
@@ -85,7 +85,7 @@ type PagedLightFrames struct {
 
 // GetLightObjects returns the sorted list of distinct object names for light frames under rootPath.
 func (a *App) GetLightObjects(rootPath string) ([]string, error) {
-	objects, err := a.store.GetDistinctObjects(rootPath, store.FrameTypeLight)
+	objects, err := a.store().GetDistinctObjects(rootPath, store.FrameTypeLight)
 	if err != nil {
 		slog.Error("library: get objects", "err", err)
 		return nil, fmt.Errorf("reading library: %w", err)
@@ -96,7 +96,7 @@ func (a *App) GetLightObjects(rootPath string) ([]string, error) {
 // GetLightFramesPaged returns a page of light frames under rootPath filtered to
 // the given objects. offset=0 for the first page.
 func (a *App) GetLightFramesPaged(rootPath string, objects []string, offset int) (PagedLightFrames, error) {
-	frames, hasMore, err := a.store.GetLightFramesPaged(rootPath, objects, offset)
+	frames, hasMore, err := a.store().GetLightFramesPaged(rootPath, objects, offset)
 	if err != nil {
 		slog.Error("library: paged lights", "err", err)
 		return PagedLightFrames{Frames: []LibraryFrame{}}, fmt.Errorf("reading library: %w", err)
@@ -164,6 +164,9 @@ func derefInt64(p *int64) int64 {
 // SetFrameType lets the user manually override the classified type for a frame
 // (e.g. to promote a stacked image to "processed").
 func (a *App) SetFrameType(nasPath string, frameType string) error {
+	if err := a.requireWritable(); err != nil {
+		return err
+	}
 	validTypes := map[string]bool{
 		store.FrameTypeLight:     true,
 		store.FrameTypeDark:      true,
@@ -176,5 +179,5 @@ func (a *App) SetFrameType(nasPath string, frameType string) error {
 	if !validTypes[frameType] {
 		return nil
 	}
-	return a.store.SetFrameType(nasPath, frameType)
+	return a.store().SetFrameType(nasPath, frameType)
 }
