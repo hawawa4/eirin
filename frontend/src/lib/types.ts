@@ -82,6 +82,8 @@ export type LibraryGroupBy = "object" | "date" | "filter" | "frameType";
 
 export interface Capabilities {
   desktopMode: boolean;
+  /** Read-only server viewer: no writes, only final images. */
+  readOnly: boolean;
 }
 
 export interface AppInfo {

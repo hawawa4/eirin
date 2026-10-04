@@ -28,6 +28,7 @@
     ondelete?: () => void;
     onreveal?: () => void;
     onblink?: () => void;
+    onshowonatlas?: () => void;
     blinkTitle?: string;
     /** Path of the frame likely to be shown next; warmed into the preview cache. */
     prefetch?: string | null;
@@ -44,6 +45,7 @@
     ondelete,
     onreveal,
     onblink,
+    onshowonatlas,
     blinkTitle = "Blink (b)",
     prefetch = null,
   }: Props = $props();
@@ -698,6 +700,11 @@ void main() {
       {#if onreveal}
         <button class="pv-btn" onclick={onreveal} title="Show in the system file manager"
           >Show in folder</button
+        >
+      {/if}
+      {#if onshowonatlas}
+        <button class="pv-btn" onclick={onshowonatlas} title="Show this image on the Sky Atlas"
+          >✦ Sky Atlas</button
         >
       {/if}
     </div>

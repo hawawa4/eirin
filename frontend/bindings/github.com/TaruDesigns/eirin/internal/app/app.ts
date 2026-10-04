@@ -56,8 +56,9 @@ export function AnalyzeFrames(nasPaths: string[]): $CancellablePromise<void> {
 }
 
 /**
- * BackupDatabase copies the SQLite database to the same directory with a
- * timestamp suffix, e.g. prefs_2026-06-05T153000.db. Returns the backup path.
+ * BackupDatabase writes a consistent copy of the SQLite database (including
+ * changes still in the WAL) to the same directory with a timestamp suffix,
+ * e.g. prefs_2026-06-05T153000.db. Returns the backup path.
  */
 export function BackupDatabase(): $CancellablePromise<string> {
     return $Call.ByID(984395681);
@@ -322,6 +323,16 @@ export function GetProjectsFolder(): $CancellablePromise<string> {
 }
 
 /**
+ * GetSnapshotStatus reports whether the library snapshot is being published,
+ * where, and how the last attempt went.
+ */
+export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus> {
+    return $Call.ByID(2047036404).then(($result: any) => {
+        return $$createType21($result);
+    });
+}
+
+/**
  * GetStorageStats returns a two-level tree of disk usage:
  * root → objects → dates (YYYY-MM-DD), each leaf summing file_size and frame count.
  */
@@ -352,13 +363,13 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
     return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType22($result);
     });
 }
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(3367487933, path).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
@@ -369,7 +380,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(483950001, path).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType26($result);
     });
 }
 
@@ -378,7 +389,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(2159218332).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType27($result);
     });
 }
 
@@ -387,7 +398,7 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(2572957756).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType28($result);
     });
 }
 
@@ -421,9 +432,17 @@ export function OpenWithSiril(filePath: string): $CancellablePromise<void> {
     return $Call.ByID(2685951341, filePath);
 }
 
+/**
+ * PublishSnapshot publishes the library snapshot now, whether or not anything
+ * changed.
+ */
+export function PublishSnapshot(): $CancellablePromise<void> {
+    return $Call.ByID(2432816017);
+}
+
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(3225654599, path).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType30($result);
     });
 }
 
@@ -469,7 +488,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(3873197428, sourceFolder, extensions).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType32($result);
     });
 }
 
@@ -552,7 +571,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(1563214480, rootPath, threshold).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType34($result);
     });
 }
 
@@ -593,16 +612,17 @@ const $$createType17 = $models.PagedLightFrames.createFrom;
 const $$createType18 = $Create.Array($Create.Any);
 const $$createType19 = $models.ProjectOutputFile.createFrom;
 const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $models.ImportOutputsResult.createFrom;
-const $$createType22 = $models.FileEntry.createFrom;
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = $models.EnrichedFileEntry.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = $Create.Array($$createType2);
-const $$createType27 = store$0.Prefs.createFrom;
-const $$createType28 = fits$0.FITSHeader.createFrom;
-const $$createType29 = $Create.Nullable($$createType28);
-const $$createType30 = importer$0.Candidate.createFrom;
-const $$createType31 = $Create.Array($$createType30);
-const $$createType32 = $models.SuggestResult.createFrom;
-const $$createType33 = $Create.Array($$createType32);
+const $$createType21 = $models.SnapshotStatus.createFrom;
+const $$createType22 = $models.ImportOutputsResult.createFrom;
+const $$createType23 = $models.FileEntry.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = $models.EnrichedFileEntry.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = $Create.Array($$createType2);
+const $$createType28 = store$0.Prefs.createFrom;
+const $$createType29 = fits$0.FITSHeader.createFrom;
+const $$createType30 = $Create.Nullable($$createType29);
+const $$createType31 = importer$0.Candidate.createFrom;
+const $$createType32 = $Create.Array($$createType31);
+const $$createType33 = $models.SuggestResult.createFrom;
+const $$createType34 = $Create.Array($$createType33);

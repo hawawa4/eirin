@@ -47,9 +47,18 @@
     onscan?: () => void;
     /** App theme; the sky is drawn in a matching palette. */
     theme?: Theme;
+    /** Read-only server viewer: empty states point at the desktop's snapshot, not a scan. */
+    readOnly?: boolean;
   }
 
-  let { rootPath, onframeopen, active = true, onscan, theme = "blue" }: Props = $props();
+  let {
+    rootPath,
+    onframeopen,
+    active = true,
+    onscan,
+    theme = "blue",
+    readOnly = false,
+  }: Props = $props();
 
   let palette = $derived(atlasPalette(theme));
 
@@ -335,6 +344,24 @@
     focus = { ra: obj.ra, dec: obj.dec };
   }
 
+  // ── Cross-view focus ──────────────────────────────────────────────────────
+  // A focus request that arrived before the index finished loading.
+  let pendingFocusPath: string | null = null;
+
+  /** Centres on one frame and overlays it (the viewer library's "Show on Sky Atlas"). */
+  export function focusFrame(nasPath: string) {
+    const e = index.find((x) => x.nasPath === nasPath);
+    if (!e) {
+      pendingFocusPath = loading ? nasPath : null;
+      return;
+    }
+    pendingFocusPath = null;
+    if (!visibleByPath.has(nasPath)) filterMode = "all";
+    pendingFit = false;
+    selectOnly(e);
+    fitTargets(targetsOf([e]), { cluster: false, panel: true });
+  }
+
   function setFix(path: string, fix: OrientationFix) {
     fixes = { ...fixes, [path]: fix };
   }
@@ -474,6 +501,7 @@
       }
       // Fit on first load, and when a scan populates a previously empty atlas.
       if (fit || wasEmpty) requestFit();
+      if (pendingFocusPath) focusFrame(pendingFocusPath);
     } catch (err) {
       if (seq === loadSeq) loadError = String(err);
     } finally {
@@ -574,6 +602,7 @@
       requestFit();
     }}
     {onscan}
+    {readOnly}
   />
 
   <!-- HUD -->

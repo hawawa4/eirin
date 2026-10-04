@@ -2,7 +2,7 @@
 // Shared by every PreviewPane instance (Browse and Library), persisted as
 // individual prefs for backwards compatibility with existing settings.
 
-import { SetPref } from "$app";
+import { savePref } from "./prefs";
 import type * as store from "$models/store";
 
 const PREF_STRETCH_ENABLED = "stretch_enabled";
@@ -30,16 +30,16 @@ export function loadPreviewPrefs(p: store.Prefs): void {
 
   $effect.root(() => {
     $effect(() => {
-      SetPref(PREF_STRETCH_ENABLED, String(previewPrefs.stretchEnabled));
+      savePref(PREF_STRETCH_ENABLED, String(previewPrefs.stretchEnabled));
     });
     $effect(() => {
-      SetPref(PREF_STRETCH_LEVEL, String(previewPrefs.stretchLevel));
+      savePref(PREF_STRETCH_LEVEL, String(previewPrefs.stretchLevel));
     });
     $effect(() => {
-      SetPref(PREF_BASIC_COLLAPSED, String(previewPrefs.basicCollapsed));
+      savePref(PREF_BASIC_COLLAPSED, String(previewPrefs.basicCollapsed));
     });
     $effect(() => {
-      SetPref(PREF_ADVANCED_COLLAPSED, String(previewPrefs.advancedCollapsed));
+      savePref(PREF_ADVANCED_COLLAPSED, String(previewPrefs.advancedCollapsed));
     });
   });
 }

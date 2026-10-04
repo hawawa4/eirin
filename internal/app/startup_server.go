@@ -32,7 +32,11 @@ func (a *App) startup() error {
 		return err
 	}
 	local := viewerDBPath()
-	l := snapshot.NewLoader(root, local, func(st *store.Store) *store.Store { return a.db.Swap(st) })
+	l := snapshot.NewLoader(root, local, func(st *store.Store) *store.Store {
+		old := a.db.Swap(st)
+		a.emitEvent("library:updated", nil) // open viewers reload
+		return old
+	})
 	st, err := l.Open()
 	if err != nil {
 		slog.Error("server: failed to open the viewer database", "path", local, "err", err)
