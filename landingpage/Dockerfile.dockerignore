@@ -1,0 +1,8 @@
+# Only what the landing page build needs (overrides the root .dockerignore).
+*
+!landingpage/
+!docs/img/
+!docs/vid/
+landingpage/node_modules/
+landingpage/dist/
+landingpage/.astro/

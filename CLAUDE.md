@@ -37,7 +37,7 @@ All development goes through `just` (see `Justfile`):
 - `just lint` — `staticcheck ./...` + frontend ESLint/Prettier check
 - `just format` — Prettier write on `frontend/`
 - `just install-frontend` / `just install-backend` — install npm deps / `go mod tidy`
-- `just landing-dev` / `just landing-build` / `just landing-check` / `just install-landing` — the landing page (see below)
+- `just landing-dev` / `just landing-build` / `just landing-check` / `just landing-docker` / `just install-landing` — the landing page (see below)
 
 To run a single Go test: `go test ./internal/store/... -run TestName` (or scope to any package path). `just test` only covers `internal/...`, not the root package.
 
@@ -95,7 +95,7 @@ Two independent HTTP listeners run in server mode: Wails' own server (serves the
 
 ### Landing page
 
-`landingpage/` is a separate, fully static [Astro](https://astro.build) site (its own `package.json`, not part of the Wails build), deployed to GitHub Pages by `.github/workflows/landingpage.yml`. Screenshots are imported straight from `../docs/img/`, shared with the README, so retaking a screenshot there updates both. Short `.webm` clips in `../docs/vid/` (imported with `?url`) are shown by `VideoShot.astro`: the screenshot is the poster, and the clip only loads and plays once scrolled into view (never autoplays under `prefers-reduced-motion`). `site`/`base` in `astro.config.mjs` default to `https://hawawa4.github.io` + `/eirin` and can be overridden with `SITE_URL`/`BASE_PATH`. Keep the copy plain and factual; no AI-generated images.
+`landingpage/` is a separate, fully static [Astro](https://astro.build) site (its own `package.json`, not part of the Wails build), served by nginx from a Docker image (`landingpage/Dockerfile`, built from the repo root, port 8080) that `.github/workflows/landingpage.yml` pushes to `ghcr.io/hawawa4/eirin-landingpage` on pushes to `main`; the owner hosts it at https://eirin.hawawa.org. Screenshots are imported straight from `../docs/img/`, shared with the README, so retaking a screenshot there updates both. Short `.webm` clips in `../docs/vid/` (imported with `?url`) are shown by `VideoShot.astro`: the screenshot is the poster, and the clip only loads and plays once scrolled into view (never autoplays under `prefers-reduced-motion`). `site`/`base` in `astro.config.mjs` default to `https://eirin.hawawa.org` + `/` and can be overridden with `SITE_URL`/`BASE_PATH` (also Docker build args). Keep the copy plain and factual; no AI-generated images.
 
 ### Linux note
 

@@ -2,10 +2,11 @@
 import { defineConfig } from "astro/config";
 import sitemap from "@astrojs/sitemap";
 
-// Deployed as a GitHub Pages project site. Override both for a custom domain
-// (e.g. SITE_URL=https://eirin.example.org BASE_PATH=/).
-const site = process.env.SITE_URL ?? "https://hawawa4.github.io";
-const base = process.env.BASE_PATH ?? "/eirin";
+// Public URL, used for canonical links, the og:image and the sitemap. Served from
+// the domain root by the Docker image (landingpage/Dockerfile); override with
+// SITE_URL / BASE_PATH to host it elsewhere or under a sub-path.
+const site = process.env.SITE_URL || "https://eirin.hawawa.org";
+const base = process.env.BASE_PATH || "/";
 
 export default defineConfig({
   site,

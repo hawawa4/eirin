@@ -87,6 +87,10 @@ landing-dev:
 landing-build:
     cd landingpage && npm run build
 
+# Build the landing page's nginx image locally (context is the repo root, for docs/img and docs/vid)
+landing-docker:
+    docker build -f landingpage/Dockerfile -t eirin-landingpage .
+
 # Type-check (astro check) and Prettier-check the landing page
 landing-check:
     cd landingpage && npm run check && npm run lint

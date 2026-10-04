@@ -2,7 +2,7 @@
 
 Eirin (/ˈei̯rɪn/) is a desktop app for managing an astrophotography library. It keeps all your subs, calibration frames and finished images in one folder (ideally on a NAS), lets you preview and cull FITS frames, and sets up Siril projects for stacking. Built with Go, Wails and Svelte.
 
-**Website:** https://hawawa4.github.io/eirin/
+**Website:** https://eirin.hawawa.org
 
 ![Eirin's Library view, with frames grouped by target](docs/img/libraryview.png)
 
@@ -51,7 +51,7 @@ Frames with coordinates in their FITS header show up as soon as they're indexed;
 
 ---
 
-More screenshots and a walkthrough of the workflow are on the [website](https://hawawa4.github.io/eirin/).
+More screenshots and a walkthrough of the workflow are on the [website](https://eirin.hawawa.org).
 
 ## Why this project exists
 
@@ -134,12 +134,13 @@ TODO: only Linux binaries are built and released right now (see [Installing](#in
 
 ### Website
 
-The project website is a separate [Astro](https://astro.build) site in `landingpage/`, built to static HTML and deployed to GitHub Pages. It uses the screenshots in `docs/img/`, same as this README.
+The project website is a separate [Astro](https://astro.build) site in `landingpage/`, built to static HTML and published as a small nginx image, `ghcr.io/hawawa4/eirin-landingpage` (port 8080), on every push to `main` that touches it. It uses the screenshots in `docs/img/` (same as this README) and the clips in `docs/vid/`.
 
 ```
 just install-landing
 just landing-dev     # live-reload dev server
 just landing-build   # static build into landingpage/dist/
+just landing-docker  # build the nginx image locally as eirin-landingpage
 ```
 
 ## Technical details
