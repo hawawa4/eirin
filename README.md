@@ -1,20 +1,65 @@
 # Eirin
 
-Eirin (/ˈei̯rɪn/), a local multiplatform desktop app for managing astrophotography libraries. Built with Go + Wails + Svelte.
+Eirin (/ˈei̯rɪn/) is a desktop app for managing an astrophotography library. It keeps all your subs, calibration frames and finished images in one folder (ideally on a NAS), lets you preview and cull FITS frames, and sets up Siril projects for stacking. Built with Go, Wails and Svelte.
 
+**Website:** https://eirin.hawawa.org
+
+![Eirin's Library view, with frames grouped by target](docs/img/libraryview.png)
+
+## What it does
+
+- **Import** from a Seestar into your library folder, skipping files you already have. It can delete from the device afterwards, but only once a full SHA-256 of each copy matches.
+- **Library** of every frame under the root folder, grouped by object, date, filter or type, with filters and search.
+- **FITS preview** with autostretch, debayering of one-shot-colour frames, and blinking through a set. Reject bad frames (hidden, not deleted) or delete them for good.
+- **Projects** for Siril: a local folder with `lights/`, `darks/`, `flats/` and `biases/`, symlinked to the frames on the NAS. Open it in Siril, then import the results back.
+- **Sky Atlas**: your plate-solved images drawn in their real place on the sky, so you can see what you've mapped so far ([more below](#sky-atlas)).
+
+<details>
+<summary><b>ℹ️ Mounting the Seestar on Linux (for Import)</b></summary>
+
+The Seestar shares its storage over SMB. Mount it somewhere (needs `cifs-utils`) and pick that folder as the import source:
+
+```sh
+mkdir -p ~/mnt/seestar
+sudo mount -t cifs -o guest,uid=$(id -u) "//seestar.local/EMMC Images/" ~/mnt/seestar
+```
+
+Unmount when you're done:
+
+```sh
+sudo umount ~/mnt/seestar
+```
+
+If `seestar.local` doesn't resolve, use the Seestar's IP address instead. I keep these as aliases in my shell config:
+
+```sh
+alias seestarmount='sudo mount -t cifs -o guest,uid=$(id -u) "//seestar.local/EMMC Images/" $HOME/mnt/seestar'
+alias seestarunmount='sudo umount $HOME/mnt/seestar'
+```
+
+</details>
+
+## Sky Atlas
+
+Every plate-solved image knows where it was pointing, how much sky it covers and at what angle. The Sky Atlas uses that to draw your images in their real place on a chart of the sky, with bright stars and Messier/NGC objects marked for reference.
+
+It's not a planetarium and it's not trying to be Stellarium. It's a fun way to look back at what you've captured: which targets sit next to each other, which parts of the sky you've already covered, and where the gaps are. Every new target fills in a bit more of your own map.
+
+![Sky Atlas with processed images placed near the Leo Triplet](docs/img/skyatlasview.png)
+
+Frames with coordinates in their FITS header show up as soon as they're indexed; the rest can be plate-solved from the Library through Siril. Click an outline to overlay the image, switch between final images and every sub, or search for a target and jump to it.
+
+---
+
+More screenshots and a walkthrough of the workflow are on the [website](https://eirin.hawawa.org).
 
 ## Why this project exists
 
-I have a Seestar S30Pro and S50, and processing the data in my computer (as opposed to the live stacking it does in the app) had a slightly awkward workflow consisting of multiple bash and python scripts to copy each session and then prepare the same session for Siril. Furthermore, inspecting all the FITS and deleting bad ones was a subpar experience: Siril won't (easily) let you completely delete files, ASIFitsView doesn't debayer the files and moving through different folders is painful.
+I have a Seestar S30 Pro and S50 Pro, and processing the data on my computer (as opposed to the live stacking it does in the app) had a slightly awkward workflow consisting of multiple bash and Python scripts to copy each session and then prepare the same session for Siril. Furthermore, inspecting all the FITS and deleting bad ones was a subpar experience: Siril won't (easily) let you completely delete files, ASIFitsView doesn't debayer the files and moving through different folders is painful.
 
 The setup worked, but I wanted something a bit more user friendly, and, in general, *fun* to use, so I built this.
 
-Eirin is aimed at helping you do all the data management, while the actual stacking and processing is done by a different software (namely, Siril, but it might support PixInsight in the future). 
-
-## Expected Workflow
-
-You designate a root folder (ideally in a NAS) to store *all* your astrophotography images, including subs, calibration frames (if applicable) and stacked/processed frames. Import from your Seestar and let Eirin catalogue everything! Then, once everything is tagged, you can create a *project* for stacking and processing frames. Once you're happy with the result, you reimport it to that library and then visualize it!
-
+Eirin is aimed at helping you do all the data management, while the actual stacking and processing is done by a different software (namely, Siril, but it might support PixInsight in the future).
 
 ## Installing
 
@@ -22,66 +67,25 @@ You designate a root folder (ideally in a NAS) to store *all* your astrophotogra
 
 Grab the latest release from the [Releases page](https://github.com/hawawa4/eirin/releases). Three formats are published:
 
-- **`.zip`** — extract and run the `eirin` binary directly
-- **`.deb`** — `sudo apt install ./eirin-linux-amd64.deb` (Debian/Ubuntu and derivatives)
-- **`.AppImage`** — `chmod +x eirin-linux-amd64.AppImage && ./eirin-linux-amd64.AppImage` (portable, works on most distros)
+- **`.zip`**: extract and run the `eirin` binary directly
+- **`.deb`**: `sudo apt install ./eirin-linux-amd64.deb` (Debian/Ubuntu and derivatives)
+- **`.AppImage`**: `chmod +x eirin-linux-amd64.AppImage && ./eirin-linux-amd64.AppImage` (portable, works on most distros)
 
 All three require `libwebkit2gtk-4.1-0` to be installed (the `.deb` declares this as a dependency automatically).
 
+For processing you'll also need [Siril](https://siril.org). Eirin looks for it on your `PATH`, or you can point it at the binary in Settings.
+
 ### Windows / macOS
 
-Not yet published — build from source (see Development below).
+Not yet published. Build from source (see [Development](#development) below).
 
-# Features
+### Headless (Docker)
 
-## Browser View
+A read-only server build (library browsing, FITS preview, sky atlas, storage stats; no import, projects or Siril) is published to `ghcr.io/hawawa4/eirin-server` on tagged releases. See [Headless/server mode](#headlessserver-mode).
 
-A simple file browser view with preview of the FITS
+## Development
 
-[Browse View](docs/img/browseview.png)
-
-## Library View
-An enhanced file browser with additional grouping and filtering. This is the one you want to use most of the time
-[Library View](docs/img/libraryview.png)
-
-## Sky Atlas
-
-Visualize your processed images in the sky!
-
-[Sky Atlas](docs/img/skyatlasview.png)
-
-## Projects
-
-Create projects for Siril, preparing the folder structure that it expects
-NOTE: Only Seestar projects (==only *lights* frames) supported for now
-
-[Projects View](docs/img/projectview.png)
-
-## Settings
-Set your settings, scan the folder
-
-[Settings](docs/img/settingsview.png)
-
-
-### FITS preview
-- Click any `.fit` / `.fits` file to generate an autostretched PNG preview
-- Zoom with the scroll wheel (centered on cursor position); drag to pan; double-click to reset
-- **Stretch toggle** — switch between linear and non-linear display:
-  - **Off (linear)** — shadow-clipped linear rescale; raw-looking image with a dark sky
-  - **Gentle** — mild MTF autostretch (−1.25σ shadow clip, background target 10%)
-  - **Normal** — Siril-default MTF stretch (−2.80σ, background target 25%)
-  - **Strong** — aggressive MTF stretch (−4.00σ, background target 40%)
-- Correct handling of Bayer-mosaic single-plane FITS (Seestar and similar cameras): demosaiced to RGB via 2×2 block averaging before preview
-
-### FITS header panel
-- **Basic** section: Object, Filter, Exposure, Date, Image size
-- **Advanced** section: Gain, CCD temperature, Telescope, Camera, Binning
-
-
-
-# Development
-
-## Prerequisites
+### Prerequisites
 
 | Tool | Tested version |
 |------|---------------|
@@ -91,7 +95,7 @@ Set your settings, scan the folder
 | staticcheck | v0.7.0+ |
 | just | any recent |
 
-Install Go tools once (`-tags gtk3` targets Linux's older webkit2gtk-4.1 stack — see the Linux/Ubuntu note below; omit it on macOS/Windows):
+Install Go tools once (`-tags gtk3` targets Linux's older webkit2gtk-4.1 stack, see the [Linux/Ubuntu note](#linux--ubuntu-note) below; omit it on macOS/Windows):
 ```
 go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest
 go install honnef.co/go/tools/cmd/staticcheck@latest
@@ -103,7 +107,7 @@ just install-backend
 just install-frontend
 ```
 
-## Running in dev mode
+### Running in dev mode
 
 ```
 just dev
@@ -111,7 +115,7 @@ just dev
 
 Wails launches a live-reload server: Go backend recompiles on save, Svelte/Vite handles frontend HMR. The app window opens automatically.
 
-## Building a production binary
+### Building a production binary
 
 ```
 just build
@@ -120,13 +124,24 @@ just build
 Output is placed in `bin/`.
 
 Other useful build recipes:
-- `just build-backend` — Go backend only, no frontend/Wails packaging (`go build ./`)
-- `just build-frontend` — Svelte frontend only (`npm run build` in `frontend/`)
-- `just build-server` — headless server binary for Docker (`eirin-server`, see [Headless/server mode](#headlessserver-mode) below)
-- `just check` — type-check only (`go build ./...` + `svelte-check`/`tsc`), no binaries produced
-- `just lint` / `just format` — staticcheck + ESLint/Prettier
+- `just build-backend`: Go backend only, no frontend/Wails packaging (`go build ./`)
+- `just build-frontend`: Svelte frontend only (`npm run build` in `frontend/`)
+- `just build-server`: headless server binary for Docker (`eirin-server`, see [Headless/server mode](#headlessserver-mode) below)
+- `just check`: type-check only (`go build ./...` + `svelte-check`/`tsc`), no binaries produced
+- `just lint` / `just format`: staticcheck + ESLint/Prettier
 
 TODO: only Linux binaries are built and released right now (see [Installing](#installing)); Windows/macOS builds work locally via `wails3`/Task but aren't wired into CI yet.
+
+### Website
+
+The project website is a separate [Astro](https://astro.build) site in `landingpage/`, built to static HTML and published as a small nginx image, `ghcr.io/hawawa4/eirin-landingpage` (port 8080), on every push to `main` that touches it. It uses the screenshots in `docs/img/` (same as this README) and the clips in `docs/vid/`.
+
+```
+just install-landing
+just landing-dev     # live-reload dev server
+just landing-build   # static build into landingpage/dist/
+just landing-docker  # build the nginx image locally as eirin-landingpage
+```
 
 ## Technical details
 
@@ -138,12 +153,11 @@ Wails requires a WebKit GTK library. Ubuntu 22.04+ and derivatives (including Pi
 sudo apt install libwebkit2gtk-4.1-dev
 ```
 
-Wails v3 defaults to GTK4/webkitgtk-6.0 on Linux; this project targets the older GTK3/webkit2gtk-4.1 stack instead via the `gtk3` build tag, which `build/linux/Taskfile.yml` already passes to `go build`/`wails3 generate bindings` automatically. The `wails3` CLI itself also needs to be installed with that tag — `go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest` — otherwise installing the CLI fails looking for GTK4 headers.
-
+Wails v3 defaults to GTK4/webkitgtk-6.0 on Linux; this project targets the older GTK3/webkit2gtk-4.1 stack instead via the `gtk3` build tag, which `build/linux/Taskfile.yml` already passes to `go build`/`wails3 generate bindings` automatically. The `wails3` CLI itself also needs to be installed with that tag (`go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest`), otherwise installing the CLI fails looking for GTK4 headers.
 
 ### Preferences database
 
-Eirin stores metadata about the files in an SQLite database. By efault, it's stored in the platform config directory:
+Eirin stores metadata about the files in an SQLite database. By default, it's stored in the platform config directory:
 
 | Platform | Path |
 |----------|------|
@@ -151,36 +165,38 @@ Eirin stores metadata about the files in an SQLite database. By efault, it's sto
 | macOS | `~/Library/Application Support/eirin/prefs.db` |
 | Windows | `%AppData%\eirin\prefs.db` |
 
-But it can be overriden by setting the environment variable `EIRIN_DB_PATH`
+It can be overridden by setting the environment variable `EIRIN_DB_PATH`.
 
+### Localhost port
 
-### Localhost Port
-
-Due to the `wails` architecture, Eirin will start a webserver on a local port. If that port is taken, you might have to set the environment variable `EIRIN_PORT`
-
+Due to the `wails` architecture, Eirin will start a webserver on a local port. If that port is taken, you might have to set the environment variable `EIRIN_PORT`.
 
 ### Headless/server mode
 
-`just build-server` builds a `-tags server` binary intended for headless Docker deployment: read-only visualization (library browse, FITS preview, sky atlas, storage stats) with no import, no Siril processing, and no project management — those require the desktop app.
+`just build-server` builds a `-tags server` binary intended for headless Docker deployment: read-only visualization (library browse, FITS preview, sky atlas, storage stats) with no import, no Siril processing, and no project management. Those require the desktop app.
 
 Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases:
 ```
 docker run -p 8080:8080 -p 7070:7070 -v /path/to/nas:/mnt/nas -v /path/to/prefs.db:/root/.config/eirin/prefs.db ghcr.io/hawawa4/eirin-server:latest
 ```
 
-Note the root folder path and everything else is stored in the prefs SQLite DB (no env var or flag sets it directly) — the DB is written by the desktop app's folder picker, so mount a `prefs.db` that already has `RootFolder` pointed at wherever you mount the NAS inside the container (or override the DB location with `EIRIN_DB_PATH`). There's currently no way to configure a from-scratch headless container without running the desktop app once first.
+Note the root folder path and everything else is stored in the prefs SQLite DB (no env var or flag sets it directly). The DB is written by the desktop app's folder picker, so mount a `prefs.db` that already has `RootFolder` pointed at wherever you mount the NAS inside the container (or override the DB location with `EIRIN_DB_PATH`). There's currently no way to configure a from-scratch headless container without running the desktop app once first.
 
 To build the image locally instead: `docker build -t eirin-server .` (`just docker-build` uses buildx's `local` output instead, extracting the static `eirin-server` binary to `./dist/` rather than producing a runnable image).
 
 Two independent HTTP listeners run in the container: Wails' own server (serves the Svelte frontend, `WAILS_SERVER_PORT`, default 8080) and Eirin's side-channel REST API (`/api/status`, `/api/frames`, `/api/image`, via `EIRIN_PORT`, default 7070).
 
+## AI disclaimer
 
-## AI Disclaimer
-A significant amount of the code in this project was AI generated, I don't try to hide that fact: I can't write any respectable frontend code, but I'm half decent at backend and systems design. This project was also the first time I used `wails`
+A significant amount of the code in this project was AI generated, I don't try to hide that fact: I can't write any respectable frontend code, but I'm half decent at backend and systems design. This project was also the first time I used `wails`.
 
 ## Similar software
 
-There's other wonderful astrophotgraphy software with some overlap in features, so you might be asking "why would I use this instead?" 
+There's other wonderful astrophotography software with some overlap in features, so you might be asking "why would I use this instead?"
 
-- [Astro Catalogue Viewer](https://github.com/thebioguy/Astro-Catalogue-Viewer): Genuinely great and fun to use software; does a similar thing of cataloguing images automatically, and the overall UX is reminiscent of a bird watching journal. It does not help with the processing step, but I can highly recommend it for viewing your finished images
-- [SSLM](https://github.com/AstroNoob-Tools/SSLM): Windows only, focusing entirely on the Seestars
+- [Astro Catalogue Viewer](https://github.com/thebioguy/Astro-Catalogue-Viewer): Genuinely great and fun to use software; does a similar thing of cataloguing images automatically, and the overall UX is reminiscent of a bird watching journal. It does not help with the processing step, but I can highly recommend it for viewing your finished images.
+- [SSLM](https://github.com/AstroNoob-Tools/SSLM): Windows only, focusing entirely on the Seestars.
+
+## License
+
+MIT, see [LICENSE.md](LICENSE.md).

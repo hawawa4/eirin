@@ -77,15 +77,37 @@ lint-frontend:
 format:
     cd frontend && npm run format
 
+# ── Landing page ─────────────────────────────────────────────────────────────
+
+# Live-reload dev server for the Astro landing page in landingpage/
+landing-dev:
+    cd landingpage && npm run dev
+
+# Build the static landing page into landingpage/dist/
+landing-build:
+    cd landingpage && npm run build
+
+# Build the landing page's nginx image locally (context is the repo root, for docs/img and docs/vid)
+landing-docker:
+    docker build -f landingpage/Dockerfile -t eirin-landingpage .
+
+# Type-check (astro check) and Prettier-check the landing page
+landing-check:
+    cd landingpage && npm run check && npm run lint
+
 # ── Utilities ────────────────────────────────────────────────────────────────
 
 # Install frontend npm dependencies
 install-frontend:
     cd frontend && npm install
 
+# Install landing page npm dependencies
+install-landing:
+    cd landingpage && npm install
+
 install-backend:
     go mod tidy
 
 # Remove all build artifacts
 clean:
-    rm -rf frontend/dist build/bin dist eirin-server
+    rm -rf frontend/dist build/bin dist eirin-server landingpage/dist

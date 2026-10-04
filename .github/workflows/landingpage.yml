@@ -1,0 +1,94 @@
+name: Landing page
+
+# Checks the landing page on PRs; on main, also publishes it as a static nginx
+# image to ghcr.io/<owner>/<repo>-landingpage (served on port 8080).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landingpage/**'
+      - 'docs/img/**'
+      - 'docs/vid/**'
+      - '.github/workflows/landingpage.yml'
+  pull_request:
+    paths:
+      - 'landingpage/**'
+      - 'docs/img/**'
+      - 'docs/vid/**'
+      - '.github/workflows/landingpage.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+concurrency:
+  group: landingpage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: landingpage/package-lock.json
+
+      - name: Install deps
+        run: npm ci --prefix landingpage
+
+      - name: Type-check and format check
+        run: |
+          npm run check --prefix landingpage
+          npm run lint --prefix landingpage
+
+  image:
+    name: Docker image
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-landingpage
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      # PRs only build; pushes to main (and manual runs) also push.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: landingpage/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
