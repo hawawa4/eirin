@@ -192,8 +192,8 @@ export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
 
 /**
  * GetAtlasFrameSize reads pixel dimensions for any supported file type.
- * For FITS files the header is parsed; for PNG/TIFF the image config is decoded
- * (much cheaper — no full pixel decode). Called lazily by the frontend.
+ * For FITS files the header is parsed; for PNG/JPEG/TIFF just the image size
+ * is read (much cheaper — no full pixel decode). Called lazily by the frontend.
  */
 export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
     return $Call.ByID(2946490455, nasPath).then(($result: any) => {

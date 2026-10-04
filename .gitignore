@@ -34,3 +34,5 @@ eirin
 .task/checksum/build-frontend--PRODUCTION--
 .task/checksum/generate-bindings--BUILD_FLAGS--buildvcs-false--gcflags-all---l--
 bin/eirin
+eirin-server
+.dev-server/

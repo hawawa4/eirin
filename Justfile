@@ -56,6 +56,17 @@ build-macos-arm:
 build-server:
     go build -tags server -ldflags="-s -w" -o eirin-server .
 
+# Reads the snapshot the desktop app publishes to <root>/.eirin/. Built like
+# the Docker image (no cgo). REST API on 7071 so it can run next to the
+# desktop app (7070); its own database lives in .dev-server/.
+#   just server-dev /media/superfast/Photos/Astro [port]
+# Run the headless server viewer locally for QA (http://127.0.0.1:8090)
+server-dev root port="8090": build-frontend
+    CGO_ENABLED=0 go build -tags server -o eirin-server .
+    @echo "Eirin server viewer: http://127.0.0.1:{{port}}  (library: {{root}})"
+    EIRIN_ROOT="{{root}}" EIRIN_DB_PATH="{{justfile_directory()}}/.dev-server/library.db" \
+        WAILS_SERVER_HOST=127.0.0.1 WAILS_SERVER_PORT={{port}} EIRIN_PORT=7071 ./eirin-server
+
 # Regenerate the TypeScript Wails bindings into frontend/bindings/
 bindings:
     wails3 generate bindings -f '-tags gtk3' -clean=true -ts
