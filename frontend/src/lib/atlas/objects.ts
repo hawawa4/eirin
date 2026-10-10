@@ -3,8 +3,14 @@
 import type * as app from "$models/app";
 import { sphericalMean } from "./fit";
 
-export interface ObjectGroup {
+/** A named entry of the object list (ObjectBrowser). */
+export interface NamedGroup {
   name: string;
+  /** Frames under this name. */
+  count: number;
+}
+
+export interface ObjectGroup extends NamedGroup {
   ra: number;
   dec: number;
   frames: app.AtlasIndexEntry[];
@@ -35,12 +41,12 @@ export function buildObjectGroups(entries: app.AtlasIndexEntry[]): ObjectGroup[]
   const groups: ObjectGroup[] = [];
   for (const [name, frames] of map) {
     const [ra, dec] = sphericalMean(frames);
-    groups.push({ name, ra, dec, frames });
+    groups.push({ name, count: frames.length, ra, dec, frames });
   }
   return groups.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
-export function filterGroups(groups: ObjectGroup[], query: string): ObjectGroup[] {
+export function filterGroups<G extends NamedGroup>(groups: G[], query: string): G[] {
   const q = query.trim().toLowerCase();
   if (!q) return groups;
   const nq = normalizeQuery(q);

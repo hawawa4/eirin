@@ -20,23 +20,29 @@ export const PROJECT_TYPE_LABEL: Record<ProjectFrameType, { one: string; many: s
   bias: { one: "bias", many: "Biases" },
 };
 
-export interface FrameSection {
+/** The least a frame needs to be sorted into project sections. */
+export interface TypedFrame {
+  nasPath: string;
+  frameType: string;
+}
+
+export interface FrameSection<F extends TypedFrame = app.LibraryFrame> {
   type: string;
   label: string;
-  frames: app.LibraryFrame[];
+  frames: F[];
 }
 
 /** Splits frames into the four project sections, plus "Other" for anything unexpected. */
-export function sectionsByType(frames: app.LibraryFrame[]): FrameSection[] {
-  const byType = new Map<string, app.LibraryFrame[]>();
+export function sectionsByType<F extends TypedFrame>(frames: F[]): FrameSection<F>[] {
+  const byType = new Map<string, F[]>();
   for (const t of PROJECT_FRAME_TYPES) byType.set(t, []);
-  const other: app.LibraryFrame[] = [];
+  const other: F[] = [];
   for (const f of frames) {
     const list = byType.get(f.frameType);
     if (list) list.push(f);
     else other.push(f);
   }
-  const sections: FrameSection[] = PROJECT_FRAME_TYPES.map((t) => ({
+  const sections: FrameSection<F>[] = PROJECT_FRAME_TYPES.map((t) => ({
     type: t,
     label: PROJECT_TYPE_LABEL[t].many,
     frames: byType.get(t) ?? [],
@@ -46,7 +52,7 @@ export function sectionsByType(frames: app.LibraryFrame[]): FrameSection[] {
 }
 
 /** Frame count per project type, in folder order, e.g. "120 lights · 30 darks". */
-export function describeTypeCounts(frames: app.LibraryFrame[]): string {
+export function describeTypeCounts(frames: TypedFrame[]): string {
   return sectionsByType(frames)
     .filter((s) => s.frames.length > 0 && s.type !== "other")
     .map((s) => {

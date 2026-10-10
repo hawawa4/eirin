@@ -263,12 +263,24 @@ export function GetLibraryFramesByType(rootPath: string, frameType: string): $Ca
 }
 
 /**
+ * GetLightCoverage groups the non-rejected light frames under rootPath by
+ * telescope and framing. Lights without WCS are placed (Approx) where other
+ * frames of their OBJECT were measured or at its catalog position, or, failing
+ * both, listed as unplaced.
+ */
+export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.LightCoverage> {
+    return $Call.ByID(3788933880, rootPath).then(($result: any) => {
+        return $$createType17($result);
+    });
+}
+
+/**
  * GetLightFramesPaged returns a page of light frames under rootPath filtered to
  * the given objects. offset=0 for the first page.
  */
 export function GetLightFramesPaged(rootPath: string, objects: string[], offset: number): $CancellablePromise<$models.PagedLightFrames> {
     return $Call.ByID(2061787285, rootPath, objects, offset).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType18($result);
     });
 }
 
@@ -277,7 +289,7 @@ export function GetLightFramesPaged(rootPath: string, objects: string[], offset:
  */
 export function GetLightObjects(rootPath: string): $CancellablePromise<string[]> {
     return $Call.ByID(1824160294, rootPath).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
@@ -287,7 +299,7 @@ export function GetLightObjects(rootPath: string): $CancellablePromise<string[]>
  */
 export function GetProjectFrames(projectFolder: string): $CancellablePromise<string[]> {
     return $Call.ByID(3301776845, projectFolder).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
@@ -311,7 +323,7 @@ export function GetProjectLibraryFrames(projectFolder: string): $CancellableProm
  */
 export function GetProjectOutputFiles(projectFolder: string): $CancellablePromise<$models.ProjectOutputFile[]> {
     return $Call.ByID(2934423885, projectFolder).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType21($result);
     });
 }
 
@@ -328,7 +340,7 @@ export function GetProjectsFolder(): $CancellablePromise<string> {
  */
 export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus> {
     return $Call.ByID(2047036404).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType22($result);
     });
 }
 
@@ -351,7 +363,7 @@ export function GetStorageStats(rootPath: string): $CancellablePromise<$models.S
  */
 export function GetViewerPreview(path: string, stretchLevel: number): $CancellablePromise<fits$0.RenderedPreview> {
     return $Call.ByID(2068264024, path, stretchLevel).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType23($result);
     });
 }
 
@@ -376,13 +388,13 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
     return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(3367487933, path).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType26($result);
     });
 }
 
@@ -393,7 +405,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(483950001, path).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType28($result);
     });
 }
 
@@ -402,7 +414,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(2159218332).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType29($result);
     });
 }
 
@@ -411,7 +423,7 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(2572957756).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType30($result);
     });
 }
 
@@ -456,7 +468,7 @@ export function PublishSnapshot(): $CancellablePromise<void> {
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(3225654599, path).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType32($result);
     });
 }
 
@@ -502,7 +514,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(3873197428, sourceFolder, extensions).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType34($result);
     });
 }
 
@@ -585,7 +597,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(1563214480, rootPath, threshold).then(($result: any) => {
-        return $$createType35($result);
+        return $$createType36($result);
     });
 }
 
@@ -622,22 +634,23 @@ const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = importer$0.Progress.createFrom;
 const $$createType15 = $models.LibraryFrame.createFrom;
 const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = $models.PagedLightFrames.createFrom;
-const $$createType18 = $Create.Array($Create.Any);
-const $$createType19 = $models.ProjectOutputFile.createFrom;
-const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $models.SnapshotStatus.createFrom;
-const $$createType22 = fits$0.RenderedPreview.createFrom;
-const $$createType23 = $models.ImportOutputsResult.createFrom;
-const $$createType24 = $models.FileEntry.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = $models.EnrichedFileEntry.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = $Create.Array($$createType2);
-const $$createType29 = store$0.Prefs.createFrom;
-const $$createType30 = fits$0.FITSHeader.createFrom;
-const $$createType31 = $Create.Nullable($$createType30);
-const $$createType32 = importer$0.Candidate.createFrom;
-const $$createType33 = $Create.Array($$createType32);
-const $$createType34 = $models.SuggestResult.createFrom;
-const $$createType35 = $Create.Array($$createType34);
+const $$createType17 = $models.LightCoverage.createFrom;
+const $$createType18 = $models.PagedLightFrames.createFrom;
+const $$createType19 = $Create.Array($Create.Any);
+const $$createType20 = $models.ProjectOutputFile.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = $models.SnapshotStatus.createFrom;
+const $$createType23 = fits$0.RenderedPreview.createFrom;
+const $$createType24 = $models.ImportOutputsResult.createFrom;
+const $$createType25 = $models.FileEntry.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = $models.EnrichedFileEntry.createFrom;
+const $$createType28 = $Create.Array($$createType27);
+const $$createType29 = $Create.Array($$createType2);
+const $$createType30 = store$0.Prefs.createFrom;
+const $$createType31 = fits$0.FITSHeader.createFrom;
+const $$createType32 = $Create.Nullable($$createType31);
+const $$createType33 = importer$0.Candidate.createFrom;
+const $$createType34 = $Create.Array($$createType33);
+const $$createType35 = $models.SuggestResult.createFrom;
+const $$createType36 = $Create.Array($$createType35);

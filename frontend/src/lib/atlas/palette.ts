@@ -30,6 +30,8 @@ export interface AtlasPalette {
   selectedLabel: RGB;
   compass: RGB;
   compassText: RGB;
+  /** Telescope colours for the Coverage view, most-used scope first; kept clear of `selected`. */
+  scopes: readonly RGB[];
 }
 
 const BLUE: AtlasPalette = {
@@ -52,6 +54,14 @@ const BLUE: AtlasPalette = {
   selectedLabel: [255, 228, 140],
   compass: [150, 180, 235],
   compassText: [205, 222, 255],
+  scopes: [
+    [100, 165, 255],
+    [80, 215, 165],
+    [205, 135, 255],
+    [255, 125, 125],
+    [120, 220, 235],
+    [240, 150, 205],
+  ],
 };
 
 const RED: AtlasPalette = {
@@ -74,6 +84,14 @@ const RED: AtlasPalette = {
   selectedLabel: [255, 226, 170],
   compass: [205, 120, 108],
   compassText: [245, 200, 190],
+  scopes: [
+    [235, 105, 90],
+    [215, 85, 140],
+    [245, 160, 120],
+    [185, 110, 95],
+    [250, 135, 160],
+    [200, 140, 120],
+  ],
 };
 
 const GREY: AtlasPalette = {
@@ -96,6 +114,14 @@ const GREY: AtlasPalette = {
   selectedLabel: [246, 226, 162],
   compass: [160, 165, 180],
   compassText: [222, 224, 232],
+  scopes: [
+    [150, 170, 205],
+    [130, 195, 170],
+    [190, 160, 210],
+    [215, 150, 140],
+    [150, 200, 210],
+    [205, 165, 190],
+  ],
 };
 
 const PALETTES: Record<Theme, AtlasPalette> = { blue: BLUE, red: RED, grey: GREY };

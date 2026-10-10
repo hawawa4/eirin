@@ -47,7 +47,9 @@ func AllEntries() []Entry {
 
 // LookupByName returns the RA/Dec (decimal degrees) for a catalog object
 // matching the query (case-insensitive). Tries exact match first, then with
-// spaces/underscores/hyphens removed. Returns (0,0,false) if not found.
+// spaces/underscores/hyphens removed, then against the designation that leads
+// the catalog name ("M 31" finds "M31 Andromeda Galaxy"). Returns (0,0,false)
+// if not found.
 func LookupByName(query string) (ra, dec float64, ok bool) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
@@ -71,6 +73,18 @@ func LookupByName(query string) (ra, dec float64, ok bool) {
 	for _, e := range entries {
 		if normalize(e.Name) == qn {
 			return e.RA, e.Dec, true
+		}
+	}
+
+	// 3. Designation match — catalog names lead with the designation and add a
+	// common name ("M31 Andromeda Galaxy", "IC 434 Horsehead Region"), so
+	// compare the query with the name's first one or two words.
+	for _, e := range entries {
+		words := strings.Fields(e.Name)
+		for n := 1; n <= 2 && n <= len(words); n++ {
+			if normalize(strings.Join(words[:n], "")) == qn {
+				return e.RA, e.Dec, true
+			}
 		}
 	}
 

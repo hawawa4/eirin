@@ -494,6 +494,7 @@
 
   // ── Loading ──────────────────────────────────────────────────────────────
   let pendingFocus: string | null = null;
+  let pendingSelect: string[] | null = null;
 
   async function reload(): Promise<void> {
     const root = rootFolder;
@@ -523,6 +524,8 @@
         reload();
       } else if (pendingFocus && loadedOnce) {
         applyFocus(pendingFocus);
+      } else if (pendingSelect && loadedOnce) {
+        applySelect(pendingSelect);
       }
     }
   }
@@ -580,6 +583,37 @@
     selectedPaths.clear();
     manualExpanded.set(groupKeyFor(f, groupBy), true);
     setCursor(nasPath);
+  }
+
+  /** Check the frames at `paths` (e.g. from Coverage) with filters cleared; queued until loaded. */
+  export function selectFiles(paths: string[]): void {
+    if (!loadedOnce || loading || refreshing) {
+      pendingSelect = paths;
+      return;
+    }
+    applySelect(paths);
+  }
+
+  function applySelect(paths: string[]) {
+    pendingSelect = null;
+    clearAllFilters();
+    if (showRejected) switchTab(false);
+    selectedPaths.clear();
+    let first: string | null = null;
+    let missing = 0;
+    for (const p of paths) {
+      const f = frameByPath.get(p);
+      if (!f || f.isRejected) {
+        missing++;
+        continue;
+      }
+      selectedPaths.add(p);
+      manualExpanded.set(groupKeyFor(f, groupBy), true);
+      first ??= p;
+    }
+    if (missing > 0)
+      toast.info(`${plural(missing, "frame")} not found in the library — try a scan.`);
+    if (first) setCursor(first);
   }
 
   // ── Events ───────────────────────────────────────────────────────────────

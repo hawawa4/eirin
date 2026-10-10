@@ -270,6 +270,15 @@ func (s *Store) GetFramesUnderByType(rootPath, frameType string) ([]Frame, error
 	return s.framesUnder(rootPath, sq.Eq{"frame_type": frameType})
 }
 
+// GetCoverageLights returns the non-rejected light frames under rootPath,
+// with or without WCS, for the Coverage view.
+func (s *Store) GetCoverageLights(rootPath string) ([]Frame, error) {
+	return s.framesUnder(rootPath, sq.And{
+		sq.Eq{"frame_type": FrameTypeLight},
+		sq.Eq{"rejected": 0},
+	})
+}
+
 // framesUnder returns cached frames under rootPath matching the optional
 // extra condition, ordered by object then date.
 func (s *Store) framesUnder(rootPath string, extra sq.Sqlizer) ([]Frame, error) {

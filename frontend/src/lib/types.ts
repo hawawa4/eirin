@@ -60,6 +60,7 @@ export type AppMode =
   | "browser"
   | "library"
   | "atlas"
+  | "coverage"
   | "import"
   | "projects"
   | "storage"

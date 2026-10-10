@@ -278,6 +278,187 @@ export class CatalogObject {
 }
 
 /**
+ * CoverageCluster is a group of light frames sharing a framing (see
+ * internal/coverage), as drawn by the Coverage view.
+ */
+export class CoverageCluster {
+    /**
+     * ID is stable across reloads while the cluster's first path survives.
+     */
+    "id": string;
+    "scope": string;
+
+    /**
+     * Centroid of the sub centres; zero for unplaced groups.
+     */
+    "ra": number;
+    "dec": number;
+
+    /**
+     * Hull outlines all the subs' footprints; empty when the scope's sensor
+     * size couldn't be read (the view then draws a marker).
+     */
+    "hull": SkyPoint[];
+
+    /**
+     * arcsec/pixel
+     */
+    "pixelScale": number;
+
+    /**
+     * Approx marks a position estimated from the OBJECT name (no WCS).
+     */
+    "approx": boolean;
+    "objects": CoverageObject[];
+    "filters": string[];
+    "frames": number;
+
+    /**
+     * seconds
+     */
+    "expTotal": number;
+    "firstDate": string;
+    "lastDate": string;
+    "nights": number;
+    "paths": string[];
+
+    /** Creates a new CoverageCluster instance. */
+    constructor($$source: Partial<CoverageCluster> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("scope" in $$source)) {
+            this["scope"] = "";
+        }
+        if (!("ra" in $$source)) {
+            this["ra"] = 0;
+        }
+        if (!("dec" in $$source)) {
+            this["dec"] = 0;
+        }
+        if (!("hull" in $$source)) {
+            this["hull"] = [];
+        }
+        if (!("pixelScale" in $$source)) {
+            this["pixelScale"] = 0;
+        }
+        if (!("approx" in $$source)) {
+            this["approx"] = false;
+        }
+        if (!("objects" in $$source)) {
+            this["objects"] = [];
+        }
+        if (!("filters" in $$source)) {
+            this["filters"] = [];
+        }
+        if (!("frames" in $$source)) {
+            this["frames"] = 0;
+        }
+        if (!("expTotal" in $$source)) {
+            this["expTotal"] = 0;
+        }
+        if (!("firstDate" in $$source)) {
+            this["firstDate"] = "";
+        }
+        if (!("lastDate" in $$source)) {
+            this["lastDate"] = "";
+        }
+        if (!("nights" in $$source)) {
+            this["nights"] = 0;
+        }
+        if (!("paths" in $$source)) {
+            this["paths"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CoverageCluster instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CoverageCluster {
+        const $$createField4_0 = $$createType3;
+        const $$createField7_0 = $$createType5;
+        const $$createField8_0 = $$createType0;
+        const $$createField14_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("hull" in $$parsedSource) {
+            $$parsedSource["hull"] = $$createField4_0($$parsedSource["hull"]);
+        }
+        if ("objects" in $$parsedSource) {
+            $$parsedSource["objects"] = $$createField7_0($$parsedSource["objects"]);
+        }
+        if ("filters" in $$parsedSource) {
+            $$parsedSource["filters"] = $$createField8_0($$parsedSource["filters"]);
+        }
+        if ("paths" in $$parsedSource) {
+            $$parsedSource["paths"] = $$createField14_0($$parsedSource["paths"]);
+        }
+        return new CoverageCluster($$parsedSource as Partial<CoverageCluster>);
+    }
+}
+
+/**
+ * CoverageObject is one OBJECT tag within a cluster.
+ */
+export class CoverageObject {
+    "name": string;
+    "count": number;
+
+    /** Creates a new CoverageObject instance. */
+    constructor($$source: Partial<CoverageObject> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("count" in $$source)) {
+            this["count"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CoverageObject instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CoverageObject {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CoverageObject($$parsedSource as Partial<CoverageObject>);
+    }
+}
+
+/**
+ * CoverageScope is one telescope with lights in the library.
+ */
+export class CoverageScope {
+    "scope": string;
+    "label": string;
+    "frames": number;
+
+    /** Creates a new CoverageScope instance. */
+    constructor($$source: Partial<CoverageScope> = {}) {
+        if (!("scope" in $$source)) {
+            this["scope"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("frames" in $$source)) {
+            this["frames"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CoverageScope instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CoverageScope {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CoverageScope($$parsedSource as Partial<CoverageScope>);
+    }
+}
+
+/**
  * EnrichedFileEntry extends FileEntry with FITS header metadata loaded from
  * the local cache. Fields are zero/empty when HasMeta is false.
  */
@@ -620,6 +801,59 @@ export class LibraryFrame {
 }
 
 /**
+ * LightCoverage is everything the Coverage view shows.
+ */
+export class LightCoverage {
+    "clusters": CoverageCluster[];
+
+    /**
+     * Unplaced holds lights with neither WCS nor a catalog match for their
+     * OBJECT, grouped by scope and object.
+     */
+    "unplaced": CoverageCluster[];
+
+    /**
+     * Scopes, most frames first.
+     */
+    "scopes": CoverageScope[];
+
+    /** Creates a new LightCoverage instance. */
+    constructor($$source: Partial<LightCoverage> = {}) {
+        if (!("clusters" in $$source)) {
+            this["clusters"] = [];
+        }
+        if (!("unplaced" in $$source)) {
+            this["unplaced"] = [];
+        }
+        if (!("scopes" in $$source)) {
+            this["scopes"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LightCoverage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LightCoverage {
+        const $$createField0_0 = $$createType7;
+        const $$createField1_0 = $$createType7;
+        const $$createField2_0 = $$createType9;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("clusters" in $$parsedSource) {
+            $$parsedSource["clusters"] = $$createField0_0($$parsedSource["clusters"]);
+        }
+        if ("unplaced" in $$parsedSource) {
+            $$parsedSource["unplaced"] = $$createField1_0($$parsedSource["unplaced"]);
+        }
+        if ("scopes" in $$parsedSource) {
+            $$parsedSource["scopes"] = $$createField2_0($$parsedSource["scopes"]);
+        }
+        return new LightCoverage($$parsedSource as Partial<LightCoverage>);
+    }
+}
+
+/**
  * PagedLightFrames is returned by GetLightFramesPaged.
  */
 export class PagedLightFrames {
@@ -642,7 +876,7 @@ export class PagedLightFrames {
      * Creates a new PagedLightFrames instance from a string or object.
      */
     static createFrom($$source: any = {}): PagedLightFrames {
-        const $$createField0_0 = $$createType3;
+        const $$createField0_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frames" in $$parsedSource) {
             $$parsedSource["frames"] = $$createField0_0($$parsedSource["frames"]);
@@ -749,6 +983,34 @@ export const SirilInfo = siril$0.SirilInfo;
 export type SirilInfo = siril$0.SirilInfo;
 
 /**
+ * SkyPoint is a sky position in degrees.
+ */
+export class SkyPoint {
+    "ra": number;
+    "dec": number;
+
+    /** Creates a new SkyPoint instance. */
+    constructor($$source: Partial<SkyPoint> = {}) {
+        if (!("ra" in $$source)) {
+            this["ra"] = 0;
+        }
+        if (!("dec" in $$source)) {
+            this["dec"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SkyPoint instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SkyPoint {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SkyPoint($$parsedSource as Partial<SkyPoint>);
+    }
+}
+
+/**
  * SnapshotStatus describes the library snapshot shared between the desktop
  * app and the read-only server viewer. The desktop fills the publishing
  * fields, the server the loading ones. Times are RFC 3339, empty if unset.
@@ -845,7 +1107,7 @@ export class StorageNode {
      * Creates a new StorageNode instance from a string or object.
      */
     static createFrom($$source: any = {}): StorageNode {
-        const $$createField3_0 = $$createType5;
+        const $$createField3_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField3_0($$parsedSource["children"]);
@@ -897,7 +1159,7 @@ export class SuggestResult {
      * Creates a new SuggestResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SuggestResult {
-        const $$createField0_0 = $$createType2;
+        const $$createField0_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frame" in $$parsedSource) {
             $$parsedSource["frame"] = $$createField0_0($$parsedSource["frame"]);
@@ -909,7 +1171,15 @@ export class SuggestResult {
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = Capabilities.createFrom;
-const $$createType2 = LibraryFrame.createFrom;
+const $$createType2 = SkyPoint.createFrom;
 const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = StorageNode.createFrom;
+const $$createType4 = CoverageObject.createFrom;
 const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = CoverageCluster.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = CoverageScope.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = LibraryFrame.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = StorageNode.createFrom;
+const $$createType13 = $Create.Array($$createType12);

@@ -1,14 +1,17 @@
 <script lang="ts">
-  import type * as app from "$models/app";
   import { AddFramesToProjectDetailed, CreateProject } from "$app";
   import type { Project } from "../../lib/types";
   import { toast } from "../../lib/toast.svelte";
-  import { describeTypeCounts, isProjectFrameType } from "../../lib/projects/frames";
+  import {
+    describeTypeCounts,
+    isProjectFrameType,
+    type TypedFrame,
+  } from "../../lib/projects/frames";
   import { plural } from "../../lib/utils";
   import Modal from "../Modal.svelte";
 
   interface Props {
-    frames: app.LibraryFrame[];
+    frames: TypedFrame[];
     /** Prefills the name field. */
     suggestedName?: string;
     onclose: () => void;

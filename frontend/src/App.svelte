@@ -20,6 +20,7 @@
   import SettingsView from "./components/SettingsView.svelte";
   import StorageView from "./components/StorageView.svelte";
   import SkyAtlas from "./components/SkyAtlas.svelte";
+  import CoverageView from "./components/CoverageView.svelte";
   import BrowseView from "./components/browse/BrowseView.svelte";
   import Toaster from "./components/Toaster.svelte";
   import { loadUiState } from "./lib/uiState.svelte";
@@ -78,9 +79,11 @@
   let prefsLoaded = $state(false);
 
   // ── View refs ─────────────────────────────────────────────────────────────
-  let libraryView = $state<{ reload: () => void; focusFile: (nasPath: string) => void } | null>(
-    null,
-  );
+  let libraryView = $state<{
+    reload: () => void;
+    focusFile: (nasPath: string) => void;
+    selectFiles?: (paths: string[]) => void;
+  } | null>(null);
   let projectsView = $state<{ selectProjectById: (id: number) => void } | null>(null);
   let browseView = $state<{ reload: () => void } | null>(null);
   let skyAtlas = $state<{ focusFrame: (nasPath: string) => void } | null>(null);
@@ -204,6 +207,12 @@
     libraryView?.focusFile(nasPath);
   }
 
+  async function selectInLibrary(paths: string[]) {
+    setMode("library");
+    await tick();
+    libraryView?.selectFiles?.(paths);
+  }
+
   async function showOnAtlas(nasPath: string) {
     setMode("atlas");
     await tick();
@@ -313,6 +322,19 @@
               {readOnly}
               onscan={readOnly ? undefined : () => startScan()}
               onframeopen={openInLibrary}
+            />
+          </div>
+        {/if}
+
+        {#if desktopMode && visited.coverage}
+          <div class="view" class:hidden={appMode !== "coverage"}>
+            <CoverageView
+              rootPath={rootFolder}
+              active={appMode === "coverage"}
+              {theme}
+              onscan={() => startScan()}
+              onopenproject={openProject}
+              onshowinlibrary={selectInLibrary}
             />
           </div>
         {/if}

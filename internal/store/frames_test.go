@@ -229,6 +229,23 @@ func TestGetFramesUnderByType(t *testing.T) {
 	}
 }
 
+func TestGetCoverageLights(t *testing.T) {
+	s := newTestStore(t)
+	must(t, s.UpsertFrame("/nas/root/M42_sub/Light_001.fit", Frame{Object: "M 42", FrameType: FrameTypeLight}))
+	must(t, s.UpsertFrame("/nas/root/M42_sub/Light_002.fit", Frame{Object: "M 42", FrameType: FrameTypeLight}))
+	must(t, s.UpsertFrame("/nas/root/M42/Stacked_M42.fit", Frame{Object: "M 42", FrameType: FrameTypeStacked}))
+	must(t, s.UpsertFrame("/nas/other/Light_003.fit", Frame{Object: "M 42", FrameType: FrameTypeLight}))
+	must(t, s.RejectFrame("/nas/root/M42_sub/Light_002.fit", "clouds"))
+
+	frames, err := s.GetCoverageLights("/nas/root")
+	if err != nil {
+		t.Fatalf("GetCoverageLights: %v", err)
+	}
+	if len(frames) != 1 || frames[0].NasPath != "/nas/root/M42_sub/Light_001.fit" {
+		t.Errorf("got %+v, want only the non-rejected light under the root", frames)
+	}
+}
+
 func TestRejectAndUnrejectFrame(t *testing.T) {
 	s := newTestStore(t)
 

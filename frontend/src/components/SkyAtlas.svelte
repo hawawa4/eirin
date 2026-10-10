@@ -6,21 +6,13 @@
   import { formatDec, formatRA } from "../lib/utils";
   import { toast } from "../lib/toast.svelte";
   import { isModalOpen, isTypingTarget } from "../lib/keys";
-  import {
-    angularSep,
-    clampPpd,
-    fromTangent,
-    panFrom,
-    toTangent,
-    zoomAnchored,
-    type Viewport,
-  } from "../lib/atlas/projection";
+  import { fromTangent } from "../lib/atlas/projection";
+  import { SkyCamera } from "../lib/atlas/camera.svelte";
   import { frameExtentDeg } from "../lib/atlas/footprint";
-  import { fitView, type FitResult, type FitTarget } from "../lib/atlas/fit";
+  import { fitView, type FitTarget } from "../lib/atlas/fit";
   import { drawScene } from "../lib/atlas/draw";
   import { framesNeedingSize, hitTest, type AtlasScene } from "../lib/atlas/scene";
   import { SizeQueue } from "../lib/atlas/sizeQueue";
-  import { DragTracker, STOP_SPEED, coastStep } from "../lib/atlas/inertia";
   import { atlasPalette, paletteCssVars } from "../lib/atlas/palette";
   import type { Theme } from "../lib/types";
   import { PreviewCache } from "../lib/atlas/previews";
@@ -66,14 +58,9 @@
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
   let container: HTMLElement;
-  let canvasW = $state(800);
-  let canvasH = $state(600);
   let dpr = $state(1);
-
-  let viewRA = $state(180);
-  let viewDec = $state(0);
-  let pixPerDeg = $state(12);
-  let vp = $derived<Viewport>({ ra: viewRA, dec: viewDec, ppd: pixPerDeg, w: canvasW, h: canvasH });
+  const cam = new SkyCamera();
+  let vp = $derived(cam.vp);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   let index = $state.raw<app.AtlasIndexEntry[]>([]);
@@ -180,56 +167,7 @@
     lazyTimer = setTimeout(() => sizeQueue.request(framesNeedingSize(scene)), 200);
   });
 
-  // ── Camera moves ──────────────────────────────────────────────────────────
-  let anim: number | null = null;
-  function stopAnim() {
-    if (anim !== null) cancelAnimationFrame(anim);
-    anim = null;
-  }
-
-  function goTo(t: FitResult, animate = true) {
-    stopAnim();
-    const start = { ra: viewRA, dec: viewDec, ppd: pixPerDeg };
-    const off = toTangent(start.ra, start.dec, t.ra, t.dec);
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!animate || reduceMotion || !off || angularSep(start.ra, start.dec, t.ra, t.dec) > 60) {
-      viewRA = t.ra;
-      viewDec = t.dec;
-      pixPerDeg = t.ppd;
-      return;
-    }
-    const t0 = performance.now();
-    const dur = 380;
-    const step = (now: number) => {
-      const k = Math.min(1, (now - t0) / dur);
-      const e = 1 - (1 - k) ** 3;
-      const [ra, dec] = fromTangent(start.ra, start.dec, off[0] * e, off[1] * e);
-      viewRA = ra;
-      viewDec = dec;
-      pixPerDeg = start.ppd * (t.ppd / start.ppd) ** e;
-      anim = k < 1 ? requestAnimationFrame(step) : null;
-    };
-    anim = requestAnimationFrame(step);
-  }
-
-  /** Keeps the view gliding after a fast drag, slowing down until it stops. */
-  function coast(v0: [number, number]) {
-    stopAnim();
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    let v = v0;
-    let last = performance.now();
-    const step = (now: number) => {
-      const r = coastStep(v, Math.min(now - last, 50));
-      last = now;
-      v = r.v;
-      const c = panFrom(viewRA, viewDec, pixPerDeg, r.dx, r.dy);
-      viewRA = c.ra;
-      viewDec = c.dec;
-      anim = Math.hypot(v[0], v[1]) > STOP_SPEED ? requestAnimationFrame(step) : null;
-    };
-    anim = requestAnimationFrame(step);
-  }
-
+  // ── Fitting ───────────────────────────────────────────────────────────────
   function targetsOf(entries: app.AtlasIndexEntry[]): FitTarget[] {
     return entries.map((e) => ({
       ra: e.ra,
@@ -244,15 +182,15 @@
    * land in the middle of that free area.
    */
   function fitTargets(targets: FitTarget[], opts: { cluster?: boolean; panel?: boolean } = {}) {
-    const wide = canvasW >= 760;
+    const wide = cam.w >= 760;
     const left = wide && index.length > 0 ? 250 : 0;
     const right = wide && opts.panel ? 290 : 0;
-    const freeW = canvasW - left - right;
-    const r = fitView(targets, freeW, canvasH, { cluster: opts.cluster, maxPpd: canvasW / 0.5 });
+    const freeW = cam.w - left - right;
+    const r = fitView(targets, freeW, cam.h, { cluster: opts.cluster, maxPpd: cam.w / 0.5 });
     if (!r) return;
-    const dx = left + freeW / 2 - canvasW / 2; // where the target should sit, relative to centre
+    const dx = left + freeW / 2 - cam.w / 2; // where the target should sit, relative to centre
     const [ra, dec] = fromTangent(r.ra, r.dec, dx / r.ppd, 0);
-    goTo({ ra, dec, ppd: r.ppd });
+    cam.goTo({ ra, dec, ppd: r.ppd });
   }
 
   function fitAll() {
@@ -268,33 +206,16 @@
     tryPendingFit();
   }
   function tryPendingFit() {
-    if (!pendingFit || !active || canvasW < 50 || canvasH < 50 || index.length === 0) return;
+    if (!pendingFit || !active || cam.w < 50 || cam.h < 50 || index.length === 0) return;
     pendingFit = false;
     fitAll();
   }
   $effect(() => {
     void active;
-    void canvasW;
-    void canvasH;
+    void cam.w;
+    void cam.h;
     untrack(tryPendingFit);
   });
-
-  function zoomBy(factor: number, x = canvasW / 2, y = canvasH / 2) {
-    stopAnim();
-    const old = pixPerDeg;
-    const ppd = clampPpd(old * factor);
-    const c = zoomAnchored({ ...vp, ppd }, old, x, y);
-    pixPerDeg = ppd;
-    viewRA = c.ra;
-    viewDec = c.dec;
-  }
-
-  function panBy(dx: number, dy: number) {
-    stopAnim();
-    const c = panFrom(viewRA, viewDec, pixPerDeg, dx, dy);
-    viewRA = c.ra;
-    viewDec = c.dec;
-  }
 
   // ── Selection actions ─────────────────────────────────────────────────────
   /** Prepares a frame for overlay: retry a failed preview, fetch its size first. */
@@ -339,8 +260,8 @@
   }
 
   function selectCatalog(obj: app.CatalogObject) {
-    const ppd = Math.min(Math.max(pixPerDeg, canvasW / 30), canvasW / 3);
-    goTo({ ra: obj.ra, dec: obj.dec, ppd });
+    const ppd = Math.min(Math.max(cam.ppd, cam.w / 30), cam.w / 3);
+    cam.goTo({ ra: obj.ra, dec: obj.dec, ppd });
     focus = { ra: obj.ra, dec: obj.dec };
   }
 
@@ -367,64 +288,29 @@
   }
 
   // ── Pointer ───────────────────────────────────────────────────────────────
-  let isPanning = $state(false);
-  let dragMoved = $state(false);
-  let panStart = { x: 0, y: 0, ra: 0, dec: 0 };
-  const drag = new DragTracker();
-
   function localXY(e: MouseEvent): [number, number] {
     const rect = canvas.getBoundingClientRect();
     return [e.clientX - rect.left, e.clientY - rect.top];
   }
 
   function onWheel(e: WheelEvent) {
-    e.preventDefault();
-    const [mx, my] = localXY(e);
-    const factor = Math.min(1.5, Math.max(0.66, Math.exp(-e.deltaY * 0.0015)));
-    zoomBy(factor, mx, my);
-  }
-
-  function onMouseDown(e: MouseEvent) {
-    if (e.button !== 0) return;
-    stopAnim();
-    isPanning = true;
-    dragMoved = false;
-    panStart = { x: e.clientX, y: e.clientY, ra: viewRA, dec: viewDec };
-    drag.reset(performance.now(), e.clientX, e.clientY);
-  }
-
-  /** Ends a drag; a fast release keeps the view gliding. */
-  function endPan(): boolean {
-    if (!isPanning) return false;
-    isPanning = false;
-    if (dragMoved) {
-      const v = drag.velocity(performance.now());
-      if (v) coast(v);
-    }
-    return true;
+    cam.wheel(e, ...localXY(e));
   }
 
   function onMouseMove(e: MouseEvent) {
-    const [mx, my] = localXY(e);
-    if (isPanning) {
-      const dx = e.clientX - panStart.x;
-      const dy = e.clientY - panStart.y;
-      if (!dragMoved && Math.hypot(dx, dy) <= 4) return;
-      dragMoved = true;
-      drag.add(performance.now(), e.clientX, e.clientY);
-      const c = panFrom(panStart.ra, panStart.dec, pixPerDeg, dx, dy);
-      viewRA = c.ra;
-      viewDec = c.dec;
+    if (cam.dragTo(e)) {
       hoveredEntry = null;
       return;
     }
+    if (cam.isPanning) return;
+    const [mx, my] = localXY(e);
     hoveredEntry = hitTest(scene, mx, my);
     hoverX = mx;
     hoverY = my;
   }
 
   function onMouseUp(e: MouseEvent) {
-    if (!endPan() || dragMoved) return;
+    if (cam.endDrag() !== "click") return;
     const [mx, my] = localXY(e);
     const hit = hitTest(scene, mx, my);
     if (!hit) clearSelection();
@@ -438,30 +324,13 @@
   function onKeydown(e: KeyboardEvent) {
     if (!active || isTypingTarget(e) || isModalOpen()) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const step = Math.min(canvasW, canvasH) / 6;
+    if (cam.navKey(e.key)) {
+      e.preventDefault();
+      return;
+    }
     switch (e.key) {
-      case "+":
-      case "=":
-        zoomBy(1.4);
-        break;
-      case "-":
-      case "_":
-        zoomBy(1 / 1.4);
-        break;
       case "0":
         fitAll();
-        break;
-      case "ArrowLeft":
-        panBy(step, 0);
-        break;
-      case "ArrowRight":
-        panBy(-step, 0);
-        break;
-      case "ArrowUp":
-        panBy(0, step);
-        break;
-      case "ArrowDown":
-        panBy(0, -step);
         break;
       case "Escape":
         if (helpOpen) helpOpen = false;
@@ -533,15 +402,15 @@
       const r = entries[0].contentRect;
       // Hidden tabs report 0×0; keep the last real size.
       if (r.width > 0 && r.height > 0) {
-        canvasW = r.width;
-        canvasH = r.height;
+        cam.w = r.width;
+        cam.h = r.height;
       }
       dpr = window.devicePixelRatio || 1;
     });
     ro.observe(container);
     if (container.clientWidth > 0 && container.clientHeight > 0) {
-      canvasW = container.clientWidth;
-      canvasH = container.clientHeight;
+      cam.w = container.clientWidth;
+      cam.h = container.clientHeight;
     }
 
     GetCatalog()
@@ -552,14 +421,14 @@
 
     return () => {
       ro.disconnect();
-      stopAnim();
+      cam.stopAnim();
       if (lazyTimer) clearTimeout(lazyTimer);
       unsubUpdated();
     };
   });
 
   // ── HUD formatting ────────────────────────────────────────────────────────
-  let fovDeg = $derived(canvasW / pixPerDeg);
+  let fovDeg = $derived(cam.w / cam.ppd);
   let fovText = $derived(
     fovDeg < 1 ? `${(fovDeg * 60).toFixed(1)}′` : `${fovDeg.toFixed(fovDeg < 10 ? 1 : 0)}°`,
   );
@@ -571,18 +440,18 @@
   <canvas
     bind:this={canvas}
     class="atlas-canvas"
-    width={Math.round(canvasW * dpr)}
-    height={Math.round(canvasH * dpr)}
-    style:width="{canvasW}px"
-    style:height="{canvasH}px"
-    style:cursor={isPanning && dragMoved ? "grabbing" : hoveredEntry ? "pointer" : "grab"}
+    width={Math.round(cam.w * dpr)}
+    height={Math.round(cam.h * dpr)}
+    style:width="{cam.w}px"
+    style:height="{cam.h}px"
+    style:cursor={cam.isPanning && cam.dragMoved ? "grabbing" : hoveredEntry ? "pointer" : "grab"}
     aria-label="Sky atlas: your frames plotted on the sky"
     onwheel={onWheel}
-    onmousedown={onMouseDown}
     onmousemove={onMouseMove}
     onmouseup={onMouseUp}
+    onmousedown={(e) => cam.beginDrag(e)}
     onmouseleave={() => {
-      endPan();
+      cam.endDrag();
       hoveredEntry = null;
     }}
   ></canvas>
@@ -607,8 +476,8 @@
 
   <!-- HUD -->
   <div class="atlas-hud">
-    <span title="{viewRA.toFixed(4)}°">RA {formatRA(viewRA)}</span>
-    <span title="{viewDec.toFixed(4)}°">Dec {formatDec(viewDec)}</span>
+    <span title="{cam.ra.toFixed(4)}°">RA {formatRA(cam.ra)}</span>
+    <span title="{cam.dec.toFixed(4)}°">Dec {formatDec(cam.dec)}</span>
     <span>FOV {fovText}</span>
     <span class="hud-sep" aria-hidden="true"></span>
     <span>
@@ -661,14 +530,17 @@
 
   <!-- Zoom controls -->
   <div class="atlas-zoom" role="group" aria-label="Zoom">
-    <button class="zoom-btn" title="Zoom in (+)" aria-label="Zoom in" onclick={() => zoomBy(1.4)}
-      >+</button
+    <button
+      class="zoom-btn"
+      title="Zoom in (+)"
+      aria-label="Zoom in"
+      onclick={() => cam.zoomBy(1.4)}>+</button
     >
     <button
       class="zoom-btn"
       title="Zoom out (−)"
       aria-label="Zoom out"
-      onclick={() => zoomBy(1 / 1.4)}>−</button
+      onclick={() => cam.zoomBy(1 / 1.4)}>−</button
     >
     <button class="zoom-btn" title="Fit all frames (0)" aria-label="Fit all frames" onclick={fitAll}
       >⤢</button
@@ -683,13 +555,13 @@
     </div>
   {/if}
 
-  {#if hoveredEntry && !isPanning && !helpOpen}
+  {#if hoveredEntry && !cam.isPanning && !helpOpen}
     <AtlasTooltip
       entry={hoveredEntry}
       x={hoverX}
       y={hoverY}
-      boundsW={canvasW}
-      boundsH={canvasH}
+      boundsW={cam.w}
+      boundsH={cam.h}
       overlaid={overlayPaths.includes(hoveredEntry.nasPath)}
       selected={panelEntry?.nasPath === hoveredEntry.nasPath && overlay.length === 1}
     />

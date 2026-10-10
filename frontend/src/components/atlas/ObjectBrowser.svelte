@@ -1,13 +1,14 @@
-<script lang="ts">
+<script lang="ts" generics="G extends NamedGroup">
   import { tick } from "svelte";
   import type * as app from "$models/app";
-  import { filterGroups, searchCatalog, type ObjectGroup } from "../../lib/atlas/objects";
+  import { filterGroups, searchCatalog, type NamedGroup } from "../../lib/atlas/objects";
 
   interface Props {
-    groups: ObjectGroup[];
+    groups: G[];
     catalog: app.CatalogObject[];
     activeName: string | null;
-    onselectgroup: (g: ObjectGroup) => void;
+    /** `additive` is true for Shift/Ctrl/Cmd+click. */
+    onselectgroup: (g: G, additive: boolean) => void;
     onselectcatalog: (obj: app.CatalogObject) => void;
   }
 
@@ -34,7 +35,7 @@
       if (search) search = "";
       else searchEl?.blur();
     } else if (e.key === "Enter") {
-      if (shownGroups.length > 0) onselectgroup(shownGroups[0]);
+      if (shownGroups.length > 0) onselectgroup(shownGroups[0], false);
       else if (catalogMatches.length > 0) onselectcatalog(catalogMatches[0]);
     }
   }
@@ -73,11 +74,11 @@
                 class="obj-item"
                 class:active={g.name === activeName}
                 aria-current={g.name === activeName ? "true" : undefined}
-                onclick={() => onselectgroup(g)}
-                title="Show {g.name} ({g.frames.length} frame{g.frames.length === 1 ? '' : 's'})"
+                onclick={(e) => onselectgroup(g, e.shiftKey || e.ctrlKey || e.metaKey)}
+                title="Show {g.name} ({g.count} frame{g.count === 1 ? '' : 's'})"
               >
                 <span class="obj-item-name">{g.name}</span>
-                <span class="obj-item-count">{g.frames.length}</span>
+                <span class="obj-item-count">{g.count}</span>
               </button>
             </li>
           {:else}
