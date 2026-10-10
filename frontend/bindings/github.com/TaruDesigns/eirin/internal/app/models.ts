@@ -301,6 +301,13 @@ export class CoverageCluster {
     "hull": SkyPoint[];
 
     /**
+     * Rotation is the outline's rotation (degrees, mod 180); RotationSpread
+     * how far the subs' rotations range around it (field rotation).
+     */
+    "rotation": number;
+    "rotationSpread": number;
+
+    /**
      * arcsec/pixel
      */
     "pixelScale": number;
@@ -338,6 +345,12 @@ export class CoverageCluster {
         }
         if (!("hull" in $$source)) {
             this["hull"] = [];
+        }
+        if (!("rotation" in $$source)) {
+            this["rotation"] = 0;
+        }
+        if (!("rotationSpread" in $$source)) {
+            this["rotationSpread"] = 0;
         }
         if (!("pixelScale" in $$source)) {
             this["pixelScale"] = 0;
@@ -378,21 +391,21 @@ export class CoverageCluster {
      */
     static createFrom($$source: any = {}): CoverageCluster {
         const $$createField4_0 = $$createType3;
-        const $$createField7_0 = $$createType5;
-        const $$createField8_0 = $$createType0;
-        const $$createField14_0 = $$createType0;
+        const $$createField9_0 = $$createType5;
+        const $$createField10_0 = $$createType0;
+        const $$createField16_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("hull" in $$parsedSource) {
             $$parsedSource["hull"] = $$createField4_0($$parsedSource["hull"]);
         }
         if ("objects" in $$parsedSource) {
-            $$parsedSource["objects"] = $$createField7_0($$parsedSource["objects"]);
+            $$parsedSource["objects"] = $$createField9_0($$parsedSource["objects"]);
         }
         if ("filters" in $$parsedSource) {
-            $$parsedSource["filters"] = $$createField8_0($$parsedSource["filters"]);
+            $$parsedSource["filters"] = $$createField10_0($$parsedSource["filters"]);
         }
         if ("paths" in $$parsedSource) {
-            $$parsedSource["paths"] = $$createField14_0($$parsedSource["paths"]);
+            $$parsedSource["paths"] = $$createField16_0($$parsedSource["paths"]);
         }
         return new CoverageCluster($$parsedSource as Partial<CoverageCluster>);
     }
@@ -817,6 +830,12 @@ export class LightCoverage {
      */
     "scopes": CoverageScope[];
 
+    /**
+     * Processed are the footprints of processed images with WCS: data that
+     * has already been worked up, shown for reference.
+     */
+    "processed": ProcessedFootprint[];
+
     /** Creates a new LightCoverage instance. */
     constructor($$source: Partial<LightCoverage> = {}) {
         if (!("clusters" in $$source)) {
@@ -827,6 +846,9 @@ export class LightCoverage {
         }
         if (!("scopes" in $$source)) {
             this["scopes"] = [];
+        }
+        if (!("processed" in $$source)) {
+            this["processed"] = [];
         }
 
         Object.assign(this, $$source);
@@ -839,6 +861,7 @@ export class LightCoverage {
         const $$createField0_0 = $$createType7;
         const $$createField1_0 = $$createType7;
         const $$createField2_0 = $$createType9;
+        const $$createField3_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("clusters" in $$parsedSource) {
             $$parsedSource["clusters"] = $$createField0_0($$parsedSource["clusters"]);
@@ -848,6 +871,9 @@ export class LightCoverage {
         }
         if ("scopes" in $$parsedSource) {
             $$parsedSource["scopes"] = $$createField2_0($$parsedSource["scopes"]);
+        }
+        if ("processed" in $$parsedSource) {
+            $$parsedSource["processed"] = $$createField3_0($$parsedSource["processed"]);
         }
         return new LightCoverage($$parsedSource as Partial<LightCoverage>);
     }
@@ -876,12 +902,52 @@ export class PagedLightFrames {
      * Creates a new PagedLightFrames instance from a string or object.
      */
     static createFrom($$source: any = {}): PagedLightFrames {
-        const $$createField0_0 = $$createType11;
+        const $$createField0_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frames" in $$parsedSource) {
             $$parsedSource["frames"] = $$createField0_0($$parsedSource["frames"]);
         }
         return new PagedLightFrames($$parsedSource as Partial<PagedLightFrames>);
+    }
+}
+
+/**
+ * ProcessedFootprint is where a processed image sits on the sky.
+ */
+export class ProcessedFootprint {
+    "nasPath": string;
+    "name": string;
+    "object": string;
+    "hull": SkyPoint[];
+
+    /** Creates a new ProcessedFootprint instance. */
+    constructor($$source: Partial<ProcessedFootprint> = {}) {
+        if (!("nasPath" in $$source)) {
+            this["nasPath"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("object" in $$source)) {
+            this["object"] = "";
+        }
+        if (!("hull" in $$source)) {
+            this["hull"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProcessedFootprint instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProcessedFootprint {
+        const $$createField3_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("hull" in $$parsedSource) {
+            $$parsedSource["hull"] = $$createField3_0($$parsedSource["hull"]);
+        }
+        return new ProcessedFootprint($$parsedSource as Partial<ProcessedFootprint>);
     }
 }
 
@@ -1107,7 +1173,7 @@ export class StorageNode {
      * Creates a new StorageNode instance from a string or object.
      */
     static createFrom($$source: any = {}): StorageNode {
-        const $$createField3_0 = $$createType13;
+        const $$createField3_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField3_0($$parsedSource["children"]);
@@ -1159,7 +1225,7 @@ export class SuggestResult {
      * Creates a new SuggestResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SuggestResult {
-        const $$createField0_0 = $$createType10;
+        const $$createField0_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("frame" in $$parsedSource) {
             $$parsedSource["frame"] = $$createField0_0($$parsedSource["frame"]);
@@ -1179,7 +1245,9 @@ const $$createType6 = CoverageCluster.createFrom;
 const $$createType7 = $Create.Array($$createType6);
 const $$createType8 = CoverageScope.createFrom;
 const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = LibraryFrame.createFrom;
+const $$createType10 = ProcessedFootprint.createFrom;
 const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = StorageNode.createFrom;
+const $$createType12 = LibraryFrame.createFrom;
 const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = StorageNode.createFrom;
+const $$createType15 = $Create.Array($$createType14);

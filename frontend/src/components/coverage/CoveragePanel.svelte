@@ -1,6 +1,7 @@
 <script lang="ts">
   import type * as app from "$models/app";
   import {
+    FIELD_ROTATION_NOTE_DEG,
     clusterName,
     formatDateRange,
     formatIntegration,
@@ -109,6 +110,9 @@
               <span class="cp-item-meta">
                 {scopeLabel(c.scope)} · {plural(c.frames, "sub")} · {formatIntegration(c.expTotal)}
                 {#if c.approx}· {isPlaced(c) ? "estimated" : "no position"}{/if}
+                {#if c.rotationSpread >= FIELD_ROTATION_NOTE_DEG}
+                  · rotates {Math.round(c.rotationSpread)}°
+                {/if}
               </span>
             </button>
             <button

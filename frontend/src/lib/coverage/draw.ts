@@ -1,11 +1,13 @@
 // ── Coverage renderer ───────────────────────────────────────────────────────
 // Sky layers from the atlas, with each cluster drawn as its scope-coloured
 // outline: dashed when the position is estimated, gold when selected.
+// Processed images are dotted white outlines on top, for reference.
 
 import type * as app from "$models/app";
 import { polygonOnScreen } from "../atlas/footprint";
 import { drawGrid } from "../atlas/grid";
-import { LABEL_FONT, LABEL_FONT_EMPHASIS, LabelPlacer } from "../atlas/labels";
+import { LABEL_FONT, LABEL_FONT_EMPHASIS, LABEL_FONT_SMALL, LabelPlacer } from "../atlas/labels";
+import { project } from "../atlas/projection";
 import { rgba, type AtlasPalette, type RGB } from "../atlas/palette";
 import { drawBackground, drawCatalog, drawCompass, drawFocus } from "../atlas/sky";
 import { clusterShape, type ClusterShape, type CoverageScene } from "./scene";
@@ -24,7 +26,17 @@ export function drawCoverage(ctx: CanvasRenderingContext2D, scene: CoverageScene
   labels.reset(rgba(pal.ink, 0.82));
   drawBackground(ctx, vp, pal);
   drawGrid(ctx, vp, labels, scene.showLabels, pal);
-  drawClusters(ctx, scene);
+  const placed = placeClusters(scene);
+  const processed = placeProcessed(scene);
+  ctx.save();
+  for (const p of placed) drawShape(ctx, scene, p);
+  for (const pts of processed) drawProcessed(ctx, scene, pts);
+  // Labels in priority order: selection/hover, framings, then processed.
+  if (scene.showLabels) {
+    for (let i = placed.length - 1; i >= 0; i--) drawLabel(ctx, scene, placed[i]);
+    processed.forEach((pts, i) => drawProcessedLabel(ctx, scene, pts, scene.processed[i]));
+  }
+  ctx.restore();
   drawCatalog(ctx, vp, pal, labels, scene.catalog, scene.showLabels);
   drawFocus(ctx, vp, pal, scene.focus);
   drawCompass(ctx, vp, pal);
@@ -37,7 +49,8 @@ interface Placed {
   selected: boolean;
 }
 
-function drawClusters(ctx: CanvasRenderingContext2D, scene: CoverageScene) {
+/** Clusters on screen, bottom to top: big outlines first so smaller ones stay visible, then the selection, then the hovered one. */
+function placeClusters(scene: CoverageScene): Placed[] {
   const placed: Placed[] = [];
   for (const c of scene.clusters) {
     const shape = clusterShape(scene.vp, c);
@@ -48,18 +61,59 @@ function drawClusters(ctx: CanvasRenderingContext2D, scene: CoverageScene) {
       c.id === scene.hoveredId ? "hovered" : selected ? "selected" : "normal";
     placed.push({ c, shape, state, selected });
   }
-  // Big outlines first so smaller ones stay visible on top; then the
-  // selection, then the hovered cluster. Labels go in reverse priority order.
   const rank = (p: Placed) => (p.state === "hovered" ? 2 : p.state === "selected" ? 1 : 0);
   const area = (p: Placed) => (p.shape.kind === "poly" ? p.shape.area : 0);
-  placed.sort((a, b) => rank(a) - rank(b) || area(b) - area(a));
+  return placed.sort((a, b) => rank(a) - rank(b) || area(b) - area(a));
+}
 
-  ctx.save();
-  for (const p of placed) drawShape(ctx, scene, p);
-  if (scene.showLabels) {
-    for (let i = placed.length - 1; i >= 0; i--) drawLabel(ctx, scene, placed[i]);
-  }
-  ctx.restore();
+/** Screen corners of each processed footprint (index-aligned with scene.processed; null when off-plane). */
+function placeProcessed(scene: CoverageScene): ([number, number][] | null)[] {
+  return scene.processed.map((f) => {
+    const pts: [number, number][] = [];
+    for (const p of f.hull) {
+      const q = project(scene.vp, p.ra, p.dec);
+      if (!q) return null;
+      pts.push(q);
+    }
+    return pts.length >= 3 && polygonOnScreen(pts, scene.vp, 0) ? pts : null;
+  });
+}
+
+function drawProcessed(
+  ctx: CanvasRenderingContext2D,
+  scene: CoverageScene,
+  pts: [number, number][] | null,
+) {
+  if (!pts) return;
+  const pal = scene.palette;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = rgba(pal.star, 0.05);
+  ctx.fill();
+  ctx.strokeStyle = rgba(pal.star, 0.85);
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([2, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/** "✓ M 42" just above the footprint's top corner. */
+function drawProcessedLabel(
+  ctx: CanvasRenderingContext2D,
+  scene: CoverageScene,
+  pts: [number, number][] | null,
+  f: app.ProcessedFootprint,
+) {
+  if (!pts) return;
+  let top = pts[0];
+  for (const p of pts) if (p[1] < top[1]) top = p;
+  labels.place(ctx, `✓ ${f.object || f.name}`, top[0], top[1] - 6, {
+    font: LABEL_FONT_SMALL,
+    color: rgba(scene.palette.starLabel, 0.95),
+    align: "center",
+  });
 }
 
 function colourOf(scene: CoverageScene, p: Placed): RGB {

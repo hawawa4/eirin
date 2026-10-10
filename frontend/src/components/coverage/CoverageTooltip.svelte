@@ -1,6 +1,11 @@
 <script lang="ts">
   import type * as app from "$models/app";
-  import { clusterName, formatDateRange, formatIntegration } from "../../lib/coverage/selection";
+  import {
+    FIELD_ROTATION_NOTE_DEG,
+    clusterName,
+    formatDateRange,
+    formatIntegration,
+  } from "../../lib/coverage/selection";
   import { plural } from "../../lib/utils";
 
   interface Props {
@@ -32,8 +37,13 @@
     <span>{formatDateRange(cluster.firstDate, cluster.lastDate)}</span>
     {#if cluster.nights > 1}<span>{cluster.nights} nights</span>{/if}
   </div>
-  {#if cluster.filters.length > 0}
-    <div class="tt-row">Filter {cluster.filters.join(", ")}</div>
+  {#if cluster.filters.length > 0 || cluster.rotationSpread >= FIELD_ROTATION_NOTE_DEG}
+    <div class="tt-row">
+      {#if cluster.filters.length > 0}<span>Filter {cluster.filters.join(", ")}</span>{/if}
+      {#if cluster.rotationSpread >= FIELD_ROTATION_NOTE_DEG}
+        <span>Field rotation {Math.round(cluster.rotationSpread)}°</span>
+      {/if}
+    </div>
   {/if}
   {#if cluster.approx}
     <div class="tt-approx">Position estimated from the object name</div>

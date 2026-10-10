@@ -10,6 +10,9 @@ const NEIGHBOUR_OVERLAP = 0.8;
 /** Max neighbours offered in the selection panel. */
 const MAX_NEIGHBOURS = 8;
 
+/** Rotation spread (degrees) worth pointing out: the stack's corners will be cropped. */
+export const FIELD_ROTATION_NOTE_DEG = 10;
+
 /** "M 42", "M 42 + NGC 1977", "M 42 + NGC 1977 +2". */
 export function clusterName(c: app.CoverageCluster): string {
   const names = c.objects.map((o) => o.name || "Unknown");

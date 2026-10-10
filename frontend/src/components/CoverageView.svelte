@@ -59,7 +59,12 @@
   const cam = new SkyCamera();
 
   // ── Data ──────────────────────────────────────────────────────────────────
-  let coverage = $state.raw<app.LightCoverage>({ clusters: [], unplaced: [], scopes: [] });
+  let coverage = $state.raw<app.LightCoverage>({
+    clusters: [],
+    unplaced: [],
+    scopes: [],
+    processed: [],
+  });
   let catalog = $state.raw<app.CatalogObject[]>([]);
   let loading = $state(true);
   let loadError = $state("");
@@ -90,6 +95,7 @@
   let groups = $derived(objectGroups(all.filter((c) => !hiddenScopes.has(c.scope))));
 
   let showLabels = $state(true);
+  let showProcessed = $state(true);
 
   // ── Selection ─────────────────────────────────────────────────────────────
   // Cluster ids in selection order; ids (not clusters) so a reload keeps them.
@@ -158,6 +164,7 @@
     vp: cam.vp,
     clusters: visible,
     selected: selectedSet,
+    processed: showProcessed ? coverage.processed : [],
     hoveredId: hovered?.id ?? null,
     catalog,
     showLabels,
@@ -450,6 +457,19 @@
         <span class="scope-count">{s.frames}</span>
       </button>
     {/each}
+    {#if coverage.processed.length > 0}
+      <button
+        class="scope-chip"
+        class:off={!showProcessed}
+        aria-pressed={showProcessed}
+        onclick={() => (showProcessed = !showProcessed)}
+        title="{showProcessed ? 'Hide' : 'Show'} the outlines of processed images"
+      >
+        <span class="scope-swatch processed"></span>
+        Processed
+        <span class="scope-count">{coverage.processed.length}</span>
+      </button>
+    {/if}
     <button
       class="ctl-btn"
       class:active={showLabels}
@@ -479,7 +499,8 @@
 
   {#if selected.length === 0 && !loading && all.length > 0}
     <div class="cov-hint">
-      Click a framing to select it · Shift/Ctrl+click to add more · dashed = estimated position
+      Click a framing to select it · Shift/Ctrl+click to add more · dashed = estimated position ·
+      dotted = processed
     </div>
   {/if}
 
@@ -636,6 +657,10 @@
     height: 11px;
     border: 2px solid;
     border-radius: 2px;
+  }
+  .scope-swatch.processed {
+    border-style: dotted;
+    border-color: var(--atlas-star);
   }
   .scope-count {
     font-weight: 400;

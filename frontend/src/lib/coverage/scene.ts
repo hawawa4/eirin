@@ -18,6 +18,8 @@ export interface CoverageScene {
   /** Clusters of the scopes currently shown. */
   clusters: app.CoverageCluster[];
   selected: ReadonlySet<string>;
+  /** Processed images, drawn for reference only (never hit-tested). */
+  processed: app.ProcessedFootprint[];
   hoveredId: string | null;
   catalog: app.CatalogObject[];
   showLabels: boolean;

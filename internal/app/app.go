@@ -20,8 +20,10 @@ type App struct {
 	imports importJob
 	// previews caches Blink previews across calls (see fits.PreviewCache).
 	previews fits.PreviewCache
-	// fields caches each scope's sensor size for the Coverage view.
-	fields fieldCache
+	// scopeSizes and frameSizes cache image sizes for the Coverage view, by
+	// telescope and by path.
+	scopeSizes sizeCache
+	frameSizes sizeCache
 	// snapshots is the build-specific half of the library snapshot: the
 	// publisher on the desktop, the loader on the server.
 	snapshots snapshotSide

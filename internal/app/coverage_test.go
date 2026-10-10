@@ -1,6 +1,10 @@
 package app
 
 import (
+	"image"
+	stdpng "image/png"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/TaruDesigns/eirin/internal/store"
@@ -82,5 +86,35 @@ func TestCoverageScopes_DisambiguatesSharedLabels(t *testing.T) {
 	got := coverageScopes(map[string]int{"S50_aaaa1111": 5, "S50_bbbb2222": 3})
 	if got[0].Label != "S50_aaaa1111" || got[1].Label != "S50_bbbb2222" {
 		t.Errorf("labels = %+v, want raw names when the short label is shared", got)
+	}
+}
+
+func TestGetLightCoverage_ProcessedFootprints(t *testing.T) {
+	a := newTestApp(t)
+	st := a.store()
+	dir := t.TempDir()
+	png := filepath.Join(dir, "PROCESSED_M_42.png")
+	f, err := os.Create(png)
+	must(t, err)
+	must(t, stdpng.Encode(f, image.NewGray(image.Rect(0, 0, 40, 30))))
+	must(t, f.Close())
+
+	processed := func() store.Frame {
+		return store.Frame{
+			FrameType: store.FrameTypeProcessed, Object: "M 42",
+			RA: ptr(83.82), Dec: ptr(-5.39), PixelScale: ptr(2.37), Rotation: ptr(0),
+		}
+	}
+	must(t, st.UpsertFrame(png, processed()))
+	// Same image exported as FITS (unreadable here) and a processed frame without WCS.
+	must(t, st.UpsertFrame(filepath.Join(dir, "PROCESSED_M_42.fit"), processed()))
+	must(t, st.UpsertFrame(filepath.Join(dir, "other_final.png"), store.Frame{FrameType: store.FrameTypeProcessed}))
+
+	got, err := a.GetLightCoverage(dir)
+	if err != nil {
+		t.Fatalf("GetLightCoverage: %v", err)
+	}
+	if len(got.Processed) != 1 || got.Processed[0].NasPath != png || len(got.Processed[0].Hull) != 4 {
+		t.Errorf("processed = %+v, want just the PNG's 4-corner footprint", got.Processed)
 	}
 }

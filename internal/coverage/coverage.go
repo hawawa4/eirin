@@ -82,10 +82,18 @@ type SkyPoint struct {
 type Cluster struct {
 	Scope   string
 	RA, Dec float64 // centroid of the sub centres
-	// Hull is the convex outline (counter-clockwise on the sky) of all the
-	// subs' footprints; empty when the scope's sensor size is unknown.
-	Hull       []SkyPoint
-	PixelScale float64 // mean of the subs that have one
+	// Hull is the convex outline of the subs' footprints, all drawn at
+	// Rotation (so field rotation doesn't smear a framing into a disc, while a
+	// mosaic still covers its whole area); empty when the sensor size is unknown.
+	Hull []SkyPoint
+	// Rotation is the mean CROTA2 of the subs, modulo 180° (a rectangle turned
+	// half a circle looks the same).
+	Rotation float64
+	// RotationSpread is how far (degrees) the subs' rotations range around
+	// Rotation: field rotation of an alt-az mount, or sessions shot at
+	// different angles. The stack's corners get cropped by about this much.
+	RotationSpread float64
+	PixelScale     float64 // mean of the subs that have one
 	Approx     bool
 	Objects    []ObjectCount // most subs first
 	Filters    []string
@@ -372,8 +380,33 @@ func finish(g *group, f Field) Cluster {
 	if g.scaleN > 0 {
 		c.PixelScale = g.scaleSum / float64(g.scaleN)
 	}
-	c.Hull = outline(c.RA, c.Dec, g.subs, f)
+	c.Rotation, c.RotationSpread = rotationStats(g.subs)
+	c.Hull = outline(c.RA, c.Dec, c.Rotation, g.subs, f)
 	return c
+}
+
+// rotationStats is the subs' mean rotation and the range of their deviations
+// from it, both modulo 180°.
+func rotationStats(subs []*Sub) (mean, spread float64) {
+	var c, s float64
+	for _, sub := range subs {
+		r := 2 * sub.Rotation * deg
+		c += math.Cos(r)
+		s += math.Sin(r)
+	}
+	mean = math.Mod(math.Atan2(s, c)/deg/2+180, 180)
+	lo, hi := 0.0, 0.0
+	for _, sub := range subs {
+		d := math.Mod(sub.Rotation-mean, 180)
+		switch {
+		case d > 90:
+			d -= 180
+		case d <= -90:
+			d += 180
+		}
+		lo, hi = math.Min(lo, d), math.Max(hi, d)
+	}
+	return mean, hi - lo
 }
 
 // summarize fills in everything but position and outline.

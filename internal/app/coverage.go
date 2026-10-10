@@ -3,12 +3,11 @@ package app
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sort"
-	"sync"
 
 	"github.com/TaruDesigns/eirin/internal/catalog"
 	"github.com/TaruDesigns/eirin/internal/coverage"
-	"github.com/TaruDesigns/eirin/internal/fits"
 	"github.com/TaruDesigns/eirin/internal/store"
 )
 
@@ -23,8 +22,12 @@ type CoverageCluster struct {
 	Dec float64 `json:"dec"`
 	// Hull outlines all the subs' footprints; empty when the scope's sensor
 	// size couldn't be read (the view then draws a marker).
-	Hull       []SkyPoint `json:"hull"`
-	PixelScale float64    `json:"pixelScale"` // arcsec/pixel
+	Hull []SkyPoint `json:"hull"`
+	// Rotation is the outline's rotation (degrees, mod 180); RotationSpread
+	// how far the subs' rotations range around it (field rotation).
+	Rotation       float64 `json:"rotation"`
+	RotationSpread float64 `json:"rotationSpread"`
+	PixelScale     float64 `json:"pixelScale"` // arcsec/pixel
 	// Approx marks a position estimated from the OBJECT name (no WCS).
 	Approx    bool             `json:"approx"`
 	Objects   []CoverageObject `json:"objects"`
@@ -64,32 +67,18 @@ type LightCoverage struct {
 	Unplaced []CoverageCluster `json:"unplaced"`
 	// Scopes, most frames first.
 	Scopes []CoverageScope `json:"scopes"`
+	// Processed are the footprints of processed images with WCS: data that
+	// has already been worked up, shown for reference.
+	Processed []ProcessedFootprint `json:"processed"`
 }
 
-// fieldCache remembers each scope's sensor size, read once from a FITS header.
-type fieldCache struct {
-	mu    sync.Mutex
-	sizes map[string][2]int
+// ProcessedFootprint is where a processed image sits on the sky.
+type ProcessedFootprint struct {
+	NasPath string     `json:"nasPath"`
+	Name    string     `json:"name"`
+	Object  string     `json:"object"`
+	Hull    []SkyPoint `json:"hull"`
 }
-
-func (c *fieldCache) get(scope string) ([2]int, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	sz, ok := c.sizes[scope]
-	return sz, ok
-}
-
-func (c *fieldCache) put(scope string, sz [2]int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.sizes == nil {
-		c.sizes = map[string][2]int{}
-	}
-	c.sizes[scope] = sz
-}
-
-// maxSizeProbes caps the headers read per scope when earlier ones fail.
-const maxSizeProbes = 3
 
 // GetLightCoverage groups the non-rejected light frames under rootPath by
 // telescope and framing. Lights without WCS are placed (Approx) where other
@@ -102,8 +91,12 @@ func (a *App) GetLightCoverage(rootPath string) (LightCoverage, error) {
 		return LightCoverage{}, fmt.Errorf("reading library: %w", err)
 	}
 
+	finals, err := a.store().GetAtlasIndexFrames(rootPath)
+	if err != nil {
+		slog.Warn("coverage: get stacked frames", "err", err)
+	}
 	scales := medianScales(frames)
-	estimate := a.objectEstimator(rootPath, frames)
+	estimate := objectEstimator(frames, finals)
 
 	var placed, unplaced []coverage.Sub
 	samples := map[string][]string{}
@@ -139,7 +132,8 @@ func (a *App) GetLightCoverage(rootPath string) (LightCoverage, error) {
 	out := LightCoverage{
 		Clusters: toCoverageClusters(coverage.Build(placed, fields), fields),
 		Unplaced: toCoverageClusters(coverage.ByObject(unplaced), nil),
-		Scopes:   coverageScopes(scopeFrames),
+		Scopes:    coverageScopes(scopeFrames),
+		Processed: a.processedFootprints(finals),
 	}
 	return out, nil
 }
@@ -148,7 +142,7 @@ func (a *App) GetLightCoverage(rootPath string) (LightCoverage, error) {
 // points: the mean centre of the measured lights with that tag, else of the
 // stacked/processed frames with it, else its catalog position. It reports
 // whether it found one.
-func (a *App) objectEstimator(rootPath string, lights []store.Frame) func(object string, ra, dec *float64) bool {
+func objectEstimator(lights, stacks []store.Frame) func(object string, ra, dec *float64) bool {
 	measured := map[string]*coverage.Centroid{}
 	addAll := func(frames []store.Frame) {
 		seen := map[string]bool{}
@@ -168,11 +162,7 @@ func (a *App) objectEstimator(rootPath string, lights []store.Frame) func(object
 		}
 	}
 	addAll(lights)
-	if stacks, err := a.store().GetAtlasIndexFrames(rootPath); err == nil {
-		addAll(stacks)
-	} else {
-		slog.Warn("coverage: get stacked frames", "err", err)
-	}
+	addAll(stacks)
 
 	type pos struct {
 		ra, dec float64
@@ -192,6 +182,45 @@ func (a *App) objectEstimator(rootPath string, lights []store.Frame) func(object
 		*ra, *dec = p.ra, p.dec
 		return p.ok
 	}
+}
+
+// processedFootprints outlines the processed images among frames that have
+// WCS. A PNG exported next to its FITS lands on the same spot, so footprints
+// with the same object and centre are shown once.
+func (a *App) processedFootprints(frames []store.Frame) []ProcessedFootprint {
+	out := []ProcessedFootprint{}
+	seen := map[string]bool{}
+	for _, f := range frames {
+		scale := derefFloat(f.PixelScale)
+		if f.FrameType != store.FrameTypeProcessed || !hasPosition(f) || scale <= 0 {
+			continue
+		}
+		key := fmt.Sprintf("%s|%.3f|%.3f", f.Object, *f.RA, *f.Dec)
+		if seen[key] {
+			continue
+		}
+		sz := a.frameSize(f.NasPath)
+		hull := coverage.Footprint(*f.RA, *f.Dec, scale, derefFloat(f.Rotation), sz[0], sz[1])
+		if hull == nil {
+			continue
+		}
+		seen[key] = true
+		out = append(out, ProcessedFootprint{
+			NasPath: f.NasPath,
+			Name:    filepath.Base(f.NasPath),
+			Object:  f.Object,
+			Hull:    toSkyPoints(hull),
+		})
+	}
+	return out
+}
+
+func toSkyPoints(ps []coverage.SkyPoint) []SkyPoint {
+	out := make([]SkyPoint, len(ps))
+	for i, p := range ps {
+		out[i] = SkyPoint(p)
+	}
+	return out
 }
 
 // hasPosition reports whether a frame has measured (header or plate-solve) coordinates.
@@ -215,25 +244,6 @@ func medianScales(frames []store.Frame) map[string]float64 {
 	return out
 }
 
-// scopeSize returns the scope's sensor size, reading the first readable FITS
-// header among paths on a cache miss. Zero when none could be read.
-func (a *App) scopeSize(scope string, paths []string) [2]int {
-	if sz, ok := a.fields.get(scope); ok {
-		return sz
-	}
-	for _, p := range paths {
-		hdr, err := fits.ReadFITSHeader(p)
-		if err != nil || hdr.Width <= 0 || hdr.Height <= 0 {
-			slog.Warn("coverage: read sensor size", "path", p, "err", err)
-			continue
-		}
-		sz := [2]int{hdr.Width, hdr.Height}
-		a.fields.put(scope, sz)
-		return sz
-	}
-	return [2]int{}
-}
-
 func toCoverageClusters(cs []coverage.Cluster, fields map[string]coverage.Field) []CoverageCluster {
 	out := make([]CoverageCluster, 0, len(cs))
 	for _, c := range cs {
@@ -246,17 +256,15 @@ func toCoverageClusters(cs []coverage.Cluster, fields map[string]coverage.Field)
 		for i, o := range c.Objects {
 			objects[i] = CoverageObject(o)
 		}
-		hull := make([]SkyPoint, len(c.Hull))
-		for i, p := range c.Hull {
-			hull[i] = SkyPoint(p)
-		}
 		out = append(out, CoverageCluster{
 			ID:         c.Paths[0],
 			Scope:      c.Scope,
 			RA:         c.RA,
 			Dec:        c.Dec,
-			Hull:       hull,
-			PixelScale: scale,
+			Hull:           toSkyPoints(c.Hull),
+			Rotation:       c.Rotation,
+			RotationSpread: c.RotationSpread,
+			PixelScale:     scale,
 			Approx:     c.Approx,
 			Objects:    objects,
 			Filters:    c.Filters,

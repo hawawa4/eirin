@@ -81,16 +81,27 @@ func fromTangent(ra0, dec0, xi, eta float64) (ra, dec float64) {
 	return ra, dec
 }
 
+// Footprint is the outline (4 corners) of a single image: its centre, scale
+// (arcsec/pixel), rotation (CROTA2) and size in pixels. Nil when the size or
+// scale is unknown.
+func Footprint(ra, dec, scale, rotation float64, width, height int) []SkyPoint {
+	s := &Sub{RA: ra, Dec: dec, PixelScale: scale}
+	return outline(ra, dec, rotation, []*Sub{s}, Field{Width: width, Height: height})
+}
+
 // outline is the convex hull of the subs' footprints, centred on (ra0, dec0).
-// Footprints use each sub's centre, scale and rotation with the scope's
-// sensor size, mapped the same way the Sky Atlas maps image pixels (u right,
-// v down; CROTA2 rotation with CDELT1 < 0). Nil when the size is unknown.
-func outline(ra0, dec0 float64, subs []*Sub, f Field) []SkyPoint {
+// Footprints use each sub's centre and scale with the scope's sensor size and
+// the given rotation, mapped the same way the Sky Atlas maps image pixels
+// (u right, v down; CROTA2 rotation with CDELT1 < 0). Nil when the size is
+// unknown.
+func outline(ra0, dec0, rotation float64, subs []*Sub, f Field) []SkyPoint {
 	if f.Width <= 0 || f.Height <= 0 {
 		return nil
 	}
 	hw, hh := float64(f.Width)/2, float64(f.Height)/2
 	corners := [4][2]float64{{-hw, -hh}, {hw, -hh}, {hw, hh}, {-hw, hh}}
+	r := rotation * deg
+	cr, sr := math.Cos(r), math.Sin(r)
 	pts := make([][2]float64, 0, 4*len(subs))
 	for _, s := range subs {
 		scale := s.PixelScale
@@ -105,8 +116,6 @@ func outline(ra0, dec0 float64, subs []*Sub, f Field) []SkyPoint {
 			continue
 		}
 		k := scale / 3600 * deg
-		r := s.Rotation * deg
-		cr, sr := math.Cos(r), math.Sin(r)
 		for _, uv := range corners {
 			u, v := uv[0], uv[1]
 			pts = append(pts, [2]float64{

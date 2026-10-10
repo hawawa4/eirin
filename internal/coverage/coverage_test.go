@@ -224,3 +224,45 @@ func TestBuild_RevisitsMergeButMosaicsDontSwallowTargets(t *testing.T) {
 		}
 	}
 }
+
+func TestBuild_FieldRotationKeepsARectangle(t *testing.T) {
+	// Alt-az field rotation: same pointing, rotation drifting 135°→182°.
+	var subs []Sub
+	for i, rot := range []float64{135, 145, 156, 179, 182} {
+		s := sub(fmt.Sprintf("/n/%d.fit", i), "S50", "NGC 1055", 40.6, 0.25)
+		s.Rotation = rot
+		subs = append(subs, s)
+	}
+	got := Build(subs, map[string]Field{"S50": s50})
+	if len(got) != 1 {
+		t.Fatalf("want 1 cluster, got %d", len(got))
+	}
+	c := got[0]
+	if len(c.Hull) != 4 {
+		t.Errorf("hull has %d corners, want a rectangle at the mean rotation", len(c.Hull))
+	}
+	if math.Abs(c.RotationSpread-47) > 0.5 {
+		t.Errorf("rotation spread = %.1f°, want 47°", c.RotationSpread)
+	}
+	if c.Rotation < 150 || c.Rotation > 165 {
+		t.Errorf("mean rotation = %.1f°, want ≈159°", c.Rotation)
+	}
+}
+
+func TestRotationStats_WrapsAt180(t *testing.T) {
+	// A meridian flip (0.5° vs 179.5°) is the same rectangle: no spread.
+	mean, spread := rotationStats([]*Sub{{Rotation: 0.5}, {Rotation: 179.5}})
+	if math.Min(mean, 180-mean) > 0.01 || spread > 1.01 {
+		t.Errorf("mean, spread = %.2f, %.2f; want ≈0, 1", mean, spread)
+	}
+}
+
+func TestFootprint(t *testing.T) {
+	got := Footprint(83.6, 22, 2.37, 30, 1080, 1920)
+	if len(got) != 4 {
+		t.Fatalf("got %v, want 4 corners", got)
+	}
+	if Footprint(83.6, 22, 2.37, 30, 0, 0) != nil {
+		t.Error("unknown size should give no footprint")
+	}
+}

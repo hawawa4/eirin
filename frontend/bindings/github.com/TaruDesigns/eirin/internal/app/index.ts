@@ -24,6 +24,7 @@ export {
     LibraryFrame,
     LightCoverage,
     PagedLightFrames,
+    ProcessedFootprint,
     Project,
     ProjectOutputFile,
     SirilInfo,
