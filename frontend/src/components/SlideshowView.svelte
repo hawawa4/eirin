@@ -5,6 +5,7 @@
   import type * as app from "$models/app";
   import { GetLibraryFramesByType } from "$app";
   import { isModalOpen, isTypingTarget } from "../lib/keys";
+  import { isFits } from "../lib/utils";
   import { Reel } from "../lib/reel.svelte";
   import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
   import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
@@ -100,7 +101,8 @@
       const result = (await GetLibraryFramesByType(rootPath, "processed")) ?? [];
       if (seq !== loadSeq) return;
       const keep = reel.current?.nasPath;
-      frames = result.filter((f) => !f.isRejected).sort(byObjectThenName);
+      // Only the processed FITS: the PNG/JPEG/TIFF exports are renderings of those.
+      frames = result.filter((f) => !f.isRejected && isFits(f.fileName)).sort(byObjectThenName);
       // A library update shouldn't throw the viewer back to the first picture.
       const i = keep ? frames.findIndex((f) => f.nasPath === keep) : -1;
       reel.index = Math.max(0, i);
@@ -221,7 +223,7 @@
   {:else if frames.length === 0}
     <div class="note">
       <p class="note-title">No processed images yet</p>
-      <p>The slideshow shows every image of the <em>processed</em> type in your library.</p>
+      <p>The slideshow shows every processed FITS image in your library.</p>
     </div>
   {:else if !shown && !slideError}
     <p class="note" role="status">Loading image…</p>

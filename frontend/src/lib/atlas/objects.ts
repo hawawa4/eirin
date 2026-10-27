@@ -1,6 +1,7 @@
 // ── Object list & catalog search ────────────────────────────────────────────
 
 import type * as app from "$models/app";
+import { isFits } from "../utils";
 import { sphericalMean } from "./fit";
 
 /** A named entry of the object list (ObjectBrowser). */
@@ -21,8 +22,14 @@ export function objectKey(e: app.AtlasIndexEntry): string {
   return e.object || e.name;
 }
 
+/** A processed or exported image, as opposed to a raw stack. */
 export function isFinalImage(e: app.AtlasIndexEntry): boolean {
   return e.frameType === "processed" || e.frameType === "image";
+}
+
+/** The image is a FITS file (otherwise a PNG/JPEG/TIFF rendering). */
+export function isFitsImage(e: app.AtlasIndexEntry): boolean {
+  return isFits(e.name);
 }
 
 /** Lower-cases and strips spaces/punctuation so "m 42", "M42" and "m-42" all match. */

@@ -21,6 +21,7 @@
   import {
     buildObjectGroups,
     isFinalImage,
+    isFitsImage,
     objectKey,
     topFrame,
     type ObjectGroup,
@@ -74,12 +75,17 @@
   let loading = $state(true);
   let loadError = $state("");
 
-  // Filter: null = automatic ("Final images" when there are any, else "All frames").
-  let filterMode = $state<"final" | "all" | null>(null);
-  let finalCount = $derived(index.filter(isFinalImage).length);
-  let showAll = $derived(filterMode ? filterMode === "all" : finalCount === 0);
-  let visibleIndex = $derived(showAll ? index : index.filter(isFinalImage));
-  let hiddenCount = $derived(index.length - visibleIndex.length);
+  // Only final (processed) images are shown, as either FITS or PNG/JPEG/TIFF.
+  // Format: null = automatic (FITS, unless there are only raster images).
+  type ImageFormat = "fits" | "png";
+  let formatChoice = $state<ImageFormat | null>(null);
+  let finals = $derived(index.filter(isFinalImage));
+  let fitsCount = $derived(finals.filter(isFitsImage).length);
+  let pngCount = $derived(finals.length - fitsCount);
+  let format = $derived<ImageFormat>(
+    formatChoice ?? (fitsCount === 0 && pngCount > 0 ? "png" : "fits"),
+  );
+  let visibleIndex = $derived(finals.filter((e) => isFitsImage(e) === (format === "fits")));
   let objectGroups = $derived(buildObjectGroups(visibleIndex));
 
   let showLabels = $state(true);
@@ -91,8 +97,7 @@
   let touring = $state(false);
   let controlsVisible = $state(true);
   let tourFrames = $derived.by(() => {
-    const finals = visibleIndex.filter(isFinalImage);
-    return [...(finals.length > 0 ? finals : visibleIndex)].sort(
+    return [...visibleIndex].sort(
       (a, b) =>
         objectKey(a).localeCompare(objectKey(b), undefined, { numeric: true }) ||
         a.name.localeCompare(b.name, undefined, { numeric: true }),
@@ -228,7 +233,7 @@
   }
 
   function fitAll() {
-    fitTargets(targetsOf(visibleIndex.length > 0 ? visibleIndex : index), {
+    fitTargets(targetsOf(visibleIndex.length > 0 ? visibleIndex : finals), {
       panel: panelShown,
     });
   }
@@ -378,7 +383,8 @@
       return;
     }
     pendingFocusPath = null;
-    if (!visibleByPath.has(nasPath)) filterMode = "all";
+    if (!isFinalImage(e)) return; // raw stacks aren't shown
+    formatChoice = isFitsImage(e) ? "fits" : "png";
     pendingFit = false;
     selectOnly(e);
     fitTargets(targetsOf([e]), { cluster: false, panel: true });
@@ -519,7 +525,7 @@
       sizeQueue.reset();
       previews.clear();
       overlayPaths = [];
-      filterMode = null;
+      formatChoice = null;
       focus = null;
       fixes = {};
       loading = true;
@@ -600,14 +606,16 @@
     {rootPath}
     {loading}
     error={loadError}
-    indexed={index.length}
+    indexed={finals.length}
     visible={visibleIndex.length}
+    {format}
+    otherCount={format === "fits" ? pngCount : fitsCount}
     onretry={() => {
       loading = true;
       loadIndex(true);
     }}
-    onshowall={() => {
-      filterMode = "all";
+    onswitchformat={() => {
+      formatChoice = format === "fits" ? "png" : "fits";
       requestFit();
     }}
     {onscan}
@@ -622,9 +630,7 @@
       <span>FOV {fovText}</span>
       <span class="hud-sep" aria-hidden="true"></span>
       <span>
-        {visibleIndex.length} frame{visibleIndex.length === 1 ? "" : "s"}{hiddenCount > 0
-          ? ` (${hiddenCount} hidden)`
-          : ""}
+        {visibleIndex.length} image{visibleIndex.length === 1 ? "" : "s"}
       </span>
     </div>
   {/if}
@@ -643,22 +649,23 @@
   <!-- Top-right control cluster: frame filter, show everything, tour, labels, help -->
   {#if !touring}
     <div class="atlas-controls">
-      <div class="seg" role="group" aria-label="Frames to show">
+      <div class="seg" role="group" aria-label="Final images, by format">
+        <span class="seg-label">Final images</span>
         <button
           class="seg-btn"
-          class:active={!showAll}
-          aria-pressed={!showAll}
-          title="Only processed / exported images"
-          onclick={() => (filterMode = "final")}
-          >Final images <span class="seg-count">{finalCount}</span></button
+          class:active={format === "fits"}
+          aria-pressed={format === "fits"}
+          title="Processed FITS images"
+          onclick={() => (formatChoice = "fits")}
+          >FITS <span class="seg-count">{fitsCount}</span></button
         >
         <button
           class="seg-btn"
-          class:active={showAll}
-          aria-pressed={showAll}
-          title="Stacked and processed frames"
-          onclick={() => (filterMode = "all")}
-          >All frames <span class="seg-count">{index.length}</span></button
+          class:active={format === "png"}
+          aria-pressed={format === "png"}
+          title="Exported PNG, JPEG and TIFF images"
+          onclick={() => (formatChoice = "png")}
+          >PNG <span class="seg-count">{pngCount}</span></button
         >
       </div>
       <button
@@ -839,6 +846,15 @@
     border: none;
     cursor: pointer;
   }
+  .seg-label {
+    display: flex;
+    align-items: center;
+    padding: 5px 12px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .seg-label + .seg-btn,
   .seg-btn + .seg-btn {
     border-left: 1px solid var(--border);
   }

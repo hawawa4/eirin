@@ -6,8 +6,11 @@
     error: string;
     indexed: number;
     visible: number;
+    /** The format being shown, and how many final images the other one has. */
+    format: "fits" | "png";
+    otherCount: number;
     onretry: () => void;
-    onshowall: () => void;
+    onswitchformat: () => void;
     onscan?: () => void;
     /** Read-only server viewer: nothing to scan, the desktop app publishes the library. */
     readOnly?: boolean;
@@ -19,8 +22,10 @@
     error,
     indexed,
     visible,
+    format,
+    otherCount,
     onretry,
-    onshowall,
+    onswitchformat,
     onscan,
     readOnly = false,
   }: Props = $props();
@@ -57,17 +62,17 @@
   <div class="atlas-status">
     <div class="status-card">
       <div class="icon" aria-hidden="true">◎</div>
-      <p class="title">No frames with sky coordinates yet</p>
+      <p class="title">No final images with sky coordinates yet</p>
       {#if readOnly}
         <p class="detail">
-          The atlas shows the plate-solved images from the library the desktop app publishes. Once
-          it has published a snapshot with some, they'll appear here.
+          The atlas shows the plate-solved final images from the library the desktop app publishes.
+          Once it has published a snapshot with some, they'll appear here.
         </p>
       {:else}
         <p class="detail">
-          The atlas shows stacked and processed frames whose FITS headers contain WCS (plate-solve)
-          coordinates. Scan your library to pick them up — frames without coordinates can be
-          plate-solved with <strong>Analyze</strong> in the Library.
+          The atlas shows your processed images that have WCS (plate-solve) coordinates. Scan your
+          library to pick them up — images without coordinates can be plate-solved with
+          <strong>Analyze</strong> in the Library.
         </p>
       {/if}
       {#if onscan}
@@ -78,14 +83,16 @@
     </div>
   </div>
 {:else if visible === 0}
+  {@const shownName = format === "fits" ? "FITS" : "PNG"}
+  {@const otherName = format === "fits" ? "PNG" : "FITS"}
   <div class="atlas-status">
     <div class="status-card">
-      <p class="title">
-        {indexed} frame{indexed === 1 ? "" : "s"} hidden by the “Final images” filter
+      <p class="title">No final {shownName} images</p>
+      <p class="detail">
+        {otherCount} final {otherName} image{otherCount === 1 ? "" : "s"} can be shown instead.
       </p>
-      <p class="detail">None of your located frames is a processed or exported image yet.</p>
       <div class="actions">
-        <button class="btn primary" onclick={onshowall}>Show all frames</button>
+        <button class="btn primary" onclick={onswitchformat}>Show {otherName}</button>
       </div>
     </div>
   </div>
