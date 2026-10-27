@@ -8,7 +8,9 @@
   import { Reel } from "../lib/reel.svelte";
   import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
   import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
+  import { describeFrame } from "../lib/slideshow/frameInfo";
   import ReelControls from "./ReelControls.svelte";
+  import FrameInfoCard from "./slideshow/FrameInfoCard.svelte";
 
   interface Props {
     rootPath: string;
@@ -30,9 +32,53 @@
   const reel = new Reel<app.LibraryFrame>(() => frames);
 
   /** The picture on screen; it only changes once the next one has been fetched. */
-  let shown = $state.raw<{ frame: app.LibraryFrame; src: string } | null>(null);
+  let shown = $state.raw<{
+    frame: app.LibraryFrame;
+    src: string;
+    width: number;
+    height: number;
+  } | null>(null);
   let slideError = $state("");
   let controlsVisible = $state(true);
+
+  // ── Orientation ───────────────────────────────────────────────────────────
+  // A portrait picture on a landscape screen (or the other way round) is turned
+  // a quarter so it fills the screen. The comparison is against the slideshow
+  // area itself rather than a "mobile or desktop" guess: a phone held upright
+  // is portrait, so portrait pictures stay as they are there, and rotating the
+  // phone (or resizing the window) flips the decision.
+  const PREF_ROTATE = "eirin.slideshowRotate";
+  /** Pictures this close to square gain nothing from a turn. */
+  const SQUARE_RATIO = 1.1;
+
+  function loadRotatePref(): boolean {
+    try {
+      return localStorage.getItem(PREF_ROTATE) !== "false";
+    } catch {
+      return true;
+    }
+  }
+
+  let autoRotate = $state(loadRotatePref());
+  let areaW = $state(0);
+  let areaH = $state(0);
+
+  function toggleRotate() {
+    autoRotate = !autoRotate;
+    try {
+      localStorage.setItem(PREF_ROTATE, String(autoRotate));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  function needsTurn(w: number, h: number): boolean {
+    if (!autoRotate || areaW === 0 || areaH === 0 || w === 0 || h === 0) return false;
+    if (Math.max(w, h) / Math.min(w, h) < SQUARE_RATIO) return false;
+    return w > h !== areaW > areaH;
+  }
+
+  let turned = $derived(shown ? needsTurn(shown.width, shown.height) : false);
 
   // ── Loading ───────────────────────────────────────────────────────────────
   function byObjectThenName(a: app.LibraryFrame, b: app.LibraryFrame): number {
@@ -82,10 +128,15 @@
     const seq = ++showSeq;
     untrack(() => {
       loadViewerPreview(frame.nasPath, STRETCH_LEVEL)
-        .then((p) => {
+        .then(async (p) => {
+          // Decode up front: the picture's shape decides its rotation, and a decoded
+          // image fades in without a stutter.
+          const img = new Image();
+          img.src = p.dataUrl;
+          await img.decode();
           if (seq !== showSeq) return;
           slideError = "";
-          shown = { frame, src: p.dataUrl };
+          shown = { frame, src: p.dataUrl, width: img.naturalWidth, height: img.naturalHeight };
           const next = reel.upcoming;
           if (next) prefetchViewerPreview(next.nasPath, STRETCH_LEVEL);
         })
@@ -118,6 +169,10 @@
       case "F":
         toggleImmersive(desktopMode);
         break;
+      case "r":
+      case "R":
+        toggleRotate();
+        break;
       case "Escape":
         if (!immersive.on) return;
         exitImmersive();
@@ -134,6 +189,8 @@
 <div
   class="slideshow"
   class:idle={immersive.on && !controlsVisible}
+  bind:clientWidth={areaW}
+  bind:clientHeight={areaH}
   ondblclick={() => toggleImmersive(desktopMode)}
   role="presentation"
 >
@@ -142,14 +199,17 @@
       <!-- The new picture fades in on top while the old one stays opaque underneath, then drops away. -->
       <img
         class="slide"
+        class:turned
+        style:--area-w="{areaW}px"
+        style:--area-h="{areaH}px"
         src={shown.src}
         alt={shown.frame.object || shown.frame.fileName}
+        draggable="false"
         in:fade={{ duration: FADE_MS }}
         out:fade={{ duration: 0, delay: FADE_MS }}
       />
-      <div class="caption" in:fade={{ duration: FADE_MS }} out:fade={{ duration: FADE_MS / 2 }}>
-        <span class="cap-object">{shown.frame.object || shown.frame.fileName}</span>
-        {#if shown.frame.object}<span class="cap-file">{shown.frame.fileName}</span>{/if}
+      <div class="info" in:fade={{ duration: FADE_MS }} out:fade={{ duration: FADE_MS / 2 }}>
+        <FrameInfoCard info={describeFrame(shown.frame)} />
       </div>
     {/key}
   {/if}
@@ -176,6 +236,8 @@
       {reel}
       fullscreen={immersive.on}
       onfullscreen={() => toggleImmersive(desktopMode)}
+      rotation={autoRotate}
+      onrotation={toggleRotate}
       autohide={immersive.on && active}
       bind:visible={controlsVisible}
     />
@@ -189,6 +251,18 @@
     overflow: hidden;
     background: #000;
     color: #e8e8ea;
+    /* Double-clicking (fullscreen) must not select the picture or text, which
+       WebKit paints as a blue wash over everything. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .slideshow :global(*) {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .slideshow :global(::selection) {
+    background: transparent;
   }
   .slideshow.idle {
     cursor: none;
@@ -200,29 +274,22 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-    user-select: none;
     -webkit-user-drag: none;
   }
+  /* Turned a quarter clockwise: laid out with the area's sides swapped, then rotated into place. */
+  .slide.turned {
+    inset: auto;
+    left: 50%;
+    top: 50%;
+    width: var(--area-h);
+    height: var(--area-w);
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
 
-  .caption {
+  .info {
     position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    padding: 18px 24px 56px;
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    background: linear-gradient(to bottom, rgb(0 0 0 / 0.65), transparent);
+    inset: 0;
     pointer-events: none;
-  }
-  .cap-object {
-    font-size: var(--fs-xl);
-    font-weight: 500;
-  }
-  .cap-file {
-    font-size: var(--fs-sm);
-    opacity: 0.6;
   }
 
   .note {

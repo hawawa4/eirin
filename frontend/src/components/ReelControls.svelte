@@ -5,6 +5,9 @@
     reel: Reel<unknown>;
     fullscreen: boolean;
     onfullscreen: () => void;
+    /** Adds a button that turns pictures to fit the screen's orientation. */
+    onrotation?: () => void;
+    rotation?: boolean;
     /** Adds a stop button (the atlas tour is entered and left from here). */
     onstop?: () => void;
     /** Fade the bar out after the pointer has been still for a moment. */
@@ -18,6 +21,8 @@
     fullscreen,
     onfullscreen,
     onstop,
+    onrotation,
+    rotation = false,
     autohide = false,
     visible = $bindable(true),
   }: Props = $props();
@@ -77,6 +82,16 @@
       <option value={s}>{s} s</option>
     {/each}
   </select>
+  {#if onrotation}
+    <button
+      class="rc-btn"
+      class:active={rotation}
+      title="Turn pictures to fit the screen (R)"
+      aria-label="Turn pictures to fit the screen"
+      aria-pressed={rotation}
+      onclick={onrotation}>⟳</button
+    >
+  {/if}
   <button
     class="rc-btn"
     class:active={fullscreen}
