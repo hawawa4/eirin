@@ -23,6 +23,11 @@ export class SizeQueue {
     return this.sizes.get(path);
   }
 
+  /** The size couldn't be read, so waiting for it is pointless. */
+  isFailed(path: string): boolean {
+    return this.failed.has(path);
+  }
+
   /** Number of fetches queued or running (for a loading indicator). */
   get busy(): number {
     return this.pending.length + this.inflight.size;

@@ -21,6 +21,7 @@
     ["0", "Fit all frames"],
     ["Arrow keys", "Pan"],
     ["/", "Search objects"],
+    ["T", "Start / stop the tour (then Space, ← →, F)"],
     ["Esc", "Clear selection"],
   ];
 

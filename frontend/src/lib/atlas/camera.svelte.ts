@@ -49,7 +49,7 @@ export class SkyCamera {
   }
 
   /** Flies to a view (or jumps, for long hops and reduced motion). */
-  goTo(t: FitResult, animate = true): void {
+  goTo(t: FitResult, animate = true, durationMs = 380): void {
     this.stopAnim();
     const start = { ra: this.ra, dec: this.dec, ppd: this.ppd };
     const off = toTangent(start.ra, start.dec, t.ra, t.dec);
@@ -60,7 +60,7 @@ export class SkyCamera {
       return;
     }
     const t0 = performance.now();
-    const dur = 380;
+    const dur = durationMs;
     const step = (now: number) => {
       const k = Math.min(1, (now - t0) / dur);
       const e = 1 - (1 - k) ** 3;

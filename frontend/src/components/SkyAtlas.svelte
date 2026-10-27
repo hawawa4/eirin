@@ -13,6 +13,8 @@
   import { drawScene } from "../lib/atlas/draw";
   import { framesNeedingSize, hitTest, type AtlasScene } from "../lib/atlas/scene";
   import { SizeQueue } from "../lib/atlas/sizeQueue";
+  import { Reel } from "../lib/reel.svelte";
+  import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
   import { atlasPalette, paletteCssVars } from "../lib/atlas/palette";
   import type { Theme } from "../lib/types";
   import { PreviewCache } from "../lib/atlas/previews";
@@ -29,6 +31,7 @@
   import AtlasTooltip from "./atlas/AtlasTooltip.svelte";
   import AtlasStatus from "./atlas/AtlasStatus.svelte";
   import HelpPopover from "./atlas/HelpPopover.svelte";
+  import ReelControls from "./ReelControls.svelte";
 
   interface Props {
     rootPath: string;
@@ -41,6 +44,8 @@
     theme?: Theme;
     /** Read-only server viewer: empty states point at the desktop's snapshot, not a scan. */
     readOnly?: boolean;
+    /** Desktop app: fullscreen is the native window rather than the browser's. */
+    desktopMode?: boolean;
   }
 
   let {
@@ -50,6 +55,7 @@
     onscan,
     theme = "blue",
     readOnly = false,
+    desktopMode = false,
   }: Props = $props();
 
   let palette = $derived(atlasPalette(theme));
@@ -79,6 +85,23 @@
   let showLabels = $state(true);
   let helpOpen = $state(false);
 
+  // ── Tour ──────────────────────────────────────────────────────────────────
+  // Steps through the final images (or every visible frame when there are
+  // none), panning the camera to each in turn.
+  let touring = $state(false);
+  let controlsVisible = $state(true);
+  let tourFrames = $derived.by(() => {
+    const finals = visibleIndex.filter(isFinalImage);
+    return [...(finals.length > 0 ? finals : visibleIndex)].sort(
+      (a, b) =>
+        objectKey(a).localeCompare(objectKey(b), undefined, { numeric: true }) ||
+        a.name.localeCompare(b.name, undefined, { numeric: true }),
+    );
+  });
+  const reel = new Reel<app.AtlasIndexEntry>(() => tourFrames);
+  /** Pan duration between tour stops. */
+  const TOUR_PAN_MS = 2200;
+
   // ── Selection ─────────────────────────────────────────────────────────────
   // Overlaid frames by path, z-order (last = top = shown in the panel). Paths,
   // not entries, so a library reload keeps the selection.
@@ -91,6 +114,9 @@
   );
   let panelEntry = $derived(overlay.length > 0 ? overlay[overlay.length - 1] : null);
   let activeObject = $derived(panelEntry ? objectKey(panelEntry) : null);
+  // With everything overlaid the "top" frame is arbitrary, so no panel for it.
+  let everythingShown = $derived(visibleIndex.length > 1 && overlay.length === visibleIndex.length);
+  let panelShown = $derived(panelEntry !== null && !everythingShown && !touring);
 
   let hoveredEntry = $state.raw<app.AtlasIndexEntry | null>(null);
   let hoverX = $state(0);
@@ -162,9 +188,14 @@
     void vp;
     void visibleIndex;
     void fixes;
+    const tourTarget = touring ? reel.current?.nasPath : undefined;
     if (!active) return;
     if (lazyTimer) clearTimeout(lazyTimer);
-    lazyTimer = setTimeout(() => sizeQueue.request(framesNeedingSize(scene)), 200);
+    lazyTimer = setTimeout(() => {
+      const need = framesNeedingSize(scene);
+      // The tour target is usually off screen until its size is known, so ask for it explicitly.
+      sizeQueue.request(tourTarget ? [tourTarget, ...need] : need);
+    }, 200);
   });
 
   // ── Fitting ───────────────────────────────────────────────────────────────
@@ -181,21 +212,24 @@
    * and, optionally, the frame panel (right), then shifts the centre so they
    * land in the middle of that free area.
    */
-  function fitTargets(targets: FitTarget[], opts: { cluster?: boolean; panel?: boolean } = {}) {
+  function fitTargets(
+    targets: FitTarget[],
+    opts: { cluster?: boolean; panel?: boolean; durationMs?: number } = {},
+  ) {
     const wide = cam.w >= 760;
-    const left = wide && index.length > 0 ? 250 : 0;
+    const left = wide && index.length > 0 && !touring ? 250 : 0;
     const right = wide && opts.panel ? 290 : 0;
     const freeW = cam.w - left - right;
     const r = fitView(targets, freeW, cam.h, { cluster: opts.cluster, maxPpd: cam.w / 0.5 });
     if (!r) return;
     const dx = left + freeW / 2 - cam.w / 2; // where the target should sit, relative to centre
     const [ra, dec] = fromTangent(r.ra, r.dec, dx / r.ppd, 0);
-    cam.goTo({ ra, dec, ppd: r.ppd });
+    cam.goTo({ ra, dec, ppd: r.ppd }, true, opts.durationMs);
   }
 
   function fitAll() {
     fitTargets(targetsOf(visibleIndex.length > 0 ? visibleIndex : index), {
-      panel: panelEntry !== null,
+      panel: panelShown,
     });
   }
 
@@ -253,6 +287,73 @@
     focus = null;
   }
 
+  /** Overlays every visible frame, which loads all their previews. Again to clear. */
+  function showEverything() {
+    if (everythingShown) {
+      clearSelection();
+      return;
+    }
+    for (const e of visibleIndex) previews.retry(e.nasPath);
+    overlayPaths = visibleIndex.map((e) => e.nasPath);
+    focus = null;
+    fitAll();
+  }
+
+  function startTour() {
+    if (tourFrames.length === 0) return;
+    helpOpen = false;
+    hoveredEntry = null;
+    const i = tourFrames.findIndex((f) => f.nasPath === panelEntry?.nasPath);
+    reel.index = Math.max(0, i);
+    reel.playing = true;
+    touring = true;
+  }
+
+  function stopTour() {
+    touring = false;
+    exitImmersive();
+  }
+
+  let tourFramed: string | null = null;
+
+  // Each tour stop: overlay it (unless everything already is) …
+  $effect(() => {
+    const e = reel.current;
+    if (!touring || !active || !e) return;
+    untrack(() => {
+      tourFramed = null;
+      hoveredEntry = null;
+      focus = null;
+      previews.retry(e.nasPath);
+      if (!everythingShown) {
+        overlayPaths = [e.nasPath];
+        previews.sync(overlay);
+      }
+      sizeQueue.request([e.nasPath, ...framesNeedingSize(scene)]);
+    });
+  });
+
+  // … and pan to it once its outline size (and, normally, its preview) is ready, so
+  // the camera doesn't settle on a guessed footprint.
+  $effect(() => {
+    void cacheVersion;
+    const e = reel.current;
+    if (!touring || !active || !e || tourFramed === e.nasPath) return;
+    if (!sizeQueue.get(e.nasPath) && !sizeQueue.isFailed(e.nasPath)) return;
+    if (!everythingShown && previews.isLoading(e.nasPath)) return;
+    tourFramed = e.nasPath;
+    untrack(() => fitTargets(targetsOf([e]), { cluster: false, durationMs: TOUR_PAN_MS }));
+  });
+
+  $effect(() => {
+    reel.run(touring && active);
+  });
+
+  // Leaving the tab ends the tour.
+  $effect(() => {
+    if (!active && touring) untrack(stopTour);
+  });
+
   function selectGroup(g: ObjectGroup) {
     const top = topFrame(g.frames);
     if (top) selectOnly(top);
@@ -304,13 +405,13 @@
     }
     if (cam.isPanning) return;
     const [mx, my] = localXY(e);
-    hoveredEntry = hitTest(scene, mx, my);
+    hoveredEntry = touring ? null : hitTest(scene, mx, my);
     hoverX = mx;
     hoverY = my;
   }
 
   function onMouseUp(e: MouseEvent) {
-    if (cam.endDrag() !== "click") return;
+    if (cam.endDrag() !== "click" || touring) return;
     const [mx, my] = localXY(e);
     const hit = hitTest(scene, mx, my);
     if (!hit) clearSelection();
@@ -324,6 +425,35 @@
   function onKeydown(e: KeyboardEvent) {
     if (!active || isTypingTarget(e) || isModalOpen()) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (touring) {
+      switch (e.key) {
+        case " ":
+          reel.toggle();
+          break;
+        case "ArrowRight":
+          reel.next();
+          break;
+        case "ArrowLeft":
+          reel.prev();
+          break;
+        case "f":
+        case "F":
+          toggleImmersive(desktopMode);
+          break;
+        case "Escape":
+          if (immersive.on) exitImmersive();
+          else stopTour();
+          break;
+        case "t":
+        case "T":
+          stopTour();
+          break;
+        default:
+          if (!cam.navKey(e.key)) return;
+      }
+      e.preventDefault();
+      return;
+    }
     if (cam.navKey(e.key)) {
       e.preventDefault();
       return;
@@ -336,6 +466,10 @@
         if (helpOpen) helpOpen = false;
         else if (overlayPaths.length > 0 || focus) clearSelection();
         else return;
+        break;
+      case "t":
+      case "T":
+        startTour();
         break;
       case "/":
         if (!browser) return;
@@ -444,7 +578,13 @@
     height={Math.round(cam.h * dpr)}
     style:width="{cam.w}px"
     style:height="{cam.h}px"
-    style:cursor={cam.isPanning && cam.dragMoved ? "grabbing" : hoveredEntry ? "pointer" : "grab"}
+    style:cursor={touring && immersive.on && !controlsVisible
+      ? "none"
+      : cam.isPanning && cam.dragMoved
+        ? "grabbing"
+        : hoveredEntry
+          ? "pointer"
+          : "grab"}
     aria-label="Sky atlas: your frames plotted on the sky"
     onwheel={onWheel}
     onmousemove={onMouseMove}
@@ -475,19 +615,21 @@
   />
 
   <!-- HUD -->
-  <div class="atlas-hud">
-    <span title="{cam.ra.toFixed(4)}°">RA {formatRA(cam.ra)}</span>
-    <span title="{cam.dec.toFixed(4)}°">Dec {formatDec(cam.dec)}</span>
-    <span>FOV {fovText}</span>
-    <span class="hud-sep" aria-hidden="true"></span>
-    <span>
-      {visibleIndex.length} frame{visibleIndex.length === 1 ? "" : "s"}{hiddenCount > 0
-        ? ` (${hiddenCount} hidden)`
-        : ""}
-    </span>
-  </div>
+  {#if !touring}
+    <div class="atlas-hud">
+      <span title="{cam.ra.toFixed(4)}°">RA {formatRA(cam.ra)}</span>
+      <span title="{cam.dec.toFixed(4)}°">Dec {formatDec(cam.dec)}</span>
+      <span>FOV {fovText}</span>
+      <span class="hud-sep" aria-hidden="true"></span>
+      <span>
+        {visibleIndex.length} frame{visibleIndex.length === 1 ? "" : "s"}{hiddenCount > 0
+          ? ` (${hiddenCount} hidden)`
+          : ""}
+      </span>
+    </div>
+  {/if}
 
-  {#if !loading && !loadError && index.length > 0}
+  {#if !touring && !loading && !loadError && index.length > 0}
     <ObjectBrowser
       bind:this={browser}
       groups={objectGroups}
@@ -498,64 +640,90 @@
     />
   {/if}
 
-  <!-- Top-right control cluster: frame filter, labels, help -->
-  <div class="atlas-controls">
-    <div class="seg" role="group" aria-label="Frames to show">
+  <!-- Top-right control cluster: frame filter, show everything, tour, labels, help -->
+  {#if !touring}
+    <div class="atlas-controls">
+      <div class="seg" role="group" aria-label="Frames to show">
+        <button
+          class="seg-btn"
+          class:active={!showAll}
+          aria-pressed={!showAll}
+          title="Only processed / exported images"
+          onclick={() => (filterMode = "final")}
+          >Final images <span class="seg-count">{finalCount}</span></button
+        >
+        <button
+          class="seg-btn"
+          class:active={showAll}
+          aria-pressed={showAll}
+          title="Stacked and processed frames"
+          onclick={() => (filterMode = "all")}
+          >All frames <span class="seg-count">{index.length}</span></button
+        >
+      </div>
       <button
-        class="seg-btn"
-        class:active={!showAll}
-        aria-pressed={!showAll}
-        title="Only processed / exported images"
-        onclick={() => (filterMode = "final")}
-        >Final images <span class="seg-count">{finalCount}</span></button
+        class="ctl-btn"
+        class:active={everythingShown}
+        aria-pressed={everythingShown}
+        disabled={visibleIndex.length === 0}
+        title="Overlay every shown frame and load all their previews"
+        onclick={showEverything}>Show everything</button
       >
       <button
-        class="seg-btn"
-        class:active={showAll}
-        aria-pressed={showAll}
-        title="Stacked and processed frames"
-        onclick={() => (filterMode = "all")}
-        >All frames <span class="seg-count">{index.length}</span></button
+        class="ctl-btn"
+        disabled={tourFrames.length === 0}
+        title="Pan from image to image (T)"
+        onclick={startTour}>▶ Tour</button
       >
+      <button
+        class="ctl-btn"
+        class:active={showLabels}
+        aria-pressed={showLabels}
+        onclick={() => (showLabels = !showLabels)}
+        title={showLabels ? "Hide labels" : "Show labels"}>Labels</button
+      >
+      <HelpPopover bind:open={helpOpen} />
     </div>
-    <button
-      class="ctl-btn"
-      class:active={showLabels}
-      aria-pressed={showLabels}
-      onclick={() => (showLabels = !showLabels)}
-      title={showLabels ? "Hide labels" : "Show labels"}>Labels</button
-    >
-    <HelpPopover bind:open={helpOpen} />
-  </div>
+  {/if}
 
   <!-- Zoom controls -->
-  <div class="atlas-zoom" role="group" aria-label="Zoom">
-    <button
-      class="zoom-btn"
-      title="Zoom in (+)"
-      aria-label="Zoom in"
-      onclick={() => cam.zoomBy(1.4)}>+</button
-    >
-    <button
-      class="zoom-btn"
-      title="Zoom out (−)"
-      aria-label="Zoom out"
-      onclick={() => cam.zoomBy(1 / 1.4)}>−</button
-    >
-    <button class="zoom-btn" title="Fit all frames (0)" aria-label="Fit all frames" onclick={fitAll}
-      >⤢</button
-    >
-  </div>
-
-  {#if sizesBusy > 0 || previewsBusy > 0}
-    <div class="atlas-busy" role="status">
-      <div class="busy-spinner" aria-hidden="true"></div>
-      <span>{previewsBusy > 0 ? "Loading preview…" : `Loading frame outlines… (${sizesBusy})`}</span
+  {#if !touring}
+    <div class="atlas-zoom" role="group" aria-label="Zoom">
+      <button
+        class="zoom-btn"
+        title="Zoom in (+)"
+        aria-label="Zoom in"
+        onclick={() => cam.zoomBy(1.4)}>+</button
+      >
+      <button
+        class="zoom-btn"
+        title="Zoom out (−)"
+        aria-label="Zoom out"
+        onclick={() => cam.zoomBy(1 / 1.4)}>−</button
+      >
+      <button
+        class="zoom-btn"
+        title="Fit all frames (0)"
+        aria-label="Fit all frames"
+        onclick={fitAll}>⤢</button
       >
     </div>
   {/if}
 
-  {#if hoveredEntry && !cam.isPanning && !helpOpen}
+  {#if sizesBusy > 0 || previewsBusy > 0}
+    <div class="atlas-busy" role="status">
+      <div class="busy-spinner" aria-hidden="true"></div>
+      <span
+        >{previewsBusy > 1
+          ? `Loading previews… (${previewsBusy})`
+          : previewsBusy > 0
+            ? "Loading preview…"
+            : `Loading frame outlines… (${sizesBusy})`}</span
+      >
+    </div>
+  {/if}
+
+  {#if hoveredEntry && !touring && !cam.isPanning && !helpOpen}
     <AtlasTooltip
       entry={hoveredEntry}
       x={hoverX}
@@ -567,7 +735,7 @@
     />
   {/if}
 
-  {#if panelEntry}
+  {#if panelEntry && panelShown}
     <AtlasPanel
       entry={panelEntry}
       size={cacheVersion >= 0 ? sizeQueue.get(panelEntry.nasPath) : undefined}
@@ -580,6 +748,20 @@
       onclearall={clearSelection}
       onfixchange={(fix) => panelEntry && setFix(panelEntry.nasPath, fix)}
       onopen={onframeopen}
+    />
+  {/if}
+
+  {#if touring}
+    {#if reel.current}
+      <div class="tour-caption">{objectKey(reel.current)}</div>
+    {/if}
+    <ReelControls
+      {reel}
+      fullscreen={immersive.on}
+      onfullscreen={() => toggleImmersive(desktopMode)}
+      onstop={stopTour}
+      autohide={immersive.on}
+      bind:visible={controlsVisible}
     />
   {/if}
 </div>
@@ -675,6 +857,10 @@
     color: var(--text-primary);
     background: var(--bg-row-hover);
   }
+  .ctl-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
   .seg-btn.active,
   .ctl-btn.active {
     background: var(--accent);
@@ -682,6 +868,19 @@
   }
   .ctl-btn.active {
     border-color: var(--accent);
+  }
+
+  /* Name of the object the tour is at */
+  .tour-caption {
+    position: absolute;
+    top: 16px;
+    left: 20px;
+    font-size: var(--fs-xl);
+    font-weight: 500;
+    color: var(--text-primary);
+    text-shadow: 0 1px 6px rgb(0 0 0 / 0.7);
+    pointer-events: none;
+    z-index: 20;
   }
 
   /* Zoom controls, bottom-right */

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { SelectRootFolder, GetAppInfo, CheckSiril, GetProjectsFolder } from "$app";
   import {
     DEFAULT_COLUMNS,
@@ -20,6 +20,7 @@
   import SettingsView from "./components/SettingsView.svelte";
   import StorageView from "./components/StorageView.svelte";
   import SkyAtlas from "./components/SkyAtlas.svelte";
+  import SlideshowView from "./components/SlideshowView.svelte";
   import CoverageView from "./components/CoverageView.svelte";
   import BrowseView from "./components/browse/BrowseView.svelte";
   import Toaster from "./components/Toaster.svelte";
@@ -30,6 +31,7 @@
   import { loadPrefs, savePref, usePrefsLocally } from "./lib/prefs";
   import { indexer, type IndexOutcome, type StartOptions } from "./lib/shell/indexing.svelte";
   import { DEFAULT_MODE, MODES, visibleModes } from "./lib/shell/modes";
+  import { exitImmersive, immersive } from "./lib/shell/immersive.svelte";
 
   const PREF_ROOT_FOLDER = "root_folder";
   const PREF_COLUMN_CONFIG = "column_config";
@@ -91,6 +93,12 @@
   // ── Read-only viewer guard — only the viewer's tabs ───────────────────────
   $effect(() => {
     if (readOnly && !visibleModes(true).some((m) => m.value === appMode)) setMode("library");
+  });
+
+  // Fullscreen belongs to the view that asked for it (slideshow / atlas tour).
+  $effect(() => {
+    void appMode;
+    untrack(exitImmersive);
   });
 
   onMount(() => installUiScaleShortcuts());
@@ -227,19 +235,21 @@
 </script>
 
 <div class="layout">
-  <AppHeader
-    {rootFolder}
-    {appMode}
-    {theme}
-    {readOnly}
-    onmodechange={setMode}
-    onthemechange={(t) => {
-      theme = t;
-    }}
-  />
+  {#if !immersive.on}
+    <AppHeader
+      {rootFolder}
+      {appMode}
+      {theme}
+      {readOnly}
+      onmodechange={setMode}
+      onthemechange={(t) => {
+        theme = t;
+      }}
+    />
+  {/if}
 
   <!-- Global index progress bar — visible in all modes while scanning -->
-  {#if indexer.running && indexer.progress}
+  {#if !immersive.on && indexer.running && indexer.progress}
     <IndexProgressBar progress={indexer.progress} oncancel={() => indexer.cancel()} />
   {/if}
 
@@ -322,7 +332,14 @@
               {readOnly}
               onscan={readOnly ? undefined : () => startScan()}
               onframeopen={openInLibrary}
+              {desktopMode}
             />
+          </div>
+        {/if}
+
+        {#if visited.slideshow}
+          <div class="view" class:hidden={appMode !== "slideshow"}>
+            <SlideshowView rootPath={rootFolder} active={appMode === "slideshow"} {desktopMode} />
           </div>
         {/if}
 

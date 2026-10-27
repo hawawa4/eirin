@@ -60,6 +60,7 @@ export type AppMode =
   | "browser"
   | "library"
   | "atlas"
+  | "slideshow"
   | "coverage"
   | "import"
   | "projects"
