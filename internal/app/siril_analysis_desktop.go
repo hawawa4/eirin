@@ -28,6 +28,8 @@ var (
 
 // AnalyzeFrames runs Siril headless analysis (findstar + platesolve + statistics) on each
 // NAS path sequentially. Raw output is written to $TMPDIR/eirin-siril-debug.txt.
+// A frame that gets a WCS solve and has no telescope yet is also best-effort
+// tagged from its field of view (see tagTelescopeByFOV).
 func (a *App) AnalyzeFrames(nasPaths []string) error {
 	if len(nasPaths) == 0 {
 		return nil
@@ -117,6 +119,8 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 			if wcsSolved {
 				if uerr := a.store().UpdateWCS(path, wcs); uerr != nil {
 					slog.Warn("analysis: db wcs update", "err", uerr)
+				} else {
+					a.tagTelescopeByFOV(path)
 				}
 			}
 		}

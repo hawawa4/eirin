@@ -510,6 +510,18 @@ func (s *Store) UpdateWCS(nasPath string, r WCSResult) error {
 	return err
 }
 
+// SetTelescopeIfEmpty sets a frame's telescope only if it doesn't already
+// have one (from a FITS header, a manual edit, or a previous guess), so an
+// auto-tagger never clobbers a known-good value. Returns whether it wrote.
+func (s *Store) SetTelescopeIfEmpty(nasPath, telescope string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE frames SET telescope=? WHERE nas_path=? AND telescope=''`, telescope, nasPath)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // DeleteFrame removes a frame record entirely from the database.
 func (s *Store) DeleteFrame(path string) error {
 	query, args, err := s.qb.

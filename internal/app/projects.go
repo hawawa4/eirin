@@ -247,7 +247,9 @@ type ImportOutputsResult struct {
 // with a nil error. The error is reserved for real failures (invalid
 // destination, I/O errors); a copy failing midway keeps the files copied so
 // far (listed in Copied). Metadata (object, telescope, instrument, filter) is
-// inherited from the first project light frame found in the DB.
+// inherited from the first project light frame found in the DB; if that
+// leaves telescope empty and the output already has WCS, it's best-effort
+// tagged from its field of view instead (see tagTelescopeByFOV).
 func (a *App) ImportOutputFiles(filePaths []string, destFolder string) (ImportOutputsResult, error) {
 	if err := a.requireWritable(); err != nil {
 		return ImportOutputsResult{}, err
@@ -298,6 +300,11 @@ func (a *App) ImportOutputFiles(filePaths []string, destFolder string) (ImportOu
 				DestPath:     dst,
 				FileSize:     info.Size(),
 			}, meta)
+			// Stacked/processed outputs rarely carry a TELESCOP header and may
+			// have inherited an empty one from the project's light frames; if
+			// the output already has WCS (a FITS output solved by Siril), best-
+			// effort tag it from its field of view.
+			a.tagTelescopeByFOV(dst)
 		}
 		res.Copied = append(res.Copied, name)
 	}

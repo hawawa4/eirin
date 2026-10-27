@@ -50,6 +50,8 @@ export function AddFramesToProjectDetailed(projectFolder: string, nasPaths: stri
 /**
  * AnalyzeFrames runs Siril headless analysis (findstar + platesolve + statistics) on each
  * NAS path sequentially. Raw output is written to $TMPDIR/eirin-siril-debug.txt.
+ * A frame that gets a WCS solve and has no telescope yet is also best-effort
+ * tagged from its field of view (see tagTelescopeByFOV).
  */
 export function AnalyzeFrames(nasPaths: string[]): $CancellablePromise<void> {
     return $Call.ByID(1959591080, nasPaths);
@@ -384,7 +386,9 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  * with a nil error. The error is reserved for real failures (invalid
  * destination, I/O errors); a copy failing midway keeps the files copied so
  * far (listed in Copied). Metadata (object, telescope, instrument, filter) is
- * inherited from the first project light frame found in the DB.
+ * inherited from the first project light frame found in the DB; if that
+ * leaves telescope empty and the output already has WCS, it's best-effort
+ * tagged from its field of view instead (see tagTelescopeByFOV).
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
     return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
