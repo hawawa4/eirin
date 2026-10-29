@@ -59,7 +59,7 @@ jobs:
           arch: amd64
           platform: linux
           version: ${VERSION}
-          maintainer: "TaruDesigns <taruelec@gmail.com>"
+          maintainer: "Hawawa <me@hawawa.org>"
           description: "Local astrophotography library manager"
           homepage: "https://github.com/${{ github.repository }}"
           license: "MIT"

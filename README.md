@@ -1,5 +1,14 @@
 # Eirin
 
+[![CI](https://img.shields.io/github/actions/workflow/status/hawawa4/eirin/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/hawawa4/eirin/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hawawa4/eirin?logo=github)](https://github.com/hawawa4/eirin/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
+[![Go 1.25](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Wails](https://img.shields.io/badge/built%20with-Wails-red)](https://wails.io)
+[![Svelte](https://img.shields.io/badge/frontend-Svelte-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)](https://eirin.hawawa.org)
+[![Website](https://img.shields.io/badge/website-eirin.hawawa.org-8A2BE2)](https://eirin.hawawa.org)
+
 Eirin (/ˈei̯rɪn/) is a desktop app for managing an astrophotography library. It keeps all your subs, calibration frames and finished images in one folder (ideally on a NAS), lets you preview and cull FITS frames, and sets up Siril projects for stacking. Built with Go, Wails and Svelte.
 
 **Website:** https://eirin.hawawa.org
