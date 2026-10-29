@@ -3,7 +3,7 @@ package app
 import (
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/telescopes"
+	"github.com/hawawa4/eirin/internal/telescopes"
 )
 
 // tagTelescopeByFOV best-effort tags path's telescope from its field of view,

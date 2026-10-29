@@ -2,7 +2,7 @@
 
 package app
 
-import "github.com/TaruDesigns/eirin/internal/fileman"
+import "github.com/hawawa4/eirin/internal/fileman"
 
 // RevealPath opens the OS file manager with path selected.
 func (a *App) RevealPath(path string) error {

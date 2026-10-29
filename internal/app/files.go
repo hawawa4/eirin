@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // RejectFile marks a file as soft-deleted. It remains on disk but is hidden

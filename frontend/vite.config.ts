@@ -3,7 +3,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { resolve } from "path";
 
 const port = parseInt(process.env.WAILS_VITE_PORT || "9245");
-const bindings = resolve(__dirname, "bindings/github.com/TaruDesigns/eirin/internal");
+const bindings = resolve(__dirname, "bindings/github.com/hawawa4/eirin/internal");
 
 export default defineConfig({
   plugins: [svelte()],

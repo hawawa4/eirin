@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/TaruDesigns/eirin/internal/siril"
+	"github.com/hawawa4/eirin/internal/siril"
 )
 
 // OpenWithSiril launches the Siril GUI with the given file's parent directory

@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TaruDesigns/eirin/internal/importer"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/importer"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // Frame subfolder names, following Siril's script conventions.

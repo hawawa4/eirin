@@ -7,7 +7,7 @@ import (
 
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // LibraryFrame is the data exported to the frontend for the library view.

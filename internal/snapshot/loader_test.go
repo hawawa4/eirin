@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // testLoader returns a loader serving the library at serverRoot, and a pointer

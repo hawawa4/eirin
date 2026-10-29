@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // DefaultPublishInterval is how often the publisher checks for changes.

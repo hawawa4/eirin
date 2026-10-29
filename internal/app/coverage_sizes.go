@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/TaruDesigns/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/indexer"
 )
 
 // sizeCache remembers image sizes (pixels) read from files, by key.

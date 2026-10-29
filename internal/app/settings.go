@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"github.com/TaruDesigns/eirin/internal/server"
+	"github.com/hawawa4/eirin/internal/server"
 )
 
 // AppInfo contains read-only runtime information surfaced in the Settings view.

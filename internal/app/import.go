@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/TaruDesigns/eirin/internal/importer"
-	"github.com/TaruDesigns/eirin/internal/indexer"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/importer"
+	"github.com/hawawa4/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // ImportCandidate is a file in the source folder not yet in the library.

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

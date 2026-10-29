@@ -8,7 +8,7 @@ import (
 
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // SuggestResult is a frame flagged as a statistical outlier within its group.

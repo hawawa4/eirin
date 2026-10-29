@@ -1,4 +1,4 @@
-module github.com/TaruDesigns/eirin
+module github.com/hawawa4/eirin
 
 go 1.25.0
 

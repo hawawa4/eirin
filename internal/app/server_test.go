@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/server"
+	"github.com/hawawa4/eirin/internal/server"
 )
 
 func TestGetEnv(t *testing.T) {

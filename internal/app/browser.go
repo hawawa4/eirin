@@ -7,8 +7,8 @@ import (
 
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/snapshot"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/snapshot"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 type FileEntry struct {

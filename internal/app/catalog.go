@@ -1,6 +1,6 @@
 package app
 
-import "github.com/TaruDesigns/eirin/internal/catalog"
+import "github.com/hawawa4/eirin/internal/catalog"
 
 // GetAnnotations returns catalog objects visible within the frame defined by the
 // plate-solve result (raCenter/decCenter in degrees, pixelScale in arcsec/pixel,

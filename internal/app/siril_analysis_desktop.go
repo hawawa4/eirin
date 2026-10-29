@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/TaruDesigns/eirin/internal/catalog"
-	"github.com/TaruDesigns/eirin/internal/indexer"
-	sirilpkg "github.com/TaruDesigns/eirin/internal/siril"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/catalog"
+	"github.com/hawawa4/eirin/internal/indexer"
+	sirilpkg "github.com/hawawa4/eirin/internal/siril"
+	"github.com/hawawa4/eirin/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 func newTestPublisher(t *testing.T, root string, enabled bool) (*Publisher, *store.Store) {

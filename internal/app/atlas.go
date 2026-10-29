@@ -5,9 +5,9 @@ import (
 
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/catalog"
-	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/TaruDesigns/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/catalog"
+	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/indexer"
 )
 
 // AtlasIndexEntry holds the DB-resident data for a single stacked/processed

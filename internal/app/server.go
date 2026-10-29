@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/TaruDesigns/eirin/internal/server"
+	"github.com/hawawa4/eirin/internal/server"
 )
 
 func (a *App) startServer() {

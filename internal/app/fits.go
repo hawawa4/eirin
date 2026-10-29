@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/TaruDesigns/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/indexer"
 )
 
 func (a *App) ReadFITSHeader(path string) (*fits.FITSHeader, error) {

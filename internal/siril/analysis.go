@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // AnalysisProgress describes the state of an in-progress frame analysis run.

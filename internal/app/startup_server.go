@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/TaruDesigns/eirin/internal/snapshot"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/snapshot"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // EnvRoot is the environment variable holding the library root folder on the

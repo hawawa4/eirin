@@ -4,7 +4,7 @@ import (
 	"embed"
 	"log"
 
-	"github.com/TaruDesigns/eirin/internal/app"
+	"github.com/hawawa4/eirin/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

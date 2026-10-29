@@ -10,10 +10,10 @@ import (
 
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/fits"
-	"github.com/TaruDesigns/eirin/internal/importer"
-	"github.com/TaruDesigns/eirin/internal/indexer"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/importer"
+	"github.com/hawawa4/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 type indexProgressEvent = indexer.ProgressEvent

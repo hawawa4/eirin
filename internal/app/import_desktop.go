@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/TaruDesigns/eirin/internal/importer"
+	"github.com/hawawa4/eirin/internal/importer"
 )
 
 // SelectSourceFolder opens an OS directory dialog for the user to pick the

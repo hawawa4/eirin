@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // DefaultPollInterval is how often the loader checks the NAS for a new snapshot.

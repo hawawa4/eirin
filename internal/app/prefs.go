@@ -3,7 +3,7 @@ package app
 import (
 	"log/slog"
 
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // LoadPrefs returns all persisted preferences, with defaults for missing keys.

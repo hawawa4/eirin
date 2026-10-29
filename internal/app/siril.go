@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/TaruDesigns/eirin/internal/siril"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/siril"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // SirilInfo describes the detected (or user-configured) Siril installation.

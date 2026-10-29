@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/importer"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/importer"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 func waitImportFinished(t *testing.T, a *App) ImportProgress {

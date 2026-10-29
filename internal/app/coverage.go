@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/TaruDesigns/eirin/internal/catalog"
-	"github.com/TaruDesigns/eirin/internal/coverage"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/catalog"
+	"github.com/hawawa4/eirin/internal/coverage"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // CoverageCluster is a group of light frames sharing a framing (see

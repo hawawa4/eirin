@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	sirilpkg "github.com/TaruDesigns/eirin/internal/siril"
+	sirilpkg "github.com/hawawa4/eirin/internal/siril"
 )
 
 func TestParseDecimal(t *testing.T) {

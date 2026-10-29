@@ -5,7 +5,7 @@ package app
 import (
 	"os/exec"
 
-	"github.com/TaruDesigns/eirin/internal/siril"
+	"github.com/hawawa4/eirin/internal/siril"
 )
 
 // OpenProjectInSiril launches Siril with the project folder as working directory.

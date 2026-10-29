@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/snapshot"
-	"github.com/TaruDesigns/eirin/internal/store"
+	"github.com/hawawa4/eirin/internal/snapshot"
+	"github.com/hawawa4/eirin/internal/store"
 )
 
 // snapshotSide publishes the library snapshot for the server viewer.

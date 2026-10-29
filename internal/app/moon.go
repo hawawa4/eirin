@@ -3,7 +3,7 @@ package app
 import (
 	"time"
 
-	"github.com/TaruDesigns/eirin/internal/catalog"
+	"github.com/hawawa4/eirin/internal/catalog"
 )
 
 // MoonIllumination returns the fraction of the moon's disk that is illuminated

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/server"
+	"github.com/hawawa4/eirin/internal/server"
 )
 
 func TestGetAppInfoDefaults(t *testing.T) {

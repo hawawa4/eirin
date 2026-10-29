@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/indexer"
 )
 
 func TestIsFitsFile(t *testing.T) {

@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/TaruDesigns/eirin/internal/importer"
+	"github.com/hawawa4/eirin/internal/importer"
 )
 
 func TestMatchesExtensions(t *testing.T) {
