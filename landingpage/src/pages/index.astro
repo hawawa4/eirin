@@ -1,8 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import Feature from "../components/Feature.astro";
-import Screenshot from "../components/Screenshot.astro";
-import VideoShot from "../components/VideoShot.astro";
+import Media from "../components/Media.astro";
 
 import libraryView from "../../../docs/img/libraryview.png";
 import importView from "../../../docs/img/importview2.png";
@@ -17,108 +15,134 @@ const releases = `${repo}/releases`;
 const catalogueViewer = "https://github.com/thebioguy/Astro-Catalogue-Viewer";
 const sslm = "https://github.com/AstroNoob-Tools/SSLM";
 
-const title = "Eirin: a library manager for astrophotography data";
+const title = "Eirin";
 const description =
-  "Eirin is a free, open source desktop app that catalogues your astrophotography files on a NAS, " +
-  "lets you preview and cull FITS frames, sets up Siril projects for stacking, " +
-  "and maps your plate-solved images onto the sky. " +
-  "Built around the Seestar S30 Pro and S50 Pro.";
+  "A library manager for astrophotography data: catalogue your files on a NAS, preview and cull FITS frames, " +
+  "set up Siril projects and map your plate-solved images onto the sky. " +
+  "Built around the Seestar S30 Pro and S50 Pro. Free and open source.";
+
+// `video` is a clip from docs/vid/; the screenshot is its poster.
+const showcase = [
+  {
+    title: "Library",
+    body: "Every frame under the root folder, grouped by object, date, filter or type, with per-column filters and search. The selected frame's preview and FITS header sit alongside. Select a set of frames to blink through them, reject several at once, or start a project from whatever is filtered. Rejected frames are hidden, not deleted, until you delete them for good. With Siril installed, Analyze measures star FWHM and plate-solves each frame, and Suggest rejects flags frames whose FWHM is well above the rest of their group.",
+    image: libraryView,
+    video: libraryClip,
+    alt: "Library view: filtering by object and opening a processed image in the preview pane",
+  },
+  {
+    title: "Import",
+    body: "Shows exactly what will be copied and where before anything happens. Files already in the library are skipped. FITS by default; PNG, JPEG and TIFF can be included too. It can delete from the Seestar after copying, but only once a full SHA-256 of the copy matches the original.",
+    image: importView,
+    alt: "Import view listing new files from a Seestar and where each one will be copied",
+  },
+  {
+    title: "Projects",
+    body: "A project is a local folder laid out the way Siril expects, with each frame type in its own subfolder. Frames are symlinked from the NAS by default, or copied if you prefer. Open the project in Siril with one click, and import its outputs back into the library when you're done.",
+    image: projectView,
+    alt: "Projects view showing a project's light frames, with buttons to open it in Siril or its folder",
+  },
+  {
+    title: "Sky Atlas",
+    body: "Every plate-solved image knows where it was pointing, how much sky it covers and at what angle. The Sky Atlas draws them in their real place on a chart of the sky, with bright stars and Messier and NGC objects for reference. Click an outline to overlay the image. Show only your final images, or every sub as well to see how a mosaic or session covered the field. Search your targets or the built-in catalogue and jump to them. Frames with coordinates in their FITS header appear as soon as they're indexed; the rest can be plate-solved from the Library through Siril. It's not a planetarium and not a replacement for Stellarium: it's for looking back at what you've photographed and seeing where the gaps are.",
+    image: skyAtlasView,
+    video: skyAtlasClip,
+    alt: "Sky Atlas: searching the object list, jumping between targets and overlaying processed images on the sky chart",
+  },
+  {
+    title: "Storage",
+    body: "Where your disk space goes: a treemap of every target, sized by how much it takes up. Click into one to see it broken down by night, with totals for lights, stacks, processed images and everything else.",
+    image: storageView,
+    alt: "Storage view: a treemap of disk usage per target, with totals per frame type",
+  },
+];
+
+const features = [
+  "FITS preview with four stretch levels from linear to strong, debayering of the Seestar's one-shot-colour frames, zoom and pan, and the main header fields at a glance.",
+  "A red theme, for using it at the scope without ruining your night vision.",
+  "Headless mode: a Docker image for browsing the library from a browser. Read-only, so no import, no projects and no Siril.",
+];
+
+const limits = [
+  "It's a personal project, built around Seestar data because that's what I have. Other cameras may work but haven't had much testing.",
+  "It doesn't stack or process anything itself. Siril is the only processing backend for now, and PixInsight support might come later.",
+  "Only Linux builds are published so far. The app builds on Windows and macOS, but there are no packages.",
+  "The headless image needs a prefs.db that the desktop app has already set up.",
+];
 ---
 
 <Base title={title} description={description}>
-  <header class="topbar">
-    <div class="wrap topbar-inner">
-      <a class="wordmark" href={import.meta.env.BASE_URL}>
-        <span aria-hidden="true">✦</span> Eirin
-      </a>
-      <nav aria-label="Page sections">
-        <a href="#how-it-works">How it works</a>
-        <a href="#sky-atlas">Sky Atlas</a>
-        <a href="#features">Features</a>
-        <a href="#install">Install</a>
-        <a href={repo}>GitHub</a>
-      </nav>
+  <header class="hero">
+    <div class="wrap">
+      <h1>Eirin</h1>
+      <p class="sub">
+        A library manager for astrophotography data. It keeps your subs, calibration frames and
+        finished images in one folder, preferably on a NAS, lets you preview and cull FITS frames,
+        and builds the folder structure Siril expects so you can go straight to stacking. Once your
+        images are plate-solved, it draws them on a map of the sky.
+      </p>
+      <p class="sub">
+        Built around my own Seestar S30 Pro and S50 Pro, so that's the workflow it fits best.
+      </p>
+      <p class="cta">
+        <a class="btn primary" href={releases}>
+          Download
+        </a>
+        <a class="btn" href={repo}>
+          Source
+        </a>
+      </p>
+      <p class="fine">Linux: .deb, AppImage and .zip on the releases page.</p>
     </div>
   </header>
 
   <main>
-    <section class="hero">
+    <section>
       <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Free and open source · MIT · Linux</span>
-          <h1>A library manager for your astrophotography data</h1>
-          <p class="lede">
-            Eirin keeps all your subs, calibration frames and finished images in one folder,
-            preferably on a NAS. It indexes them, lets you preview and cull FITS frames, and builds
-            the folder structure Siril expects so you can go straight to stacking. Once your images
-            are plate-solved, the Sky Atlas puts them back where they came from on the sky.
+        <h2>Human disclaimer</h2>
+        <div class="text">
+          <p class="muted">
+            Eirin is free and open source (MIT). I made it for myself and my own Seestar data. Bug
+            reports and suggestions are welcome, but I can't promise anything beyond what I need.
           </p>
           <p class="muted">
-            I built it for my own Seestar S30 Pro and S50 Pro, so that's the workflow it fits best.
+            A good part of the code, especially the frontend, was written with AI assistance. I'd
+            rather say that up front.
           </p>
-          <div class="actions">
-            <a class="button primary" href={releases}>
-              Download for Linux
-            </a>
-            <a class="button" href={repo}>
-              Source on GitHub
-            </a>
-          </div>
-        </div>
-        <div class="hero-shot">
-          <Screenshot
-            src={libraryView}
-            alt="Eirin's Library view: frames grouped by target, with the selected frame's preview and FITS header on the right"
-            caption="The Library view, where you'll spend most of your time."
-            eager
-            sizes="(min-width: 72rem) 70rem, 100vw"
-          />
-        </div>
-      </div>
-    </section>
 
-    <section class="section" id="why">
-      <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Background</span>
-          <h2>Why it exists</h2>
-          <p>
+          <h3>Why it exists</h3>
+          <p class="muted">
             Processing Seestar data on a computer, rather than keeping the scope's live stack, used
             to mean a pile of bash and Python scripts: one to copy each session off the device,
             another to lay it out for Siril. Going through the frames and deleting bad ones was the
             worst part. Siril doesn't make it easy to actually delete a file, ASIFitsView doesn't
-            debayer, and clicking through folder after folder gets old quickly.
+            debayer, and clicking through folder after folder gets old quickly. The scripts worked,
+            but I wanted something nicer to use. Eirin handles the file management; stacking and
+            processing still happen in Siril.
           </p>
-          <p>
-            The scripts worked, but I wanted something nicer to use, so I wrote Eirin. It handles
-            the file management. Stacking and processing still happen in Siril.
+
+          <h3>Contact</h3>
+          <p class="muted">
+            If you're actually using this and have ideas,{" "}
+            <a href={`${repo}/issues/new/choose`}>open an issue on GitHub</a>.
           </p>
         </div>
       </div>
     </section>
 
-    <section class="section" id="how-it-works">
+    <section>
       <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Workflow</span>
-          <h2>How it works</h2>
-        </div>
-        <ol class="steps">
+        <h2>How it works</h2>
+        <ol class="steps text">
           <li>
-            <h3>Choose a root folder</h3>
-            <p>
-              Everything lives here: subs, darks and flats, stacks, final images. A NAS share works
-              well. Eirin reads the FITS headers into a local SQLite database and leaves the files
-              where they are.
-            </p>
+            <strong>Choose a root folder.</strong> Everything lives here: subs, darks and flats,
+            stacks, final images. A NAS share works well. Eirin reads the FITS headers into a local
+            SQLite database and leaves the files where they are.
           </li>
           <li>
-            <h3>Import from the Seestar</h3>
-            <p>
-              Point it at the device. Eirin lists the files that aren't in your library yet, shows
-              where each one will go, and copies them over.
-            </p>
-            <details class="note">
+            <strong>Import from the Seestar.</strong> Point it at the device. Eirin lists the files
+            that aren't in your library yet, shows where each one will go, and copies them over.
+            <details>
               <summary>Mounting the Seestar on Linux</summary>
               <p>
                 The Seestar shares its storage over SMB. Mount it (needs <code>cifs-utils</code>)
@@ -139,211 +163,54 @@ sudo mount -t cifs \
             </details>
           </li>
           <li>
-            <h3>Look through and cull</h3>
-            <p>
-              Preview frames with an autostretch, blink through a set, and reject the bad ones.
-              Rejected frames are hidden, not deleted, until you decide to delete them for good.
-            </p>
+            <strong>Look through and cull.</strong> Preview frames with an autostretch, blink
+            through a set, and reject the bad ones.
           </li>
           <li>
-            <h3>Create a Siril project</h3>
-            <p>
-              Pick frames and Eirin creates a local project with <code>lights/</code>,
-              <code>darks/</code>, <code>flats/</code> and <code>biases/</code> folders, symlinked
-              to the originals on the NAS. Open it in Siril and process as usual.
-            </p>
+            <strong>Create a Siril project.</strong> Pick frames and Eirin creates a local project
+            with
+            <code>lights/</code>, <code>darks/</code>, <code>flats/</code> and <code>biases/</code>
+            folders, symlinked to the originals on the NAS. Open it in Siril and process as usual.
           </li>
           <li>
-            <h3>Bring the results back</h3>
-            <p>
-              Import the stacked and processed images back into the library. Once they're
-              plate-solved, they show up on the <a href="#sky-atlas">Sky Atlas</a>.
-            </p>
+            <strong>Bring the results back.</strong> Import the stacked and processed images into
+            the library. Once they're plate-solved, they show up on the Sky Atlas.
           </li>
         </ol>
       </div>
     </section>
 
-    <section class="section atlas" id="sky-atlas">
+    {showcase.map((f) => (
+      <section class="showcase">
+        <div class="wrap">
+          <h2>{f.title}</h2>
+          <p>{f.body}</p>
+          <Media src={f.image} alt={f.alt} video={f.video} />
+        </div>
+      </section>
+    ))}
+
+    <section>
       <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Sky Atlas</span>
-          <h2>A map of the sky you've captured</h2>
-          <p>
-            Every plate-solved image knows where it was pointing, how much sky it covers and at what
-            angle. The Sky Atlas uses that to draw your images in their real place on a chart of the
-            sky, with bright stars and Messier and NGC objects marked for reference.
-          </p>
-          <p>
-            It's not a planetarium, and it's not trying to replace Stellarium. It's a way of looking
-            back at what you've photographed: which targets sit next to each other, which corners of
-            Virgo or Orion you've already covered, and where the gaps are. Every new target fills in
-            a little more of your own map.
-          </p>
-        </div>
-        <div class="atlas-shot">
-          <VideoShot
-            poster={skyAtlasView}
-            video={skyAtlasClip}
-            alt="Sky Atlas: searching the object list, jumping between targets and overlaying processed images on the sky chart"
-            caption="Jumping between targets and overlaying images."
-            sizes="(min-width: 72rem) 70rem, 100vw"
-          />
-        </div>
-        <dl class="atlas-points">
-          <div>
-            <dt>Outlines and images</dt>
-            <dd>
-              Every frame with sky coordinates gets an outline. Click one to overlay the image
-              itself.
-            </dd>
-          </div>
-          <div>
-            <dt>Finished images or everything</dt>
-            <dd>
-              Show only your final images, or every sub as well to see how a mosaic or session
-              covered the field.
-            </dd>
-          </div>
-          <div>
-            <dt>Search and jump</dt>
-            <dd>
-              Find one of your targets, or anything in the built-in catalogue, and go straight to
-              it.
-            </dd>
-          </div>
-          <div>
-            <dt>Fills itself in</dt>
-            <dd>
-              Frames with coordinates in their FITS header appear as soon as they're indexed. The
-              rest can be plate-solved from the Library through Siril.
-            </dd>
-          </div>
-        </dl>
+        <h2>Also</h2>
+        <ul class="text">
+          {features.map((f) => (
+            <li>{f}</li>
+          ))}
+        </ul>
       </div>
     </section>
 
-    <section class="section" id="features">
+    <section id="install">
       <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Features</span>
-          <h2>What's in it</h2>
-        </div>
-
-        <Feature
-          id="library"
-          title="Library"
-          image={libraryView}
-          video={libraryClip}
-          alt="Library view: filtering by object and opening a processed image in the preview pane"
-          caption="Filtering by object and previewing a processed image."
-        >
-          <p>
-            The main view: every frame under the root folder, grouped by object, date, filter or
-            type, with per-column filters and search. The selected frame's preview and FITS header
-            sit alongside.
-          </p>
-          <ul>
-            <li>Select a set of frames and blink through them, or reject several at once.</li>
-            <li>Start a project directly from whatever is currently filtered.</li>
-            <li>
-              With Siril installed, <em>Analyze</em> measures star FWHM and plate-solves each frame.
-              <em>Suggest rejects</em> then flags frames whose FWHM is well above the rest of their
-              group.
-            </li>
-          </ul>
-        </Feature>
-
-        <Feature
-          id="import"
-          title="Import"
-          image={importView}
-          alt="Import view listing new files from a Seestar and where each one will be copied"
-          flip
-        >
-          <p>
-            Shows exactly what will be copied and where before anything happens. Files already in
-            the library are skipped.
-          </p>
-          <ul>
-            <li>FITS by default; PNG, JPEG and TIFF can be included too.</li>
-            <li>
-              Can delete from the Seestar after copying, but only once a full SHA-256 of the copy
-              matches the original.
-            </li>
-          </ul>
-        </Feature>
-
-        <Feature
-          id="projects"
-          title="Projects"
-          image={projectView}
-          alt="Projects view showing a project's light frames, with buttons to open it in Siril or its folder"
-        >
-          <p>
-            A project is a local folder laid out the way Siril expects, with each frame type in its
-            own subfolder. Frames are symlinked from the NAS by default, or copied if you prefer.
-          </p>
-          <ul>
-            <li>Open the project in Siril with one click.</li>
-            <li>Import its outputs back into the library when you're done.</li>
-          </ul>
-        </Feature>
-
-        <Feature
-          id="storage"
-          title="Storage"
-          image={storageView}
-          alt="Storage view: a treemap of disk usage per target, with totals per frame type"
-          flip
-        >
-          <p>
-            Where your disk space goes: a treemap of every target, sized by how much it takes up.
-            Click into one to see it broken down by night.
-          </p>
-          <ul>
-            <li>Totals for lights, stacks, processed images and everything else.</li>
-          </ul>
-        </Feature>
-
-        <div class="extras">
-          <h3>Also</h3>
-          <dl>
-            <div>
-              <dt>FITS preview</dt>
-              <dd>
-                Four stretch levels from linear to strong, debayering of Seestar's one-shot-colour
-                frames, zoom and pan, and the main header fields at a glance.
-              </dd>
-            </div>
-            <div>
-              <dt>Red theme</dt>
-              <dd>For using it at the scope without ruining your night vision.</dd>
-            </div>
-            <div>
-              <dt>Headless mode</dt>
-              <dd>
-                A Docker image for browsing the library from a browser. Read-only: no import, no
-                projects, no Siril.
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="install">
-      <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Install</span>
-          <h2>Getting it</h2>
-
+        <h2>Install</h2>
+        <div class="text">
           <h3>Linux</h3>
           <p>
             Grab the latest build from the <a href={releases}>releases page</a>. It comes as a
             <code>.deb</code>, an <code>.AppImage</code> and a plain <code>.zip</code>. All three
-            need
-            <code>libwebkit2gtk-4.1-0</code>, which the <code>.deb</code> pulls in automatically.
+            need <code>libwebkit2gtk-4.1-0</code>, which the <code>.deb</code> pulls in
+            automatically.
           </p>
           <pre><code>sudo apt install ./eirin-linux-amd64.deb</code></pre>
           <p>
@@ -363,341 +230,145 @@ sudo mount -t cifs \
             since that's where the root folder is configured.
           </p>
           <pre><code
-            >docker run -p 8080:8080 \
+              >docker run -p 8080:8080 \
   -v /path/to/nas:/mnt/nas \
   -v /path/to/prefs.db:/root/.config/eirin/prefs.db \
   ghcr.io/hawawa4/eirin-server:latest</code
-          ></pre>
+            ></pre>
         </div>
       </div>
     </section>
 
-    <section class="section" id="status">
+    <section>
       <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Status</span>
-          <h2>Things to know</h2>
-          <ul class="plain-list">
-            <li>
-              It's a personal project, built around Seestar data because that's what I have. Other
-              cameras may work but haven't had much testing.
-            </li>
-            <li>
-              Siril is the only processing backend for now. PixInsight support might come later.
-            </li>
-            <li>Only Linux builds are published so far.</li>
-            <li>
-              A good part of the code, especially the frontend, was written with AI assistance. I'd
-              rather say that up front.
-            </li>
-          </ul>
-          <p>
-            Bug reports and suggestions are welcome on <a href={`${repo}/issues`}>GitHub</a>.
-          </p>
-        </div>
+        <h2>Limitations</h2>
+        <ul class="text">
+          {limits.map((l) => (
+            <li>{l}</li>
+          ))}
+        </ul>
       </div>
     </section>
 
-    <section class="section" id="alternatives">
+    <section>
       <div class="wrap">
-        <div class="prose">
-          <span class="eyebrow">Alternatives</span>
-          <h2>Similar software</h2>
-          <p>Some other tools overlap with Eirin and may suit you better:</p>
-          <ul class="plain-list">
-            <li>
-              <a href={catalogueViewer}>Astro Catalogue Viewer</a> also catalogues your images
-              automatically, with a layout reminiscent of a birdwatching journal. It doesn't help
-              with processing, but it's great for looking back at finished images.
-            </li>
-            <li>
-              <a href={sslm}>SSLM</a> is Windows only and focused entirely on the Seestar.
-            </li>
-          </ul>
-        </div>
+        <h2>Similar software</h2>
+        <p class="text muted">These overlap with Eirin and may suit you better:</p>
+        <ul class="text">
+          <li>
+            <a href={catalogueViewer}>Astro Catalogue Viewer</a> also catalogues your images
+            automatically, with a layout reminiscent of a birdwatching journal. It doesn't help with
+            processing, but it's great for looking back at finished images.
+          </li>
+          <li>
+            <a href={sslm}>SSLM</a> is Windows only and focused entirely on the Seestar.
+          </li>
+        </ul>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="wrap footer-inner">
-      <span>
-        <span aria-hidden="true">✦</span> Eirin · MIT licensed
-      </span>
-      <span>
-        <a href={repo}>Source</a> · <a href={releases}>Releases</a> ·
-        <a href={`${repo}/issues`}>Issues</a>
-      </span>
+  <footer>
+    <div class="wrap">
+      <p>
+        Eirin is an independent project and is not affiliated with, endorsed by or connected to ZWO,
+        the Siril project or any other tool or device named here. Their names are used only to say
+        what Eirin works with.
+      </p>
+      <p>
+        MIT (<a href={`${repo}/blob/main/LICENSE`}>license</a>) · <a href={repo}>GitHub</a> ·
+        <a href={`${repo}/issues`}>Report a problem</a>
+      </p>
     </div>
   </footer>
 </Base>
 
 <style>
-  .topbar {
-    border-bottom: 1px solid var(--border);
-    background: rgb(15 17 26 / 0.85);
-    backdrop-filter: blur(8px);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  .topbar-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    min-height: 3.5rem;
-  }
-
-  .wordmark {
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 1.15rem;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .topbar nav {
-    display: flex;
-    gap: 1.25rem;
-    font-size: 0.95rem;
-  }
-
-  .topbar nav a {
-    color: var(--text-secondary);
-    text-decoration: none;
-  }
-
-  .topbar nav a:hover {
-    color: var(--text-primary);
-  }
-
-  @media (max-width: 40rem) {
-    .topbar nav a:not(:last-child) {
-      display: none;
-    }
-  }
-
   .hero {
-    padding: 4rem 0 4.5rem;
+    padding: 2.5rem 0 1rem;
   }
 
-  .hero .prose {
-    max-width: 48rem;
+  h1 {
+    font-size: clamp(2rem, 5vw, 2.75rem);
   }
 
-  .hero h1 {
-    font-size: clamp(2rem, 1.4rem + 2.2vw, 2.9rem);
-    margin-bottom: 1.25rem;
+  .sub {
+    max-width: 38rem;
+    color: var(--muted);
+    margin: 0.75rem 0 0;
   }
 
-  .lede {
-    font-size: 1.15rem;
-    color: var(--text-primary);
-  }
-
-  .actions {
+  .cta {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-top: 1.75rem;
+    gap: 0.6rem;
+    margin: 1.5rem 0 0.6rem;
   }
 
-  .hero-shot {
-    margin-top: 3rem;
+  .btn {
+    display: inline-block;
+    padding: 0.5rem 1.1rem;
+    border-radius: 4px;
+    text-decoration: none;
+    border: 1px solid var(--line);
+    color: var(--ink);
   }
 
-  .steps {
-    list-style: none;
-    counter-reset: step;
-    padding: 0;
-    margin: 2rem 0 0;
-    display: grid;
-    gap: 1.5rem 2.5rem;
+  .btn.primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
   }
 
-  @media (min-width: 48rem) {
-    .steps {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+  .btn:hover {
+    filter: brightness(1.08);
   }
 
-  @media (min-width: 68rem) {
-    .steps {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
+  .fine {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0;
   }
 
   .steps li {
-    counter-increment: step;
-    position: relative;
-    padding-left: 2.75rem;
+    margin-bottom: 0.75rem;
   }
 
-  .steps li::before {
-    content: counter(step);
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 1.9rem;
-    height: 1.9rem;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--border-accent);
-    border-radius: 50%;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--accent);
+  details {
+    margin-top: 0.5rem;
   }
 
-  .steps h3 {
-    font-size: 1.05rem;
-    margin: 0.2rem 0 0.4rem;
-  }
-
-  .steps p {
-    color: var(--text-secondary);
-    margin: 0;
-  }
-
-  .note {
-    margin-top: 0.75rem;
-    font-size: 0.925rem;
-  }
-
-  .note summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
+  summary {
     cursor: pointer;
     color: var(--accent);
-    list-style: none;
   }
 
-  .note summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .note summary::before {
-    content: "i";
-    display: grid;
-    place-items: center;
-    width: 1.15rem;
-    height: 1.15rem;
-    border: 1px solid currentColor;
-    border-radius: 50%;
-    font:
-      italic 600 0.75rem/1 Georgia,
-      serif;
-  }
-
-  .note summary::after {
-    content: "▸";
-    font-size: 0.75rem;
-    transition: transform 0.15s;
-  }
-
-  .note[open] summary::after {
-    transform: rotate(90deg);
-  }
-
-  .note[open] {
-    margin-bottom: 0.25rem;
-  }
-
-  .note p {
+  details p {
     margin: 0.75rem 0 0.5rem;
   }
 
-  .note pre {
-    font-size: 0.8rem;
-    padding: 0.75rem 0.9rem;
+  details pre {
     margin: 0;
   }
 
-  .atlas-shot {
-    margin-top: 2rem;
-  }
-
-  .atlas-points {
-    display: grid;
-    gap: 1.25rem 2.5rem;
-    margin: 2rem 0 0;
-  }
-
-  @media (min-width: 48rem) {
-    .atlas-points {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 68rem) {
-    .atlas-points {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-  }
-
-  .atlas-points dt {
-    font-weight: 600;
-  }
-
-  .atlas-points dd {
-    margin: 0.2rem 0 0;
-    color: var(--text-secondary);
-  }
-
-  .extras {
-    margin-top: 1.5rem;
-    padding-top: 2.5rem;
-    border-top: 1px dashed var(--border);
-  }
-
-  .extras dl {
-    display: grid;
-    gap: 1.25rem 2.5rem;
-    margin: 1rem 0 0;
-  }
-
-  @media (min-width: 48rem) {
-    .extras dl {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  .extras dt {
-    font-weight: 600;
-  }
-
-  .extras dd {
-    margin: 0.2rem 0 0;
-    color: var(--text-secondary);
-  }
-
-  #install h3 {
-    margin-top: 2rem;
-  }
-
-  .plain-list {
-    padding-left: 1.2rem;
+  .showcase p {
+    max-width: 42rem;
+    color: var(--muted);
     margin: 0 0 1rem;
   }
 
-  .plain-list li + li {
-    margin-top: 0.6rem;
+  #install h3:first-child {
+    margin-top: 0;
   }
 
-  .footer {
-    border-top: 1px solid var(--border);
-    padding: 2rem 0 2.5rem;
+  footer {
+    padding: 2rem 0 3rem;
+    color: var(--muted);
     font-size: 0.9rem;
-    color: var(--text-dim);
   }
 
-  .footer-inner {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 0.75rem;
+  footer p {
+    max-width: 42rem;
+    margin: 0 0 0.5rem;
   }
 </style>

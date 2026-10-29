@@ -22,12 +22,13 @@ const ogUrl = new URL(og.src, Astro.site);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
     <link rel="canonical" href={canonical} />
     <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
-    <meta name="theme-color" content="#0f111a" />
 
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Eirin" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
@@ -36,23 +37,87 @@ const ogUrl = new URL(og.src, Astro.site);
     <meta property="og:image:height" content={String(og.attributes.height)} />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <script
-      type="application/ld+json"
-      set:html={JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        name: "Eirin",
-        description,
-        applicationCategory: "MultimediaApplication",
-        operatingSystem: "Linux",
-        license: "https://opensource.org/licenses/MIT",
-        url: canonical.href,
-        downloadUrl: "https://github.com/hawawa4/eirin/releases",
-        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-      })}
-    />
+    <script is:inline>
+      // Apply a saved override before first paint; with none, CSS follows the system.
+      try {
+        const t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
   </head>
   <body>
+    <div class="wrap theme-bar">
+      <div class="theme-select" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="system">
+          System
+        </button>
+        <button type="button" data-theme-choice="light">
+          Light
+        </button>
+        <button type="button" data-theme-choice="dark">
+          Dark
+        </button>
+      </div>
+    </div>
     <slot />
   </body>
 </html>
+
+<script>
+  const root = document.documentElement;
+  const buttons = document.querySelectorAll<HTMLButtonElement>("[data-theme-choice]");
+
+  const current = () => root.dataset.theme ?? "system";
+  const sync = () => {
+    for (const b of buttons)
+      b.setAttribute("aria-pressed", String(b.dataset.themeChoice === current()));
+  };
+
+  for (const b of buttons) {
+    b.addEventListener("click", () => {
+      const choice = b.dataset.themeChoice!;
+      if (choice === "system") delete root.dataset.theme;
+      else root.dataset.theme = choice;
+      try {
+        if (choice === "system") localStorage.removeItem("theme");
+        else localStorage.setItem("theme", choice);
+      } catch {}
+      sync();
+    });
+  }
+  sync();
+</script>
+
+<style is:global>
+  .theme-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 1rem;
+  }
+
+  .theme-select {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .theme-select button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.25rem 0.7rem;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .theme-select button + button {
+    border-left: 1px solid var(--line);
+  }
+
+  .theme-select button[aria-pressed="true"] {
+    background: var(--surface);
+    color: var(--ink);
+  }
+</style>

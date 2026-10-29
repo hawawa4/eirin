@@ -1,24 +1,44 @@
-/* Colours follow the app's default theme (frontend/src/style.less). */
+/* Light/dark follow the system unless the visitor picks one (see Base.astro).
+   The dark values are the app's default theme (frontend/src/style.less). */
 :root {
-  --bg-base: #0f111a;
-  --bg-panel: #161825;
-  --bg-raised: #1a1d2e;
-  --accent: #7c9ef5;
-  --accent-dim: #3d5aa8;
-  --text-primary: #e0e4f0;
-  --text-secondary: #a3abc5;
-  --text-dim: #6f7aa0;
-  --border: #323656;
-  --border-accent: #464d82;
+  --bg: #ffffff;
+  --surface: #f4f5f8;
+  --ink: #1a1a1a;
+  --muted: #595959;
+  --line: #d9d9d9;
+  --accent: #2f4fa8;
+  --accent-ink: #ffffff;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Ubuntu, sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Ubuntu, sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 
-  --content: 72rem;
-  --prose: 40rem;
-  --gutter: 1.25rem;
-
+:root[data-theme="dark"] {
   color-scheme: dark;
+  --bg: #0f111a;
+  --surface: #161825;
+  --ink: #e0e4f0;
+  --muted: #a3abc5;
+  --line: #323656;
+  --accent: #7c9ef5;
+  --accent-ink: #0f111a;
+}
+
+/* Same values as above: no explicit choice, so follow the system. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #0f111a;
+    --surface: #161825;
+    --ink: #e0e4f0;
+    --muted: #a3abc5;
+    --line: #323656;
+    --accent: #7c9ef5;
+    --accent-ink: #0f111a;
+  }
 }
 
 *,
@@ -40,11 +60,9 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 1.0625rem;
-  line-height: 1.65;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.6 var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -56,60 +74,63 @@ img {
 
 a {
   color: var(--accent);
-  text-underline-offset: 0.2em;
-}
-
-a:hover {
-  color: #a5bcff;
 }
 
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 4px;
+  outline-offset: 2px;
 }
 
 h1,
 h2,
 h3 {
   line-height: 1.2;
-  letter-spacing: -0.01em;
-  margin: 0 0 0.75rem;
-  text-wrap: balance;
+  margin: 0;
+  font-weight: 600;
 }
 
 h2 {
-  font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
+  font-size: 1.4rem;
+  margin-bottom: 0.75rem;
 }
 
 h3 {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
 }
 
 p {
   margin: 0 0 1rem;
-  text-wrap: pretty;
+}
+
+ul,
+ol {
+  padding-left: 1.2rem;
+  margin: 0;
+}
+
+li {
+  margin-bottom: 0.4rem;
 }
 
 code {
-  font-family: var(--font-mono);
+  font-family: var(--mono);
   font-size: 0.875em;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1em 0.35em;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.05em 0.3em;
 }
 
 pre {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
   overflow-x: auto;
-  scrollbar-color: var(--border-accent) transparent;
   margin: 0 0 1rem;
 }
 
@@ -121,58 +142,19 @@ pre code {
 }
 
 .wrap {
-  max-width: var(--content);
+  max-width: 68rem;
   margin: 0 auto;
-  padding: 0 var(--gutter);
+  padding: 0 1.25rem;
 }
 
-.prose {
-  max-width: var(--prose);
+section {
+  padding: 2rem 0;
+}
+
+.text {
+  max-width: 42rem;
 }
 
 .muted {
-  color: var(--text-secondary);
-}
-
-.section {
-  padding: 4.5rem 0;
-  border-top: 1px solid var(--border);
-}
-
-.eyebrow {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: 0.5rem;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1.1rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-accent);
-  background: var(--bg-raised);
-  color: var(--text-primary);
-  font-weight: 500;
-  font-size: 0.95rem;
-  text-decoration: none;
-}
-
-.button:hover {
-  color: var(--text-primary);
-  border-color: var(--accent);
-}
-
-.button.primary {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-}
-
-.button.primary:hover {
-  background: #4a69bd;
+  color: var(--muted);
 }

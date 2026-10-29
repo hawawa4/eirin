@@ -10,9 +10,9 @@ just landing-check    # astro check + prettier
 just landing-docker   # nginx image, tagged eirin-landingpage
 ```
 
-- The page is `src/pages/index.astro`; `src/components/` has the screenshot and feature-row components.
+- The page is `src/pages/index.astro`; `src/components/Media.astro` renders a screenshot, or a clip over it.
 - Screenshots are imported from `../docs/img/` (shared with the main README). Astro generates resized AVIF/WebP versions at build time, so commit full-resolution PNGs there.
-- Clips in `../docs/vid/` (WebM) are imported with `?url` and rendered by `src/components/VideoShot.astro`, which shows a screenshot as the poster and only downloads and plays the clip once it scrolls into view.
+- Clips in `../docs/vid/` (WebM) are imported with `?url` and rendered by `src/components/Media.astro`, which shows a screenshot as the poster and only downloads and plays the clip once it scrolls into view.
 - `site` and `base` default to `https://eirin.hawawa.org` and `/`. They're baked into canonical links, the og:image and the sitemap, so override them (`SITE_URL`, `BASE_PATH`, or the same-named Docker build args) when hosting elsewhere.
 
 ## Deployment
