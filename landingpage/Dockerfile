@@ -5,7 +5,7 @@
 
 # The output is plain HTML/CSS/media, so build on the native platform even for
 # multi-arch images.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:25-alpine AS build
 WORKDIR /src/landingpage
 COPY landingpage/package.json landingpage/package-lock.json ./
 RUN npm ci
