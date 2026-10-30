@@ -3,7 +3,7 @@ module github.com/hawawa4/eirin
 go 1.26.0
 
 require (
-	codeberg.org/astrogo/fitsio v0.4.0
+	codeberg.org/astrogo/fitsio v0.5.1
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/wailsapp/wails/v3 v3.0.0
 	golang.org/x/image v0.45.0
