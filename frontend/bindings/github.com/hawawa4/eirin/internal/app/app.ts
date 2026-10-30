@@ -33,7 +33,7 @@ import * as $models from "./models.js";
  * See AddFramesToProjectDetailed for per-call counts.
  */
 export function AddFramesToProject(projectFolder: string, nasPaths: string[], mode: string): $CancellablePromise<void> {
-    return $Call.ByID(1804889247, projectFolder, nasPaths, mode);
+    return $Call.ByID(1254918167, projectFolder, nasPaths, mode);
 }
 
 /**
@@ -42,7 +42,7 @@ export function AddFramesToProject(projectFolder: string, nasPaths: string[], mo
  * one that refers to a different source gets a numeric suffix (name_2.fit).
  */
 export function AddFramesToProjectDetailed(projectFolder: string, nasPaths: string[], mode: string): $CancellablePromise<$models.AddFramesResult> {
-    return $Call.ByID(598750943, projectFolder, nasPaths, mode).then(($result: any) => {
+    return $Call.ByID(1748031479, projectFolder, nasPaths, mode).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -54,7 +54,7 @@ export function AddFramesToProjectDetailed(projectFolder: string, nasPaths: stri
  * tagged from its field of view (see tagTelescopeByFOV).
  */
 export function AnalyzeFrames(nasPaths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(1959591080, nasPaths);
+    return $Call.ByID(4009209248, nasPaths);
 }
 
 /**
@@ -63,28 +63,28 @@ export function AnalyzeFrames(nasPaths: string[]): $CancellablePromise<void> {
  * e.g. prefs_2026-06-05T153000.db. Returns the backup path.
  */
 export function BackupDatabase(): $CancellablePromise<string> {
-    return $Call.ByID(984395681);
+    return $Call.ByID(1996342665);
 }
 
 /**
  * BatchHardDeleteFiles permanently removes multiple files from disk and their frame records.
  */
 export function BatchHardDeleteFiles(paths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(2239500483, paths);
+    return $Call.ByID(1207142859, paths);
 }
 
 /**
  * BatchRejectFiles marks multiple files as rejected in a single transaction.
  */
 export function BatchRejectFiles(paths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(1273238464, paths);
+    return $Call.ByID(568786072, paths);
 }
 
 /**
  * BatchUnrejectFiles clears the rejection status on multiple files in a single transaction.
  */
 export function BatchUnrejectFiles(paths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(2919265481, paths);
+    return $Call.ByID(2391197649, paths);
 }
 
 /**
@@ -99,14 +99,14 @@ export function BatchUnrejectFiles(paths: string[]): $CancellablePromise<void> {
  * not an accessible directory, a "done" event carrying Error is emitted.
  */
 export function BuildIndex(rootPath: string, force: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2469627606, rootPath, force);
+    return $Call.ByID(1809392414, rootPath, force);
 }
 
 /**
  * CancelAnalysis interrupts an in-progress AnalyzeFrames call.
  */
 export function CancelAnalysis(): $CancellablePromise<void> {
-    return $Call.ByID(2126577498);
+    return $Call.ByID(1035410706);
 }
 
 /**
@@ -115,21 +115,21 @@ export function CancelAnalysis(): $CancellablePromise<void> {
  * "cancelled". No-op if nothing is running.
  */
 export function CancelImport(): $CancellablePromise<void> {
-    return $Call.ByID(1282660021);
+    return $Call.ByID(2495903485);
 }
 
 /**
  * CancelIndex stops any running BuildIndex operation.
  */
 export function CancelIndex(): $CancellablePromise<void> {
-    return $Call.ByID(3410097860);
+    return $Call.ByID(3134153052);
 }
 
 /**
  * CheckSiril runs the configured siril executable with -v and returns version info.
  */
 export function CheckSiril(): $CancellablePromise<$models.SirilInfo> {
-    return $Call.ByID(1088539049).then(($result: any) => {
+    return $Call.ByID(459036881).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -140,7 +140,7 @@ export function CheckSiril(): $CancellablePromise<$models.SirilInfo> {
  * already exists on disk (e.g. "M31 Ha" and "M31_Ha" map to the same folder).
  */
 export function CreateProject(name: string, description: string): $CancellablePromise<$models.Project> {
-    return $Call.ByID(1805623471, name, description).then(($result: any) => {
+    return $Call.ByID(463487031, name, description).then(($result: any) => {
         return $$createType2($result);
     });
 }
@@ -149,7 +149,7 @@ export function CreateProject(name: string, description: string): $CancellablePr
  * DeleteProject removes the project from the database (does not delete files).
  */
 export function DeleteProject(id: number): $CancellablePromise<void> {
-    return $Call.ByID(257249502, id);
+    return $Call.ByID(1156538166, id);
 }
 
 /**
@@ -158,7 +158,7 @@ export function DeleteProject(id: number): $CancellablePromise<void> {
  * stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong
  */
 export function GeneratePreview(path: string, stretchLevel: number): $CancellablePromise<string> {
-    return $Call.ByID(3798999711, path, stretchLevel);
+    return $Call.ByID(2240952135, path, stretchLevel);
 }
 
 /**
@@ -167,7 +167,7 @@ export function GeneratePreview(path: string, stretchLevel: number): $Cancellabl
  * maxSize=0 means native resolution (no downscaling).
  */
 export function GeneratePreviewRawSized(path: string, maxSize: number): $CancellablePromise<fits$0.RawPreviewData> {
-    return $Call.ByID(3470306118, path, maxSize).then(($result: any) => {
+    return $Call.ByID(2730633038, path, maxSize).then(($result: any) => {
         return $$createType3($result);
     });
 }
@@ -178,7 +178,7 @@ export function GeneratePreviewRawSized(path: string, maxSize: number): $Cancell
  * rotation in degrees CCW from North, image dimensions in pixels).
  */
 export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: number, rotation: number, width: number, height: number): $CancellablePromise<catalog$0.Annotation[]> {
-    return $Call.ByID(3201120012, raCenter, decCenter, pixelScale, rotation, width, height).then(($result: any) => {
+    return $Call.ByID(2125905796, raCenter, decCenter, pixelScale, rotation, width, height).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -187,7 +187,7 @@ export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: 
  * GetAppInfo returns static runtime information about the application.
  */
 export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
-    return $Call.ByID(35635725).then(($result: any) => {
+    return $Call.ByID(2384808821).then(($result: any) => {
         return $$createType6($result);
     });
 }
@@ -198,7 +198,7 @@ export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
  * is read (much cheaper — no full pixel decode). Called lazily by the frontend.
  */
 export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
-    return $Call.ByID(2946490455, nasPath).then(($result: any) => {
+    return $Call.ByID(2509712703, nasPath).then(($result: any) => {
         return $$createType7($result);
     });
 }
@@ -210,7 +210,7 @@ export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.
  * Light frames are never included in the Atlas.
  */
 export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.AtlasIndexEntry[]> {
-    return $Call.ByID(580963003, rootPath).then(($result: any) => {
+    return $Call.ByID(2651540675, rootPath).then(($result: any) => {
         return $$createType9($result);
     });
 }
@@ -219,7 +219,7 @@ export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.Atl
  * GetCatalog returns all catalog objects (stars and DSOs) for the Sky Atlas star layer.
  */
 export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
-    return $Call.ByID(797145757).then(($result: any) => {
+    return $Call.ByID(2280456341).then(($result: any) => {
         return $$createType11($result);
     });
 }
@@ -228,7 +228,7 @@ export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
  * GetFrameTypeSummary returns a breakdown of frame counts and total size by frame type under rootPath.
  */
 export function GetFrameTypeSummary(rootPath: string): $CancellablePromise<$models.StorageNode[]> {
-    return $Call.ByID(1792517689, rootPath).then(($result: any) => {
+    return $Call.ByID(3151959825, rootPath).then(($result: any) => {
         return $$createType13($result);
     });
 }
@@ -238,7 +238,7 @@ export function GetFrameTypeSummary(rootPath: string): $CancellablePromise<$mode
  * with Phase "idle" if no import has run since startup.
  */
 export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
-    return $Call.ByID(726154637).then(($result: any) => {
+    return $Call.ByID(1898321893).then(($result: any) => {
         return $$createType14($result);
     });
 }
@@ -248,7 +248,7 @@ export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
  * LibraryFrame shape for the frontend library view.
  */
 export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.LibraryFrame[]> {
-    return $Call.ByID(3745958251, rootPath).then(($result: any) => {
+    return $Call.ByID(1729763907, rootPath).then(($result: any) => {
         return $$createType16($result);
     });
 }
@@ -259,7 +259,7 @@ export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.
  * project frame picker, without loading the whole library.
  */
 export function GetLibraryFramesByType(rootPath: string, frameType: string): $CancellablePromise<$models.LibraryFrame[]> {
-    return $Call.ByID(2996506086, rootPath, frameType).then(($result: any) => {
+    return $Call.ByID(991427518, rootPath, frameType).then(($result: any) => {
         return $$createType16($result);
     });
 }
@@ -271,7 +271,7 @@ export function GetLibraryFramesByType(rootPath: string, frameType: string): $Ca
  * both, listed as unplaced.
  */
 export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.LightCoverage> {
-    return $Call.ByID(3788933880, rootPath).then(($result: any) => {
+    return $Call.ByID(615631664, rootPath).then(($result: any) => {
         return $$createType17($result);
     });
 }
@@ -281,7 +281,7 @@ export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.
  * the given objects. offset=0 for the first page.
  */
 export function GetLightFramesPaged(rootPath: string, objects: string[], offset: number): $CancellablePromise<$models.PagedLightFrames> {
-    return $Call.ByID(2061787285, rootPath, objects, offset).then(($result: any) => {
+    return $Call.ByID(2285453405, rootPath, objects, offset).then(($result: any) => {
         return $$createType18($result);
     });
 }
@@ -290,7 +290,7 @@ export function GetLightFramesPaged(rootPath: string, objects: string[], offset:
  * GetLightObjects returns the sorted list of distinct object names for light frames under rootPath.
  */
 export function GetLightObjects(rootPath: string): $CancellablePromise<string[]> {
-    return $Call.ByID(1824160294, rootPath).then(($result: any) => {
+    return $Call.ByID(316973662, rootPath).then(($result: any) => {
         return $$createType19($result);
     });
 }
@@ -300,7 +300,7 @@ export function GetLightObjects(rootPath: string): $CancellablePromise<string[]>
  * subfolders (lights/, darks/, flats/, biases/).
  */
 export function GetProjectFrames(projectFolder: string): $CancellablePromise<string[]> {
-    return $Call.ByID(3301776845, projectFolder).then(($result: any) => {
+    return $Call.ByID(480177941, projectFolder).then(($result: any) => {
         return $$createType19($result);
     });
 }
@@ -313,7 +313,7 @@ export function GetProjectFrames(projectFolder: string): $CancellablePromise<str
  * Legacy projects with darks/biases inside lights/ are listed too.
  */
 export function GetProjectLibraryFrames(projectFolder: string): $CancellablePromise<$models.LibraryFrame[]> {
-    return $Call.ByID(2780196728, projectFolder).then(($result: any) => {
+    return $Call.ByID(425723200, projectFolder).then(($result: any) => {
         return $$createType16($result);
     });
 }
@@ -324,7 +324,7 @@ export function GetProjectLibraryFrames(projectFolder: string): $CancellableProm
  * Siril's process/). These are the processed outputs created by Siril.
  */
 export function GetProjectOutputFiles(projectFolder: string): $CancellablePromise<$models.ProjectOutputFile[]> {
-    return $Call.ByID(2934423885, projectFolder).then(($result: any) => {
+    return $Call.ByID(3884401349, projectFolder).then(($result: any) => {
         return $$createType21($result);
     });
 }
@@ -333,7 +333,7 @@ export function GetProjectOutputFiles(projectFolder: string): $CancellablePromis
  * GetProjectsFolder returns the configured projects root folder.
  */
 export function GetProjectsFolder(): $CancellablePromise<string> {
-    return $Call.ByID(4118089352);
+    return $Call.ByID(1620777392);
 }
 
 /**
@@ -341,7 +341,7 @@ export function GetProjectsFolder(): $CancellablePromise<string> {
  * where, and how the last attempt went.
  */
 export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus> {
-    return $Call.ByID(2047036404).then(($result: any) => {
+    return $Call.ByID(1964565836).then(($result: any) => {
         return $$createType22($result);
     });
 }
@@ -351,7 +351,7 @@ export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus>
  * root → objects → dates (YYYY-MM-DD), each leaf summing file_size and frame count.
  */
 export function GetStorageStats(rootPath: string): $CancellablePromise<$models.StorageNode> {
-    return $Call.ByID(3681786110, rootPath).then(($result: any) => {
+    return $Call.ByID(3321937334, rootPath).then(($result: any) => {
         return $$createType12($result);
     });
 }
@@ -364,7 +364,7 @@ export function GetStorageStats(rootPath: string): $CancellablePromise<$models.S
  * (0=linear … 3=strong); raster images are shown as they are.
  */
 export function GetViewerPreview(path: string, stretchLevel: number): $CancellablePromise<fits$0.RenderedPreview> {
-    return $Call.ByID(2068264024, path, stretchLevel).then(($result: any) => {
+    return $Call.ByID(4224584848, path, stretchLevel).then(($result: any) => {
         return $$createType23($result);
     });
 }
@@ -373,7 +373,7 @@ export function GetViewerPreview(path: string, stretchLevel: number): $Cancellab
  * HardDeleteFile permanently removes a file from disk and cleans up its frame record.
  */
 export function HardDeleteFile(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3019656550, path);
+    return $Call.ByID(1578145470, path);
 }
 
 /**
@@ -391,13 +391,13 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  * tagged from its field of view instead (see tagTelescopeByFOV).
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
-    return $Call.ByID(1641822381, filePaths, destFolder).then(($result: any) => {
+    return $Call.ByID(3674431189, filePaths, destFolder).then(($result: any) => {
         return $$createType24($result);
     });
 }
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
-    return $Call.ByID(3367487933, path).then(($result: any) => {
+    return $Call.ByID(1182641653, path).then(($result: any) => {
         return $$createType26($result);
     });
 }
@@ -408,7 +408,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  * the cache will have HasMeta=false. Run BuildIndex to populate the cache.
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
-    return $Call.ByID(483950001, path).then(($result: any) => {
+    return $Call.ByID(2240621337, path).then(($result: any) => {
         return $$createType28($result);
     });
 }
@@ -417,7 +417,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  * ListProjects returns all projects from the database.
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
-    return $Call.ByID(2159218332).then(($result: any) => {
+    return $Call.ByID(217387348).then(($result: any) => {
         return $$createType29($result);
     });
 }
@@ -426,7 +426,7 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  * LoadPrefs returns all persisted preferences, with defaults for missing keys.
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
-    return $Call.ByID(2572957756).then(($result: any) => {
+    return $Call.ByID(361579588).then(($result: any) => {
         return $$createType30($result);
     });
 }
@@ -437,21 +437,21 @@ export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
  * configured NAS root.
  */
 export function LoadRasterImage(path: string): $CancellablePromise<string> {
-    return $Call.ByID(1706285520, path);
+    return $Call.ByID(3497382232, path);
 }
 
 /**
  * OpenFolder opens path (or, for a file, its parent folder) in the OS file manager.
  */
 export function OpenFolder(path: string): $CancellablePromise<void> {
-    return $Call.ByID(968682538, path);
+    return $Call.ByID(2095643522, path);
 }
 
 /**
  * OpenProjectInSiril launches Siril with the project folder as working directory.
  */
 export function OpenProjectInSiril(projectFolder: string): $CancellablePromise<void> {
-    return $Call.ByID(1221009315, projectFolder);
+    return $Call.ByID(558287947, projectFolder);
 }
 
 /**
@@ -459,7 +459,7 @@ export function OpenProjectInSiril(projectFolder: string): $CancellablePromise<v
  * as the working directory (-d flag). Siril requires -d to set its working dir.
  */
 export function OpenWithSiril(filePath: string): $CancellablePromise<void> {
-    return $Call.ByID(2685951341, filePath);
+    return $Call.ByID(813972645, filePath);
 }
 
 /**
@@ -467,11 +467,11 @@ export function OpenWithSiril(filePath: string): $CancellablePromise<void> {
  * changed.
  */
 export function PublishSnapshot(): $CancellablePromise<void> {
-    return $Call.ByID(2432816017);
+    return $Call.ByID(1623907705);
 }
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
-    return $Call.ByID(3225654599, path).then(($result: any) => {
+    return $Call.ByID(1775527807, path).then(($result: any) => {
         return $$createType32($result);
     });
 }
@@ -481,7 +481,7 @@ export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHea
  * from the normal file listing until explicitly shown in the Rejected view.
  */
 export function RejectFile(path: string): $CancellablePromise<void> {
-    return $Call.ByID(1431182279, path);
+    return $Call.ByID(323034735, path);
 }
 
 /**
@@ -490,7 +490,7 @@ export function RejectFile(path: string): $CancellablePromise<void> {
  * touched.
  */
 export function RemoveFramesFromProject(projectFolder: string, nasPaths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(1305981425, projectFolder, nasPaths);
+    return $Call.ByID(697069641, projectFolder, nasPaths);
 }
 
 /**
@@ -498,14 +498,14 @@ export function RemoveFramesFromProject(projectFolder: string, nasPaths: string[
  * The new name must be in the same directory as the old path.
  */
 export function RenameFrame(oldPath: string, newName: string): $CancellablePromise<string> {
-    return $Call.ByID(3392480449, oldPath, newName);
+    return $Call.ByID(547386841, oldPath, newName);
 }
 
 /**
  * RevealPath opens the OS file manager with path selected.
  */
 export function RevealPath(path: string): $CancellablePromise<void> {
-    return $Call.ByID(577569720, path);
+    return $Call.ByID(3426927664, path);
 }
 
 /**
@@ -517,7 +517,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  * check happens during StartImport when files are read anyway.
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
-    return $Call.ByID(3873197428, sourceFolder, extensions).then(($result: any) => {
+    return $Call.ByID(2590149388, sourceFolder, extensions).then(($result: any) => {
         return $$createType34($result);
     });
 }
@@ -526,18 +526,18 @@ export function ScanImportCandidates(sourceFolder: string, extensions: string[])
  * SelectProjectsFolder opens a directory picker for the projects root.
  */
 export function SelectProjectsFolder(): $CancellablePromise<string> {
-    return $Call.ByID(595001140);
+    return $Call.ByID(3492426588);
 }
 
 export function SelectRootFolder(): $CancellablePromise<string> {
-    return $Call.ByID(1530227910);
+    return $Call.ByID(652017390);
 }
 
 /**
  * SelectSirilExecutable opens a file-picker so the user can locate the siril binary.
  */
 export function SelectSirilExecutable(): $CancellablePromise<string> {
-    return $Call.ByID(3813294425);
+    return $Call.ByID(1593549633);
 }
 
 /**
@@ -545,7 +545,7 @@ export function SelectSirilExecutable(): $CancellablePromise<string> {
  * folder they want to import files from.
  */
 export function SelectSourceFolder(): $CancellablePromise<string> {
-    return $Call.ByID(2446200491);
+    return $Call.ByID(1290268323);
 }
 
 /**
@@ -553,7 +553,7 @@ export function SelectSourceFolder(): $CancellablePromise<string> {
  * (e.g. to promote a stacked image to "processed").
  */
 export function SetFrameType(nasPath: string, frameType: string): $CancellablePromise<void> {
-    return $Call.ByID(3309073619, nasPath, frameType);
+    return $Call.ByID(581020875, nasPath, frameType);
 }
 
 /**
@@ -561,14 +561,14 @@ export function SetFrameType(nasPath: string, frameType: string): $CancellablePr
  * booleans are "true"/"false" and integers are their decimal string form.
  */
 export function SetPref(key: string, value: string): $CancellablePromise<void> {
-    return $Call.ByID(3845670703, key, value);
+    return $Call.ByID(231180919, key, value);
 }
 
 /**
  * SetProjectsFolder persists the projects root folder preference.
  */
 export function SetProjectsFolder(path: string): $CancellablePromise<void> {
-    return $Call.ByID(1813591148, path);
+    return $Call.ByID(2865934964, path);
 }
 
 /**
@@ -576,7 +576,7 @@ export function SetProjectsFolder(path: string): $CancellablePromise<void> {
  * revert to the default PATH lookup.
  */
 export function SetSirilPath(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3296556194, path);
+    return $Call.ByID(2660896090, path);
 }
 
 /**
@@ -591,7 +591,7 @@ export function SetSirilPath(path: string): $CancellablePromise<void> {
  * progress event's Errors instead.
  */
 export function StartImport(sourceFolder: string, extensions: string[], deleteAfterCopy: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1581009823, sourceFolder, extensions, deleteAfterCopy);
+    return $Call.ByID(1407633911, sourceFolder, extensions, deleteAfterCopy);
 }
 
 /**
@@ -600,7 +600,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  * threshold defaults to 2.0 if ≤ 0.
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
-    return $Call.ByID(1563214480, rootPath, threshold).then(($result: any) => {
+    return $Call.ByID(3483751288, rootPath, threshold).then(($result: any) => {
         return $$createType36($result);
     });
 }
@@ -609,7 +609,7 @@ export function SuggestRejects(rootPath: string, threshold: number): $Cancellabl
  * UnrejectFile removes the soft-delete mark, making the file visible again.
  */
 export function UnrejectFile(path: string): $CancellablePromise<void> {
-    return $Call.ByID(2416326180, path);
+    return $Call.ByID(1942012540, path);
 }
 
 /**
@@ -617,7 +617,7 @@ export function UnrejectFile(path: string): $CancellablePromise<void> {
  * Empty fields are ignored — they leave the existing value unchanged.
  */
 export function UpdateFrameMeta(path: string, meta: store$0.FrameMeta): $CancellablePromise<void> {
-    return $Call.ByID(530878317, path, meta);
+    return $Call.ByID(3319596853, path, meta);
 }
 
 // Private type creation functions
