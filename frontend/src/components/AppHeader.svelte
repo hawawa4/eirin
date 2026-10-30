@@ -23,7 +23,7 @@
 </script>
 
 <header>
-  <span class="logo">✦ Eirin</span>
+  <span class="logo"><img src="/eirin-logo.png" alt="" />Eirin</span>
 
   <div class="mode-area">
     <ModeSelector mode={appMode} {onmodechange} {rootFolder} {readOnly} />
@@ -67,6 +67,14 @@
     color: var(--accent);
     letter-spacing: 0.05em;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo img {
+    width: 28px;
+    height: 28px;
   }
 
   .mode-area {

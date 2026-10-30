@@ -11,12 +11,16 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon.png
+var appIcon []byte
+
 func main() {
 	a := app.NewApp()
 
 	wailsApp := application.New(application.Options{
 		Name:        "Eirin",
 		Description: "Astrophotography library manager",
+		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(a),
 		},
