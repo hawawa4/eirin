@@ -1,6 +1,7 @@
 .git/
 frontend/node_modules/
 frontend/dist/
-build/
+build/*
+!build/appicon.png
 dist/
 *.md
