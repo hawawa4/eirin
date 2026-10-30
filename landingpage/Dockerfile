@@ -17,7 +17,7 @@ ARG SITE_URL=https://eirin.hawawa.org
 ARG BASE_PATH=/
 RUN SITE_URL="$SITE_URL" BASE_PATH="$BASE_PATH" npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY landingpage/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/landingpage/dist /usr/share/nginx/html
 EXPOSE 8080
