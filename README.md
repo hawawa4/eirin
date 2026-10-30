@@ -3,7 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/hawawa4/eirin/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/hawawa4/eirin/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/hawawa4/eirin?logo=github)](https://github.com/hawawa4/eirin/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
-[![Go 1.25](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go 1.26](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Wails](https://img.shields.io/badge/built%20with-Wails-red)](https://wails.io)
 [![Svelte](https://img.shields.io/badge/frontend-Svelte-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)](https://eirin.hawawa.org)
@@ -118,7 +118,7 @@ There's no login or TLS in the container; put it behind your own reverse proxy i
 
 | Tool | Tested version |
 |------|---------------|
-| Go | 1.25+ |
+| Go | 1.26+ |
 | Node.js | 22+ |
 | Wails CLI | v3 (alpha) |
 | staticcheck | v0.7.0+ |

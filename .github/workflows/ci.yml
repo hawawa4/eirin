@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.25'
+  GO_VERSION: '1.26'
   NODE_VERSION: '22.x'
   # Wails targets the GTK3/webkit2gtk-4.1 stack on Linux (see build/linux/Taskfile.yml)
   GOFLAGS: '-tags=gtk3'
