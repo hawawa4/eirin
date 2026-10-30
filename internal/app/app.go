@@ -27,6 +27,8 @@ type App struct {
 	// snapshots is the build-specific half of the library snapshot: the
 	// publisher on the desktop, the loader on the server.
 	snapshots snapshotSide
+	// updates is the in-app updater state (empty in server builds).
+	updates updateSide
 }
 
 func NewApp() *App {

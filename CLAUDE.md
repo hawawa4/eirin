@@ -61,6 +61,7 @@ internal/
   siril/       — Siril detection, execution, output parsing
   snapshot/    — library snapshot: desktop Publisher, server Loader
   store/       — SQLite DB, frames, projects, prefs
+  updater/     — GitHub-release update check + in-place install
 ```
 
 `internal/app` is the largest package by far and is where Wails-bound methods live; it wires together `store`, `importer`, `indexer`, `siril`, and `fits`. Keep new cross-cutting logic in its own package rather than growing `app` further — `app` should stay thin glue over the other packages.
@@ -96,6 +97,10 @@ Read-only is enforced in the backend, not just the UI: every method that writes 
 `internal/app/capabilities.go` exposes `AppInfo.Capabilities.DesktopMode` and `.ReadOnly` to the frontend. In read-only mode it shows only the Library (`components/viewer/ViewerLibrary.svelte`, not `LibraryView`; its `PreviewPane` runs with `serverRendered`, fetching ~1 MB JPEGs from `GetViewerPreview` instead of tens of MB of raw float pixels over the network — the Sky Atlas deliberately keeps its raw-pixel previews), Sky Atlas and Settings tabs, and `lib/prefs.ts` keeps preferences in the browser's `localStorage` instead of `SetPref`; always persist prefs through `savePref`.
 
 Two independent HTTP listeners run in server mode: Wails' own server (serves the Svelte frontend + RPC/WebSocket events, via `WAILS_SERVER_HOST`/`WAILS_SERVER_PORT`) and Eirin's pre-existing side-channel REST API (`internal/server`, `/api/status` `/api/frames` `/api/image`, via `EIRIN_PORT`) — don't conflate the two when changing ports.
+
+### Updates
+
+Settings → Updates (desktop only, `components/settings/UpdatesSection.svelte`) checks `releases/latest` on GitHub **only when the user clicks "Check for updates"** — never at startup or in the background. `internal/updater` is pure Go; `internal/app/updates_desktop.go` is the thin Wails layer (`CheckForUpdate`, `InstallUpdate`, `RestartApp`, `OpenReleasePage`; `_server.go` stubs). The running version is `updater.Current`, injected via `-ldflags -X` from the `EIRIN_VERSION` env var in `build/linux/Taskfile.yml` (`release.yml` sets it to the tag; anything else is `"dev"` and is never updated). How it installs depends on `updater.Detect()`: AppImage (`$APPIMAGE`) and bare binary (zip) are replaced atomically in place; a `.deb` (exe under `/usr/`, not `/usr/local/`) is downloaded and installed with `pkexec apt-get install` (polkit password dialog, since a GUI has no tty for sudo). Every download is verified against the release's `SHA256SUMS` (written by the `release` job) and refused without one. Release asset names (`eirin-linux-amd64.{AppImage,deb,zip}`) are what the updater looks for — keep them in sync with `release.yml`.
 
 ### Landing page
 

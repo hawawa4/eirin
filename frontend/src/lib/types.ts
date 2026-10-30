@@ -96,6 +96,25 @@ export interface AppInfo {
   capabilities: Capabilities;
 }
 
+/** Mirrors internal/app.UpdateInfo. */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  notes: string;
+  pageUrl: string;
+  kind: string;
+  canInstall: boolean;
+  reason: string;
+}
+
+/** Payload of the "update:progress" event (internal/updater.Progress). */
+export interface UpdateProgress {
+  phase: "downloading" | "installing" | "done";
+  done: number;
+  total: number;
+}
+
 export interface Project {
   id: number;
   name: string;

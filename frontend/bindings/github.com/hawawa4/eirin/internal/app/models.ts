@@ -1234,6 +1234,69 @@ export class SuggestResult {
     }
 }
 
+/**
+ * UpdateInfo is the result of checking GitHub for a newer release.
+ */
+export class UpdateInfo {
+    "current": string;
+    "latest": string;
+    "available": boolean;
+    "notes": string;
+    "pageUrl": string;
+
+    /**
+     * Kind is how this copy was installed: "appimage", "deb", "binary", or
+     * "unsupported". It decides how InstallUpdate applies the update.
+     */
+    "kind": string;
+
+    /**
+     * CanInstall is whether InstallUpdate can do the update from inside the
+     * app; Reason says why not when it can't (the release page is then the
+     * way to update).
+     */
+    "canInstall": boolean;
+    "reason": string;
+
+    /** Creates a new UpdateInfo instance. */
+    constructor($$source: Partial<UpdateInfo> = {}) {
+        if (!("current" in $$source)) {
+            this["current"] = "";
+        }
+        if (!("latest" in $$source)) {
+            this["latest"] = "";
+        }
+        if (!("available" in $$source)) {
+            this["available"] = false;
+        }
+        if (!("notes" in $$source)) {
+            this["notes"] = "";
+        }
+        if (!("pageUrl" in $$source)) {
+            this["pageUrl"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("canInstall" in $$source)) {
+            this["canInstall"] = false;
+        }
+        if (!("reason" in $$source)) {
+            this["reason"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdateInfo($$parsedSource as Partial<UpdateInfo>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = Capabilities.createFrom;

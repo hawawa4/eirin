@@ -9,6 +9,7 @@
   import ApiServerSection from "./settings/ApiServerSection.svelte";
   import SnapshotPublishSection from "./settings/SnapshotPublishSection.svelte";
   import SnapshotStatusSection from "./settings/SnapshotStatusSection.svelte";
+  import UpdatesSection from "./settings/UpdatesSection.svelte";
 
   interface Props {
     rootFolder: string;
@@ -60,6 +61,10 @@
       <ProjectsFolderSection {projectsFolder} {onprojectsfolderset} />
       <SirilSection {onsirilchange} />
       <SnapshotPublishSection />
+    {/if}
+
+    {#if desktopMode}
+      <UpdatesSection {indexRunning} />
     {/if}
 
     <AppearanceSection />

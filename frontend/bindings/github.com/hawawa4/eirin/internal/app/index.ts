@@ -31,5 +31,6 @@ export {
     SkyPoint,
     SnapshotStatus,
     StorageNode,
-    SuggestResult
+    SuggestResult,
+    UpdateInfo
 } from "./models.js";

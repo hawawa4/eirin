@@ -40,8 +40,12 @@ jobs:
       - name: Install Wails3 CLI
         run: go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS3_VERSION }}
 
+      # The updater compares this with the latest release tag. Manual runs
+      # stay "dev" so they never offer or apply an update.
       - name: Build application (production)
         run: wails3 build production=true
+        env:
+          EIRIN_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}
 
       - name: Package .zip
         run: |
@@ -157,6 +161,12 @@ jobs:
         with:
           pattern: ${{ env.APP_NAME }}-linux-amd64
           path: artifacts
+
+      # The in-app updater verifies downloads against this file.
+      - name: Write checksums
+        run: |
+          cd artifacts/${{ env.APP_NAME }}-linux-amd64
+          sha256sum * > SHA256SUMS
 
       - name: Create release
         uses: softprops/action-gh-release@v2
