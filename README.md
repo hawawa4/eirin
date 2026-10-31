@@ -1,32 +1,85 @@
 # Eirin
 
-[![CI](https://img.shields.io/github/actions/workflow/status/hawawa4/eirin/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/hawawa4/eirin/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/hawawa4/eirin?logo=github)](https://github.com/hawawa4/eirin/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/hawawa4/eirin/ci.yml?branch=main&label=CI)](https://github.com/hawawa4/eirin/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hawawa4/eirin)](https://github.com/hawawa4/eirin/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
-[![Go 1.26](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![Wails](https://img.shields.io/badge/built%20with-Wails-red)](https://wails.io)
-[![Svelte](https://img.shields.io/badge/frontend-Svelte-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
-[![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)](https://eirin.hawawa.org)
-[![Website](https://img.shields.io/badge/website-eirin.hawawa.org-8A2BE2)](https://eirin.hawawa.org)
 
-Eirin (/ˈei̯rɪn/) is a desktop app for managing an astrophotography library. It keeps all your subs, calibration frames and finished images in one folder (ideally on a NAS), lets you preview and cull FITS frames, and sets up Siril projects for stacking. Built with Go, Wails and Svelte.
+Eirin is a desktop app for managing astrophotography data. It keeps your subs, calibration frames and finished images in one folder (ideally on a NAS), lets you preview and cull FITS frames, and builds the project folders [Siril](https://siril.org) needs for stacking. It doesn't stack or process anything itself.
 
-**Website:** https://eirin.hawawa.org
+It was built around the Seestar S30 Pro and S50 Pro, so that's the workflow it fits best. Other cameras may work, but they haven't been tested much.
+
+Website: <https://eirin.hawawa.org>
 
 ![Eirin's Library view, with frames grouped by target](docs/img/libraryview.png)
 
+## Contents
+
+- [What it does](#what-it-does)
+- [Install](#install)
+- [Getting started](#getting-started)
+- [Headless server](#headless-server)
+- [Building from source](#building-from-source)
+- [Project layout](#project-layout)
+- [Configuration](#configuration)
+- [Similar software](#similar-software)
+
 ## What it does
 
-- **Import** from a Seestar into your library folder, skipping files you already have. It can delete from the device afterwards, but only once a full SHA-256 of each copy matches.
-- **Library** of every frame under the root folder, grouped by object, date, filter or type, with filters and search.
-- **FITS preview** with autostretch, debayering of one-shot-colour frames, and blinking through a set. Reject bad frames (hidden, not deleted) or delete them for good.
-- **Projects** for Siril: a local folder with `lights/`, `darks/`, `flats/` and `biases/`, symlinked to the frames on the NAS. Open it in Siril, then import the results back.
-- **Sky Atlas**: your plate-solved images drawn in their real place on the sky, so you can see what you've mapped so far ([more below](#sky-atlas)).
+You pick a root folder. Eirin reads the FITS headers into a local SQLite database and leaves the files where they are. Everything else works from that index.
+
+| View | What it's for |
+|------|---------------|
+| **Library** | Every frame under the root, grouped by object, date, filter or type, with filters and search. Preview the selected frame, blink through a set, reject frames (hidden, not deleted) or delete them for good. With Siril installed, *Analyze* measures star FWHM and plate-solves frames, and *Suggest rejects* flags frames whose FWHM is well above the rest of their group. |
+| **Import** | Copies files from a Seestar into the library. It shows what will be copied and where before it does anything, and skips files the library already has. It can delete from the device afterwards, but only once a full SHA-256 of the copy matches the original. |
+| **Projects** | A project is a local folder with `lights/`, `darks/`, `flats/` and `biases/`, with the frames symlinked from the NAS (or copied, if you prefer). Open it in Siril, then import the results back into the library. |
+| **Sky Atlas** | Your plate-solved images drawn where they really are on a chart of the sky, with bright stars and Messier/NGC objects for reference. Useful for seeing what you've covered and where the gaps are. It isn't a planetarium. |
+| **Coverage** | Light frames grouped by framing and telescope, drawn as outlines on the sky. Good for finding data of the same target filed under different names, or the panels of a mosaic, and turning a selection into a project. |
+| **Storage** | A treemap of disk usage per target, broken down by night and frame type. |
+| **Browse** | The root folder as a plain folder tree, with the same preview, reject and delete actions. |
+| **Slideshow** | Your finished images as a full-screen slideshow. |
+
+Other details:
+
+- FITS preview with four stretch levels, debayering of one-shot-colour frames, zoom and pan, and the main header fields at a glance.
+- A red theme for use at the scope.
+- Settings → Updates can check GitHub for a new release and install it. It only checks when you click the button.
+
+Screenshots and short clips of each view are on the [website](https://eirin.hawawa.org).
+
+![Sky Atlas with processed images placed near the Leo Triplet](docs/img/skyatlasview.png)
+
+## Install
+
+### Linux
+
+Download the latest build from the [Releases page](https://github.com/hawawa4/eirin/releases):
+
+- **`.deb`** (Debian, Ubuntu and derivatives): `sudo apt install ./eirin-linux-amd64.deb`
+- **`.AppImage`**: `chmod +x eirin-linux-amd64.AppImage && ./eirin-linux-amd64.AppImage`
+- **`.zip`**: extract it and run the `eirin` binary
+
+All three need `libwebkit2gtk-4.1-0` (the `.deb` pulls it in for you).
+
+### Windows and macOS
+
+No packages are published yet. The app builds on both with `wails3`, but that isn't tested in CI. See [Building from source](#building-from-source).
+
+### Siril
+
+Needed for plate-solving, FWHM analysis and opening projects. Eirin finds it on your `PATH`, or you can point it at the binary in Settings. Without Siril you can still import, browse, preview, cull and use the atlas for frames that already have coordinates in their headers.
+
+## Getting started
+
+1. **Choose a root folder** in Settings. Subs, calibration frames, stacks and final images all live here. A NAS share works well. Choose a local projects folder too, for the Siril projects.
+2. **Import** from the Seestar. The device shares its storage over SMB, so mount it and pick the mount point as the source (see below).
+3. **Go through the frames** in the Library and reject the bad ones.
+4. **Create a project** from the selected or filtered frames, open it in Siril and process as usual.
+5. **Import the results** back into the library. Once they're plate-solved, they appear on the Sky Atlas.
 
 <details>
-<summary><b>ℹ️ Mounting the Seestar on Linux (for Import)</b></summary>
+<summary>Mounting the Seestar on Linux</summary>
 
-The Seestar shares its storage over SMB. Mount it somewhere (needs `cifs-utils`) and pick that folder as the import source:
+Mount the share (needs `cifs-utils`) and pick that folder as the import source:
 
 ```sh
 mkdir -p ~/mnt/seestar
@@ -39,155 +92,132 @@ Unmount when you're done:
 sudo umount ~/mnt/seestar
 ```
 
-If `seestar.local` doesn't resolve, use the Seestar's IP address instead. I keep these as aliases in my shell config:
-
-```sh
-alias seestarmount='sudo mount -t cifs -o guest,uid=$(id -u) "//seestar.local/EMMC Images/" $HOME/mnt/seestar'
-alias seestarunmount='sudo umount $HOME/mnt/seestar'
-```
+If `seestar.local` doesn't resolve, use the Seestar's IP address instead.
 
 </details>
 
-## Sky Atlas
+## Headless server
 
-Every plate-solved image knows where it was pointing, how much sky it covers and at what angle. The Sky Atlas uses that to draw your images in their real place on a chart of the sky, with bright stars and Messier/NGC objects marked for reference.
+A read-only viewer for your finished images and the Sky Atlas, for running on another machine such as the one next to your NAS. Import, culling, projects and Siril are all unavailable in this build, and it only serves files that are in its library. There's no login or TLS, so put it behind your own reverse proxy if you expose it.
 
-It's not a planetarium and it's not trying to be Stellarium. It's a fun way to look back at what you've captured: which targets sit next to each other, which parts of the sky you've already covered, and where the gaps are. Every new target fills in a bit more of your own map.
+It never shares the desktop's database. The desktop app publishes a snapshot, and the server loads it:
 
-![Sky Atlas with processed images placed near the Leo Triplet](docs/img/skyatlasview.png)
+1. In the desktop app, turn on **Settings → Server viewer**. It writes a copy of the library database to `<library>/.eirin/library.db` shortly after changes and when the app closes.
+2. Run the server with the library mounted. Images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases:
 
-Frames with coordinates in their FITS header show up as soon as they're indexed; the rest can be plate-solved from the Library through Siril. Click an outline to overlay the image, switch between final images and every sub, or search for a target and jump to it.
+   ```yaml
+   services:
+     eirin-server:
+       image: ghcr.io/hawawa4/eirin-server:latest
+       restart: unless-stopped
+       ports:
+         - "8080:8080"   # web UI
+         - "7070:7070"   # REST API (/api/status, /api/frames, /api/image); optional
+       volumes:
+         - /mnt/nas/Astro:/library:ro   # your library; the path doesn't need to match the desktop's
+         - ./eirin-data:/data           # the server's local copy of the snapshot
+   ```
 
----
+3. Open `http://<server>:8080`. The server checks for a new snapshot every minute, copies it, rewrites the file paths to where the library is mounted on the server, keeps only the final images, and swaps it in. Open browser tabs refresh by themselves.
 
-More screenshots and a walkthrough of the workflow are on the [website](https://eirin.hawawa.org).
+Theme and layout preferences are stored in the browser, not on the server.
 
-## Why this project exists
-
-I have a Seestar S30 Pro and S50 Pro, and processing the data on my computer (as opposed to the live stacking it does in the app) had a slightly awkward workflow consisting of multiple bash and Python scripts to copy each session and then prepare the same session for Siril. Furthermore, inspecting all the FITS and deleting bad ones was a subpar experience: Siril won't (easily) let you completely delete files, ASIFitsView doesn't debayer the files and moving through different folders is painful.
-
-The setup worked, but I wanted something a bit more user friendly, and, in general, *fun* to use, so I built this.
-
-Eirin is aimed at helping you do all the data management, while the actual stacking and processing is done by a different software (namely, Siril, but it might support PixInsight in the future).
-
-## Installing
-
-### Linux
-
-Grab the latest release from the [Releases page](https://github.com/hawawa4/eirin/releases). Three formats are published:
-
-- **`.zip`**: extract and run the `eirin` binary directly
-- **`.deb`**: `sudo apt install ./eirin-linux-amd64.deb` (Debian/Ubuntu and derivatives)
-- **`.AppImage`**: `chmod +x eirin-linux-amd64.AppImage && ./eirin-linux-amd64.AppImage` (portable, works on most distros)
-
-All three require `libwebkit2gtk-4.1-0` to be installed (the `.deb` declares this as a dependency automatically).
-
-For processing you'll also need [Siril](https://siril.org). Eirin looks for it on your `PATH`, or you can point it at the binary in Settings.
-
-### Windows / macOS
-
-Not yet published. Build from source (see [Development](#development) below).
-
-### Headless (Docker)
-
-A read-only viewer for your finished images and the Sky Atlas, for running on another machine (e.g. next to the NAS), is published to `ghcr.io/hawawa4/eirin-server` on tagged releases. All the work still happens in the desktop app; the server shows what it publishes.
-
-1. In the desktop app, turn on **Settings → Server viewer**. It writes a snapshot of your library to `<library>/.eirin/library.db`.
-2. Run the server with the library mounted at `/library`, e.g. with Docker Compose:
-
-```yaml
-services:
-  eirin-server:
-    image: ghcr.io/hawawa4/eirin-server:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"   # web UI
-      - "7070:7070"   # REST API (/api/status, /api/frames, /api/image); optional
-    volumes:
-      - /mnt/nas/Astro:/library:ro   # your library; the path inside doesn't need to match the desktop's
-      - ./eirin-data:/data           # the server's local copy of the snapshot
-```
-
-3. Open `http://<server>:8080`. New snapshots are picked up automatically within a minute.
-
-There's no login or TLS in the container; put it behind your own reverse proxy if you expose it. More details in [Headless/server mode](#headlessserver-mode).
-
-## Development
+## Building from source
 
 ### Prerequisites
 
-| Tool | Tested version |
-|------|---------------|
+| Tool | Version |
+|------|---------|
 | Go | 1.26+ |
 | Node.js | 22+ |
-| Wails CLI | v3 (alpha) |
-| staticcheck | v0.7.0+ |
-| just | any recent |
+| [Wails CLI](https://v3alpha.wails.io) | v3 (alpha) |
+| [just](https://github.com/casey/just) | any recent |
+| staticcheck | for `just lint` |
 
-Install Go tools once (`-tags gtk3` targets Linux's older webkit2gtk-4.1 stack, see the [Linux/Ubuntu note](#linux--ubuntu-note) below; omit it on macOS/Windows):
-```
+On Linux you also need the WebKit GTK development package: `sudo apt install libwebkit2gtk-4.1-dev` (Ubuntu 22.04+ and derivatives).
+
+Wails v3 defaults to GTK4 on Linux. This project targets GTK3/webkit2gtk-4.1 instead, via the `gtk3` build tag, which `build/linux/Taskfile.yml` passes automatically. The Wails CLI has to be installed with the same tag, or it will look for GTK4 headers. Omit the tag on macOS and Windows.
+
+```sh
 go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest
 go install honnef.co/go/tools/cmd/staticcheck@latest
-```
-
-Install dependencies:
-```
 just install-backend
 just install-frontend
 ```
 
-### Running in dev mode
+The `Justfile` puts `~/go/bin` and `/usr/local/go/bin` on `PATH`, so the tools are expected to be installed there.
 
-```
-just dev
-```
+### Commands
 
-Wails launches a live-reload server: Go backend recompiles on save, Svelte/Vite handles frontend HMR. The app window opens automatically.
+Everything goes through `just`. Run `just` on its own to list every recipe.
 
-### Building a production binary
+| Command | |
+|---------|-|
+| `just dev` | Live-reload dev mode: Go recompiles on save, Vite handles Svelte HMR |
+| `just build` | Production build with `wails3 build`; output goes to `build/bin/` |
+| `just build-backend` / `just build-frontend` | Only the Go side, or only the Svelte side |
+| `just test` | Go unit tests (`go test ./internal/...`) |
+| `just test-server` | The same tests against the headless build (`-tags server`) |
+| `just check` | Type-check Go and TypeScript (`svelte-check` + `tsc`) |
+| `just lint` / `just format` | staticcheck, ESLint and Prettier check / Prettier write |
+| `just build-server` | Headless binary, `eirin-server` (run `just build-frontend` first, it embeds `frontend/dist`) |
+| `just docker-build` | Extract the static server binary to `./dist/` |
+| `just bindings` | Regenerate the Wails TypeScript bindings |
 
-```
-just build
-```
+CI runs lint, type-check and both test suites on pull requests. To run one Go test: `go test ./internal/store/... -run TestName`.
 
-Output is placed in `bin/`.
+To build the server image locally instead of pulling it: `docker build -t eirin-server .`
 
-Other useful build recipes:
-- `just build-backend`: Go backend only, no frontend/Wails packaging (`go build ./`)
-- `just build-frontend`: Svelte frontend only (`npm run build` in `frontend/`)
-- `just build-server`: headless server binary for Docker (`eirin-server`, see [Headless/server mode](#headlessserver-mode) below)
-- `just test` / `just test-server`: Go unit tests for the desktop and the headless server build
-- `just check`: type-check only (`go build ./...` + `svelte-check`/`tsc`), no binaries produced
-- `just lint` / `just format`: staticcheck + ESLint/Prettier
+### Project layout
 
-TODO: only Linux binaries are built and released right now (see [Installing](#installing)); Windows/macOS builds work locally via `wails3`/Task but aren't wired into CI yet.
+The backend is under `internal/`, split by responsibility. `app` is the Wails-bound layer and should stay thin glue; put new logic in its own package.
+
+| Package | Responsibility |
+|---------|----------------|
+| `app` | Wails service: `*App` methods, events, dialogs |
+| `store` | SQLite database: frames, projects, preferences |
+| `importer`, `indexer` | Scanning and copying files from the device; FITS file detection |
+| `fits` | FITS parsing, pixel processing, previews |
+| `siril` | Siril detection, execution and output parsing |
+| `projectfs` | Building project folders and symlinks |
+| `catalog`, `coverage`, `telescopes` | Star and object catalogue, annotations, moon phase; framing clustering for the Coverage view; identifying the Seestar model from a frame's field of view |
+| `fileman` | Reveal files and open folders in the OS file manager |
+| `snapshot` | Library snapshot: the desktop publisher and the server loader |
+| `server` | The REST API |
+| `updater` | GitHub release check and in-place install |
+
+The frontend is Svelte and TypeScript in `frontend/`. The bindings in `frontend/bindings/` are generated by Wails; don't edit them by hand.
+
+Conventions worth knowing:
+
+- Tests are whitebox (same package), one `_test.go` per source file. They use `newTestStore(t)` / `newTestApp(t)`, which build a database in `t.TempDir()`, and every package with database tests sets `EIRIN_DB_PATH` to a temp path in `TestMain`. Tests must never touch the real database.
+- The server build is read-only, enforced in the backend. Every method that writes to the database or filesystem starts with `a.requireWritable()`, and every method that reads a path from the caller calls `a.checkServable(path)`. Add the right guard to any new method of those kinds. Things that can't work headlessly (Siril, import, reveal in file manager) are split into `_desktop.go` / `_server.go` files behind `//go:build !server` and `//go:build server`.
+- Persist frontend preferences through `savePref` in `lib/prefs.ts`. In the server build it keeps them in `localStorage` instead of the database.
+- Updates: release assets must be named `eirin-linux-amd64.{AppImage,deb,zip}`, which is what the updater looks for, and each download is verified against the release's `SHA256SUMS`.
 
 ### Website
 
-The project website is a separate [Astro](https://astro.build) site in `landingpage/`, built to static HTML and published as a small nginx image, `ghcr.io/hawawa4/eirin-landingpage` (port 8080), on every push to `main` that touches it. It uses the screenshots in `docs/img/` (same as this README) and the clips in `docs/vid/`.
+The website is a separate [Astro](https://astro.build) site in `landingpage/`, built to static files and served by nginx (`ghcr.io/hawawa4/eirin-landingpage`). It reuses the screenshots in `docs/img/` and the clips in `docs/vid/`, so retaking one updates both the site and this README.
 
-```
+```sh
 just install-landing
-just landing-dev     # live-reload dev server
+just landing-dev     # dev server
 just landing-build   # static build into landingpage/dist/
-just landing-docker  # build the nginx image locally as eirin-landingpage
+just landing-docker  # build the nginx image locally
 ```
 
-## Technical details
+## Configuration
 
-### Linux / Ubuntu note
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EIRIN_DB_PATH` | Platform config dir (see below) | Where the SQLite database lives |
+| `EIRIN_PORT` | `7070` | Port for the REST API (`/api/status`, `/api/frames`, `/api/image`). Set it if 7070 is taken |
+| `EIRIN_ROOT` | `/library` in the image | Server build only: where the library is mounted. Required |
+| `WAILS_SERVER_HOST`, `WAILS_SERVER_PORT` | `0.0.0.0`, `8080` in the image | Server build only: the web UI listener |
 
-Wails requires a WebKit GTK library. Ubuntu 22.04+ and derivatives (including PikaOS) ship `libwebkit2gtk-4.1` rather than the older `4.0` variant:
+The server image defaults `EIRIN_DB_PATH` to `/data/library.db`. That file is disposable, as it's rebuilt from the next snapshot.
 
-```
-sudo apt install libwebkit2gtk-4.1-dev
-```
-
-Wails v3 defaults to GTK4/webkitgtk-6.0 on Linux; this project targets the older GTK3/webkit2gtk-4.1 stack instead via the `gtk3` build tag, which `build/linux/Taskfile.yml` already passes to `go build`/`wails3 generate bindings` automatically. The `wails3` CLI itself also needs to be installed with that tag (`go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@latest`), otherwise installing the CLI fails looking for GTK4 headers.
-
-### Preferences database
-
-Eirin stores metadata about the files in an SQLite database. By default, it's stored in the platform config directory:
+Default database location:
 
 | Platform | Path |
 |----------|------|
@@ -195,46 +225,18 @@ Eirin stores metadata about the files in an SQLite database. By default, it's st
 | macOS | `~/Library/Application Support/eirin/prefs.db` |
 | Windows | `%AppData%\eirin\prefs.db` |
 
-It can be overridden by setting the environment variable `EIRIN_DB_PATH`.
+The server build runs two separate HTTP listeners: Wails' own, which serves the web UI (`WAILS_SERVER_PORT`), and the REST API (`EIRIN_PORT`). Don't mix them up when changing ports.
 
-### Localhost port
+## About the code
 
-Due to the `wails` architecture, Eirin will start a webserver on a local port. If that port is taken, you might have to set the environment variable `EIRIN_PORT`.
+A good part of this was written with AI assistance, especially the frontend. It's also my first Wails project. I'm comfortable with backend and systems work, much less so with frontend.
 
-### Headless/server mode
-
-`just build-server` builds a `-tags server` binary for headless Docker deployment (run `just build-frontend` first; the binary embeds `frontend/dist`). It's a **read-only viewer**: the stacked, processed and raster images in your library, one at a time, plus the Sky Atlas. No import, culling, Siril processing, projects, storage stats or file browsing, and nothing it can write: every write method returns an error in this build, and it only serves files that are in its library.
-
-It doesn't share the desktop's database. Instead:
-
-1. In the desktop app, turn on **Settings → Server viewer**. The app then writes a copy of its library database to `<library>/.eirin/library.db`, a couple of minutes after changes and when it closes.
-2. The server watches that file (once a minute), copies it locally, rewrites the paths to where the library is mounted on the server (`EIRIN_ROOT`), keeps only the final images, and swaps it in. Open browser tabs refresh by themselves.
-
-Pre-built images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases; see [Headless (Docker)](#headless-docker) for a compose example. Configuration:
-
-| Variable | Default (in the image) | |
-|---|---|---|
-| `EIRIN_ROOT` | `/library` | Where the library is mounted. Required. |
-| `EIRIN_DB_PATH` | `/data/library.db` | The server's local copy of the snapshot. Disposable: it's rebuilt from the next snapshot. |
-| `WAILS_SERVER_PORT` | `8080` | Web UI port. |
-| `EIRIN_PORT` | `7070` | REST API port. |
-
-The viewer has no login. Theme and layout preferences are kept per browser.
-
-To build the image locally instead: `docker build -t eirin-server .` (`just docker-build` uses buildx's `local` output instead, extracting the static `eirin-server` binary to `./dist/` rather than producing a runnable image).
-
-Two independent HTTP listeners run in the container: Wails' own server (serves the Svelte frontend, `WAILS_SERVER_PORT`, default 8080) and Eirin's side-channel REST API (`/api/status`, `/api/frames`, `/api/image`, via `EIRIN_PORT`, default 7070).
-
-## AI disclaimer
-
-A significant amount of the code in this project was AI generated, I don't try to hide that fact: I can't write any respectable frontend code, but I'm half decent at backend and systems design. This project was also the first time I used `wails`.
+I built it for my own Seestar data, so bug reports and suggestions are welcome but I can't promise to act on anything beyond what I need. [Open an issue](https://github.com/hawawa4/eirin/issues/new/choose) if you're using it and run into something.
 
 ## Similar software
 
-There's other wonderful astrophotography software with some overlap in features, so you might be asking "why would I use this instead?"
-
-- [Astro Catalogue Viewer](https://github.com/thebioguy/Astro-Catalogue-Viewer): Genuinely great and fun to use software; does a similar thing of cataloguing images automatically, and the overall UX is reminiscent of a bird watching journal. It does not help with the processing step, but I can highly recommend it for viewing your finished images.
-- [SSLM](https://github.com/AstroNoob-Tools/SSLM): Windows only, focusing entirely on the Seestars.
+- [Astro Catalogue Viewer](https://github.com/thebioguy/Astro-Catalogue-Viewer): catalogues your images automatically, with a feel like a bird-watching journal. It doesn't help with processing, but it's very good for viewing finished images.
+- [SSLM](https://github.com/AstroNoob-Tools/SSLM): Windows only, focused entirely on Seestars.
 
 ## License
 
