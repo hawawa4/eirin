@@ -102,3 +102,20 @@ func TestLinkedStretchNoRange(t *testing.T) {
 		t.Errorf("apply = %f, want 0 when the stretch has no range", v)
 	}
 }
+
+func TestStretchTableMatchesApply(t *testing.T) {
+	// A strong stretch of dark data: the steepest curve the table has to follow.
+	stats := []ChannelStats{{Median: 0.002, Sigma: 0.0004}, {Median: 0.003, Sigma: 0.0005}, {Median: 0.0015, Sigma: 0.0003}}
+	p := linkedStretch(stats, balanceGains(stats), 3)
+	for c := range 3 {
+		table := p.table(c)
+		for i := 0; i <= 200000; i++ {
+			v := float32(i) / 200000
+			got := table[int(v*(stretchLUTSize-1)+0.5)]
+			want := toU8(p.apply(c, float64(v)))
+			if d := int(got) - int(want); d < -1 || d > 1 {
+				t.Fatalf("channel %d, v=%g: table %d, direct %d", c, v, got, want)
+			}
+		}
+	}
+}

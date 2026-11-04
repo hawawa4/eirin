@@ -31,12 +31,12 @@ const maxBalanceGain = 16.0
 // debayerBlocks demosaics a single-plane Bayer image using 2×2 block averaging.
 // Each 2×2 super-pixel becomes one RGB output pixel (output is w/2 × h/2).
 // Supported patterns: RGGB, BGGR, GRBG, GBRG (defaults to RGGB).
-func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, outW, outH int) {
+func debayerBlocks(bayer []float32, w, h int, pat string) (r, g, b []float32, outW, outH int) {
 	outW, outH = w/2, h/2
 	size := outW * outH
-	r = make([]float64, size)
-	g = make([]float64, size)
-	b = make([]float64, size)
+	r = make([]float32, size)
+	g = make([]float32, size)
+	b = make([]float32, size)
 
 	for by := 0; by < outH; by++ {
 		y0 := by * 2
@@ -84,22 +84,22 @@ func debayerBlocks(bayer []float64, w, h int, pat string) (r, g, b []float64, ou
 // (channel mean) plus a box-blurred difference from it, so detail and noise
 // in brightness are kept and only the per-pixel colour is averaged. Modifies
 // and returns channels.
-func reduceChroma(channels [][]float64, w, h, radius int) [][]float64 {
+func reduceChroma(channels [][]float32, w, h, radius int) [][]float32 {
 	if len(channels) < 2 || radius <= 0 {
 		return channels
 	}
 	n := len(channels[0])
-	lum := make([]float64, n)
+	lum := make([]float32, n)
 	for _, ch := range channels {
 		for i, v := range ch {
 			lum[i] += v
 		}
 	}
-	inv := 1 / float64(len(channels))
+	inv := 1 / float32(len(channels))
 	for i := range lum {
 		lum[i] *= inv
 	}
-	diff := make([]float64, n)
+	diff := make([]float32, n)
 	for _, ch := range channels {
 		for i, v := range ch {
 			diff[i] = v - lum[i]
@@ -114,29 +114,29 @@ func reduceChroma(channels [][]float64, w, h, radius int) [][]float64 {
 
 // boxBlur averages each pixel over a (2r+1)² square, clamping at the edges.
 // Separable running sums make it O(pixels) whatever the radius.
-func boxBlur(src []float64, w, h, r int) []float64 {
+func boxBlur(src []float32, w, h, r int) []float32 {
 	n := float64(2*r + 1)
-	tmp := make([]float64, len(src))
+	tmp := make([]float32, len(src))
 	for y := 0; y < h; y++ {
 		row := src[y*w : (y+1)*w]
-		var sum float64
+		var sum float64 // running sums drift in float32
 		for k := -r; k <= r; k++ {
-			sum += row[clampIdx(k, w)]
+			sum += float64(row[clampIdx(k, w)])
 		}
 		for x := 0; x < w; x++ {
-			tmp[y*w+x] = sum / n
-			sum += row[clampIdx(x+r+1, w)] - row[clampIdx(x-r, w)]
+			tmp[y*w+x] = float32(sum / n)
+			sum += float64(row[clampIdx(x+r+1, w)]) - float64(row[clampIdx(x-r, w)])
 		}
 	}
-	out := make([]float64, len(src))
+	out := make([]float32, len(src))
 	for x := 0; x < w; x++ {
 		var sum float64
 		for k := -r; k <= r; k++ {
-			sum += tmp[clampIdx(k, h)*w+x]
+			sum += float64(tmp[clampIdx(k, h)*w+x])
 		}
 		for y := 0; y < h; y++ {
-			out[y*w+x] = sum / n
-			sum += tmp[clampIdx(y+r+1, h)*w+x] - tmp[clampIdx(y-r, h)*w+x]
+			out[y*w+x] = float32(sum / n)
+			sum += float64(tmp[clampIdx(y+r+1, h)*w+x]) - float64(tmp[clampIdx(y-r, h)*w+x])
 		}
 	}
 	return out
@@ -166,11 +166,11 @@ func fitSize(w, h, maxSize int) (int, int) {
 // downsampleArea shrinks an image by averaging every source pixel that falls
 // in each output pixel. Unlike nearest-neighbour sampling this lowers noise
 // instead of aliasing it.
-func downsampleArea(src []float64, w, h, outW, outH int) []float64 {
+func downsampleArea(src []float32, w, h, outW, outH int) []float32 {
 	if outW == w && outH == h {
 		return src
 	}
-	out := make([]float64, outW*outH)
+	out := make([]float32, outW*outH)
 	for oy := 0; oy < outH; oy++ {
 		y0 := oy * h / outH
 		y1 := max(y0+1, (oy+1)*h/outH)
@@ -179,11 +179,11 @@ func downsampleArea(src []float64, w, h, outW, outH int) []float64 {
 			x1 := max(x0+1, (ox+1)*w/outW)
 			var sum float64
 			for y := y0; y < y1; y++ {
-				for x := x0; x < x1; x++ {
-					sum += src[y*w+x]
+				for _, v := range src[y*w+x0 : y*w+x1] {
+					sum += float64(v)
 				}
 			}
-			out[oy*outW+ox] = sum / float64((y1-y0)*(x1-x0))
+			out[oy*outW+ox] = float32(sum / float64((y1-y0)*(x1-x0)))
 		}
 	}
 	return out
@@ -197,7 +197,8 @@ func downsampleArea(src []float64, w, h, outW, outH int) []float64 {
 // balanced channels reach white together and star cores stay white instead of
 // one channel clipping early. The returned range maps an original value v to
 // (v - lo) / scale, so statistics taken before normalising can be carried over.
-func globalNormalize(channels [][]float64, gains []float64) ([][]float64, normRange) {
+// The channels are normalised in place (a native-size image is too big to copy).
+func globalNormalize(channels [][]float32, gains []float64) ([][]float32, normRange) {
 	identity := normRange{lo: 0, scale: 1}
 	if len(channels) == 0 {
 		return channels, identity
@@ -208,43 +209,56 @@ func globalNormalize(channels [][]float64, gains []float64) ([][]float64, normRa
 		totalLen += len(ch)
 	}
 
-	// Sub-sample for statistics (65k points per channel is plenty).
+	// Sub-sample for statistics (65k points per channel is plenty): every
+	// step-th value counting across all channels. NaN (blank) pixels are
+	// skipped here and become black below.
 	maxSamples := 65536 * len(channels)
 	step := max(1, totalLen/maxSamples)
-	sample := make([]float64, 0, min(totalLen, maxSamples))
-	i := 0
-	lo := 0.0
+	sample := make([]float64, 0, min(totalLen, maxSamples)+len(channels))
+	lo := float32(0)
+	base := 0
 	for c, ch := range channels {
 		g := 1.0
 		if c < len(gains) && gains[c] > 0 {
 			g = gains[c]
 		}
 		for _, v := range ch {
-			lo = min(lo, v)
-			if i%step == 0 {
-				sample = append(sample, v*g)
+			if v < lo {
+				lo = v
 			}
-			i++
 		}
+		for j := (step - base%step) % step; j < len(ch); j += step {
+			if v := ch[j]; v == v {
+				sample = append(sample, float64(v)*g)
+			}
+		}
+		base += len(ch)
+	}
+	if len(sample) == 0 {
+		return channels, identity
 	}
 
 	slices.Sort(sample)
 	hi := sample[int(float64(len(sample))*0.999)]
 
-	if hi <= lo {
+	if hi <= float64(lo) {
 		return channels, identity
 	}
-	rng := hi - lo
+	rng := hi - float64(lo)
 
-	out := make([][]float64, len(channels))
-	for c, ch := range channels {
-		norm := make([]float64, len(ch))
+	inv := float32(1 / rng)
+	for _, ch := range channels {
 		for j, v := range ch {
-			norm[j] = math.Min(1, math.Max(0, (v-lo)/rng))
+			x := (v - lo) * inv
+			if !(x > 0) { // negative or NaN
+				x = 0
+			} else if x > 1 {
+				x = 1
+			}
+			ch[j] = x
 		}
-		out[c] = norm
 	}
-	return out, normRange{lo: lo, scale: rng}
+	return channels, normRange{lo: float64(lo), scale: rng}
 }
 
 // normRange is the linear map globalNormalize applied: v → (v - lo) / scale.
@@ -258,18 +272,17 @@ func (r normRange) stats(s ChannelStats) ChannelStats {
 }
 
 // channelMedianSigma returns the median and MAD-based sigma for a pixel array.
-func channelMedianSigma(pixels []float64) (median, sigma float64) {
-	sample := pixels
-	if len(pixels) > 65536 {
-		step := len(pixels) / 65536
-		s := make([]float64, 0, 65536)
-		for i := 0; i < len(pixels); i += step {
-			s = append(s, pixels[i])
+func channelMedianSigma(pixels []float32) (median, sigma float64) {
+	step := max(1, len(pixels)/65536)
+	sorted := make([]float64, 0, len(pixels)/step+1)
+	for i := 0; i < len(pixels); i += step {
+		if v := pixels[i]; v == v { // skip NaN (blank) pixels
+			sorted = append(sorted, float64(v))
 		}
-		sample = s
 	}
-
-	sorted := slices.Clone(sample)
+	if len(sorted) == 0 {
+		return 0, 0
+	}
 	slices.Sort(sorted)
 	median = sorted[len(sorted)/2]
 

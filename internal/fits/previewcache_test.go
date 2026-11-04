@@ -58,19 +58,3 @@ func TestPreviewCacheMissingFile(t *testing.T) {
 		t.Error("want an error for a missing file")
 	}
 }
-
-func TestPreviewCacheRaster(t *testing.T) {
-	var c PreviewCache
-	path := writeRaster(t, "a.png", 200, 100)
-	p, err := c.Raster(path, 64)
-	if err != nil || p.Width != 64 {
-		t.Fatalf("Raster() = %dx%d, %v", p.Width, p.Height, err)
-	}
-	again, err := c.Raster(path, 64)
-	if err != nil || again.DataURL != p.DataURL || c.order.Len() != 1 {
-		t.Errorf("second call not served from the cache (len %d, err %v)", c.order.Len(), err)
-	}
-	if _, err := c.Rendered(path, 64, 2); err == nil {
-		t.Error("a PNG rendered as FITS without an error")
-	}
-}

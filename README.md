@@ -214,8 +214,11 @@ just landing-docker  # build the nginx image locally
 | `EIRIN_PORT` | `7070` | Port for the REST API (`/api/status`, `/api/frames`, `/api/image`). Set it if 7070 is taken |
 | `EIRIN_ROOT` | `/library` in the image | Server build only: where the library is mounted. Required |
 | `WAILS_SERVER_HOST`, `WAILS_SERVER_PORT` | `0.0.0.0`, `8080` in the image | Server build only: the web UI listener |
+| `EIRIN_CACHE_DIR` | See below | Where rendered previews are cached (in a `previews` folder inside it) |
+| `EIRIN_PREVIEW_CACHE_MB` | `2048` | Size limit of the preview cache; least recently viewed images go first. `0` turns the disk cache off |
+| `EIRIN_PREVIEW_WARM` | on | Server build only: `0` stops it from rendering the final images' previews in the background after each snapshot |
 
-The server image defaults `EIRIN_DB_PATH` to `/data/library.db`. That file is disposable, as it's rebuilt from the next snapshot.
+The server image defaults `EIRIN_DB_PATH` to `/data/library.db`. That file is disposable, as it's rebuilt from the next snapshot. Rendered previews are cached next to it in `/data/previews` (on the desktop: `~/.cache/eirin/previews` on Linux, the platform cache directory elsewhere), so they survive restarts; deleting the folder is always safe.
 
 Default database location:
 

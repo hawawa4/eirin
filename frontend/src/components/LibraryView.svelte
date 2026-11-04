@@ -85,6 +85,8 @@
     oncreateproject?: (project: Project) => void;
     /** True while this view's tab is visible; keyboard shortcuts are off otherwise. */
     active?: boolean;
+    /** Called once, when the library has first loaded. */
+    onloaded?: () => void;
     /** Request a library (re)scan/index. */
     onscan?: () => void;
     /** True while a library index build is running. */
@@ -100,6 +102,7 @@
     onsavecolumns,
     oncreateproject,
     active = true,
+    onloaded,
     onscan,
     indexRunning = false,
     onshowonatlas,
@@ -583,6 +586,7 @@
       const res = (await GetLibraryFrames(root)) ?? [];
       if (root !== rootFolder) return; // root changed mid-flight; a reload is queued
       frames = res;
+      if (initial) onloaded?.();
       loadedOnce = true;
       error = "";
       pruneMissing();

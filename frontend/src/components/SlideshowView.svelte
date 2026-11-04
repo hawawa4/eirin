@@ -9,7 +9,7 @@
   import { ui } from "../lib/uiState.svelte";
   import { Reel } from "../lib/reel.svelte";
   import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
-  import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
+  import { levelFor, levelRank, loadImage, previewUrl } from "../lib/images";
   import { describeFrame } from "../lib/slideshow/frameInfo";
   import ReelControls from "./ReelControls.svelte";
   import FrameInfoCard from "./slideshow/FrameInfoCard.svelte";
@@ -106,6 +106,8 @@
   let shown = $state.raw<{
     frame: app.LibraryFrame;
     src: string;
+    /** Preview level of src (see lib/images). */
+    level: number;
     width: number;
     height: number;
   } | null>(null);
@@ -197,31 +199,65 @@
   });
 
   // ── Showing the current picture ───────────────────────────────────────────
+  /**
+   * The preview level that fills the slideshow area on this screen (a picture
+   * is fitted, so its longest side is at most the area's). Before the area is
+   * measured, the screen's size stands in.
+   */
+  let areaLevel = $derived(
+    levelFor(Math.max(areaW, areaH) || Math.max(window.screen.width, window.screen.height)),
+  );
+
+  /** Decoded pictures by URL (most recent last), so a prefetched slide shows at once. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a cache, intentionally non-reactive
+  const decoded = new Map<string, Promise<HTMLImageElement>>();
+  const DECODED_KEEP = 4;
+
+  function decode(url: string): Promise<HTMLImageElement> {
+    let p = decoded.get(url);
+    if (p) {
+      decoded.delete(url); // re-insert as most recently used
+    } else {
+      p = loadImage(url);
+      p.catch(() => decoded.delete(url)); // a failed load may be retried
+    }
+    decoded.set(url, p);
+    while (decoded.size > DECODED_KEEP) decoded.delete(decoded.keys().next().value!);
+    return p;
+  }
+
   let showSeq = 0;
   $effect(() => {
     const frame = reel.current;
+    const level = areaLevel;
     if (!frame) {
       shown = null;
       return;
     }
+    // The same picture, already sharp enough (e.g. the window got smaller).
+    const cur = untrack(() => shown);
+    if (cur?.frame.nasPath === frame.nasPath && levelRank(cur.level) >= levelRank(level)) return;
     const seq = ++showSeq;
+    const url = previewUrl(frame.nasPath, level, STRETCH_LEVEL);
     untrack(() => {
-      loadViewerPreview(frame.nasPath, STRETCH_LEVEL)
-        .then(async (p) => {
-          // Decode up front: the picture's shape decides its rotation, and a decoded
-          // image fades in without a stutter.
-          const img = new Image();
-          img.src = p.dataUrl;
-          await img.decode();
+      // Decode up front: the picture's shape decides its rotation, and a decoded
+      // image fades in without a stutter. A sharper version of the picture on
+      // screen just replaces it.
+      decode(url)
+        .then((img) => {
           if (seq !== showSeq) return;
           slideError = "";
-          shown = { frame, src: p.dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+          shown = { frame, src: url, level, width: img.naturalWidth, height: img.naturalHeight };
           const next = reel.upcoming;
-          if (next) prefetchViewerPreview(next.nasPath, STRETCH_LEVEL);
+          if (next) {
+            decode(previewUrl(next.nasPath, level, STRETCH_LEVEL)).catch(() => {
+              /* best-effort; shown (with its error) when its turn comes */
+            });
+          }
         })
         .catch((err: unknown) => {
           if (seq !== showSeq) return;
-          slideError = `Couldn't load ${frame.fileName}: ${String(err)}`;
+          slideError = `Couldn't load ${frame.fileName}: ${err instanceof Error ? err.message : String(err)}`;
         });
     });
   });

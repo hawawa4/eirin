@@ -175,24 +175,13 @@ export function GeneratePreview(path: string, stretchLevel: number): $Cancellabl
 }
 
 /**
- * GeneratePreviewRawSized returns raw float32 RGBA pixel data (base64-encoded) plus
- * per-channel statistics for CPU/GPU-based MTF rendering on the frontend.
- * maxSize=0 means native resolution (no downscaling).
- */
-export function GeneratePreviewRawSized(path: string, maxSize: number): $CancellablePromise<fits$0.RawPreviewData> {
-    return $Call.ByID(2730633038, path, maxSize).then(($result: any) => {
-        return $$createType4($result);
-    });
-}
-
-/**
  * GetAnnotations returns catalog objects visible within the frame defined by the
  * plate-solve result (raCenter/decCenter in degrees, pixelScale in arcsec/pixel,
  * rotation in degrees CCW from North, image dimensions in pixels).
  */
 export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: number, rotation: number, width: number, height: number): $CancellablePromise<catalog$0.Annotation[]> {
     return $Call.ByID(2125905796, raCenter, decCenter, pixelScale, rotation, width, height).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType5($result);
     });
 }
 
@@ -201,7 +190,7 @@ export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: 
  */
 export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
     return $Call.ByID(2384808821).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType6($result);
     });
 }
 
@@ -213,12 +202,13 @@ export function GetAppVersion(): $CancellablePromise<string> {
 }
 
 /**
- * GetAtlasFrameSize reads pixel dimensions for any supported file type.
- * For FITS files the header is parsed; for PNG/JPEG/TIFF just the image size
- * is read (much cheaper — no full pixel decode). Called lazily by the frontend.
+ * GetAtlasFrameSizes reads the pixel dimensions of several files at once
+ * (one round trip for the server viewer), a few in parallel. Files that
+ * can't be read are left out of the result. For FITS only the header is
+ * read; for PNG/JPEG/TIFF just the image size.
  */
-export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
-    return $Call.ByID(2509712703, nasPath).then(($result: any) => {
+export function GetAtlasFrameSizes(nasPaths: string[]): $CancellablePromise<{ [_ in string]?: $models.AtlasFrameSize }> {
+    return $Call.ByID(3371978404, nasPaths).then(($result: any) => {
         return $$createType8($result);
     });
 }
@@ -358,19 +348,6 @@ export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus>
 }
 
 /**
- * GetViewerPreview renders a preview on the server for the read-only viewer,
- * which reaches the backend over the network: a JPEG of at most
- * viewerPreviewSize pixels (~1 MB) instead of the raw float pixels or the
- * original file (tens of MB). FITS files are stretched at stretchLevel
- * (0=linear … 3=strong); raster images are shown as they are.
- */
-export function GetViewerPreview(path: string, stretchLevel: number): $CancellablePromise<fits$0.RenderedPreview> {
-    return $Call.ByID(4224584848, path, stretchLevel).then(($result: any) => {
-        return $$createType22($result);
-    });
-}
-
-/**
  * HardDeleteFile permanently removes a file from disk and cleans up its frame record.
  */
 export function HardDeleteFile(path: string): $CancellablePromise<void> {
@@ -393,7 +370,7 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
     return $Call.ByID(3674431189, filePaths, destFolder).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType22($result);
     });
 }
 
@@ -409,7 +386,7 @@ export function InstallUpdate(): $CancellablePromise<void> {
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(1182641653, path).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType24($result);
     });
 }
 
@@ -420,7 +397,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(2240621337, path).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType26($result);
     });
 }
 
@@ -429,7 +406,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(217387348).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType27($result);
     });
 }
 
@@ -438,17 +415,8 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(361579588).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType28($result);
     });
-}
-
-/**
- * LoadRasterImage returns a PNG, JPEG or TIFF file as a data URL a browser
- * can display (TIFF is converted to PNG). The file must be under the
- * configured NAS root.
- */
-export function LoadRasterImage(path: string): $CancellablePromise<string> {
-    return $Call.ByID(3497382232, path);
 }
 
 /**
@@ -491,7 +459,7 @@ export function PublishSnapshot(): $CancellablePromise<void> {
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(1775527807, path).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType30($result);
     });
 }
 
@@ -544,7 +512,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(2590149388, sourceFolder, extensions).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType32($result);
     });
 }
 
@@ -627,7 +595,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(3483751288, rootPath, threshold).then(($result: any) => {
-        return $$createType35($result);
+        return $$createType34($result);
     });
 }
 
@@ -651,11 +619,11 @@ const $$createType0 = $models.AddFramesResult.createFrom;
 const $$createType1 = $models.UpdateInfo.createFrom;
 const $$createType2 = siril$0.SirilInfo.createFrom;
 const $$createType3 = $models.Project.createFrom;
-const $$createType4 = fits$0.RawPreviewData.createFrom;
-const $$createType5 = catalog$0.Annotation.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $models.AppInfo.createFrom;
-const $$createType8 = $models.AtlasFrameSize.createFrom;
+const $$createType4 = catalog$0.Annotation.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.AppInfo.createFrom;
+const $$createType7 = $models.AtlasFrameSize.createFrom;
+const $$createType8 = $Create.Map($Create.Any, $$createType7);
 const $$createType9 = $models.AtlasIndexEntry.createFrom;
 const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = $models.CatalogObject.createFrom;
@@ -669,17 +637,16 @@ const $$createType18 = $Create.Array($Create.Any);
 const $$createType19 = $models.ProjectOutputFile.createFrom;
 const $$createType20 = $Create.Array($$createType19);
 const $$createType21 = $models.SnapshotStatus.createFrom;
-const $$createType22 = fits$0.RenderedPreview.createFrom;
-const $$createType23 = $models.ImportOutputsResult.createFrom;
-const $$createType24 = $models.FileEntry.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = $models.EnrichedFileEntry.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = $Create.Array($$createType3);
-const $$createType29 = store$0.Prefs.createFrom;
-const $$createType30 = fits$0.FITSHeader.createFrom;
-const $$createType31 = $Create.Nullable($$createType30);
-const $$createType32 = importer$0.Candidate.createFrom;
-const $$createType33 = $Create.Array($$createType32);
-const $$createType34 = $models.SuggestResult.createFrom;
-const $$createType35 = $Create.Array($$createType34);
+const $$createType22 = $models.ImportOutputsResult.createFrom;
+const $$createType23 = $models.FileEntry.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = $models.EnrichedFileEntry.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = $Create.Array($$createType3);
+const $$createType28 = store$0.Prefs.createFrom;
+const $$createType29 = fits$0.FITSHeader.createFrom;
+const $$createType30 = $Create.Nullable($$createType29);
+const $$createType31 = importer$0.Candidate.createFrom;
+const $$createType32 = $Create.Array($$createType31);
+const $$createType33 = $models.SuggestResult.createFrom;
+const $$createType34 = $Create.Array($$createType33);

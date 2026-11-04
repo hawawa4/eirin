@@ -2,22 +2,23 @@
   import { onMount, untrack } from "svelte";
   import { Events } from "@wailsio/runtime";
   import type * as app from "$models/app";
-  import { GetAtlasIndex, GetAtlasFrameSize, GetCatalog } from "$app";
+  import { GetAtlasIndex, GetAtlasFrameSizes, GetCatalog } from "$app";
   import { formatDec, formatRA } from "../lib/utils";
   import { toast } from "../lib/toast.svelte";
   import { isModalOpen, isTypingTarget } from "../lib/keys";
   import { fromTangent } from "../lib/atlas/projection";
   import { SkyCamera } from "../lib/atlas/camera.svelte";
-  import { frameExtentDeg } from "../lib/atlas/footprint";
+  import { frameExtentDeg, polygonOnScreen } from "../lib/atlas/footprint";
   import { fitView, type FitTarget } from "../lib/atlas/fit";
   import { drawScene } from "../lib/atlas/draw";
-  import { framesNeedingSize, hitTest, type AtlasScene } from "../lib/atlas/scene";
+  import { frameShape, framesNeedingSize, hitTest, type AtlasScene } from "../lib/atlas/scene";
   import { SizeQueue } from "../lib/atlas/sizeQueue";
   import { Reel } from "../lib/reel.svelte";
   import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
   import { atlasPalette, paletteCssVars } from "../lib/atlas/palette";
   import type { Theme } from "../lib/types";
-  import { PreviewCache } from "../lib/atlas/previews";
+  import { PreviewCache, type PreviewTarget } from "../lib/atlas/previews";
+  import { levelFor } from "../lib/images";
   import {
     buildObjectGroups,
     isFinalImage,
@@ -56,6 +57,8 @@
     scanProgress?: { done: number; total: number } | null;
     /** Open the Library filtered to an object (desktop). */
     onshowobject?: (object: string) => void;
+    /** Called once, when the first load has finished and is drawn on screen. */
+    onready?: () => void;
     /** Switch to another tab (empty-state shortcuts). */
     onnavigate?: (mode: "import" | "library" | "projects" | "coverage") => void;
   }
@@ -72,6 +75,7 @@
     scanProgress = null,
     onnavigate,
     onshowobject,
+    onready,
   }: Props = $props();
 
   let palette = $derived(atlasPalette(theme));
@@ -149,9 +153,8 @@
   // ── Lazy caches (non-reactive; cacheVersion drives redraws) ───────────────
   let cacheVersion = $state(0);
   const sizeQueue = new SizeQueue(
-    (p) => GetAtlasFrameSize(p),
+    (paths) => GetAtlasFrameSizes(paths),
     () => cacheVersion++,
-    4,
   );
   const previews = new PreviewCache(
     () => cacheVersion++,
@@ -198,9 +201,49 @@
     if (active) scheduleRedraw();
   });
 
-  // Previews follow the overlay.
+  // ── Preview resolution ────────────────────────────────────────────────────
+  /**
+   * What each overlaid frame should show: the preview level matching its
+   * longest side on screen (sharper as the user zooms in), on-screen frames
+   * nearest the centre first. Off-screen frames keep a small level.
+   */
+  function previewTargets(): PreviewTarget[] {
+    const ranked = overlay.map((entry) => {
+      const shape = frameShape(scene, entry);
+      if (shape?.kind !== "poly" || !polygonOnScreen(shape.pts, vp, 0)) {
+        return { entry, level: 512, rank: Infinity };
+      }
+      const [tl, tr, , bl] = shape.pts;
+      const side = Math.max(
+        Math.hypot(tr[0] - tl[0], tr[1] - tl[1]),
+        Math.hypot(bl[0] - tl[0], bl[1] - tl[1]),
+      );
+      return {
+        entry,
+        level: levelFor(side, dpr),
+        rank: Math.hypot(shape.cx - vp.w / 2, shape.cy - vp.h / 2),
+      };
+    });
+    ranked.sort((a, b) => a.rank - b.rank);
+    return ranked.map(({ entry, level }) => ({ entry, level }));
+  }
+
+  // Previews follow the overlay at once, and the camera once it settles.
+  let previewTimer: ReturnType<typeof setTimeout> | null = null;
+  let syncedOverlay: app.AtlasIndexEntry[] | null = null;
   $effect(() => {
-    previews.sync(overlay);
+    void vp;
+    void dpr;
+    void cacheVersion; // frame sizes arriving change footprints
+    const o = overlay;
+    if (previewTimer) clearTimeout(previewTimer);
+    if (o !== syncedOverlay) {
+      syncedOverlay = o;
+      untrack(() => previews.sync(previewTargets()));
+      return;
+    }
+    if (!active) return;
+    previewTimer = setTimeout(() => previews.sync(previewTargets()), 150);
   });
 
   // Frame sizes for footprints: fetched for frames in view once the camera settles.
@@ -349,7 +392,7 @@
       previews.retry(e.nasPath);
       if (!everythingShown) {
         overlayPaths = [e.nasPath];
-        previews.sync(overlay);
+        previews.sync(previewTargets());
       }
       sizeQueue.request([e.nasPath, ...framesNeedingSize(scene)]);
     });
@@ -652,8 +695,19 @@
     } catch (err) {
       if (seq === loadSeq) loadError = String(err);
     } finally {
-      if (seq === loadSeq) loading = false;
+      if (seq === loadSeq) {
+        loading = false;
+        signalReady();
+      }
     }
+  }
+
+  let readySignalled = false;
+  /** Tells the app the Atlas is up, once its first frame has been painted. */
+  function signalReady() {
+    if (readySignalled || !onready) return;
+    readySignalled = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => onready?.()));
   }
 
   // (Re)load whenever the library root changes — including the first mount.

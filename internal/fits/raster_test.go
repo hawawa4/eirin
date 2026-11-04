@@ -2,7 +2,6 @@ package fits
 
 import (
 	"bytes"
-	"encoding/base64"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -44,73 +43,25 @@ func writeRaster(t *testing.T, name string, w, h int) string {
 	return path
 }
 
-// decodeDataURL splits a data URL into its MIME type and decoded image.
-func decodeDataURL(t *testing.T, url string) (string, []byte, image.Image) {
-	t.Helper()
-	mime, b64, ok := strings.Cut(strings.TrimPrefix(url, "data:"), ";base64,")
-	if !ok {
-		t.Fatalf("not a base64 data URL: %.40s", url)
-	}
-	data, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("decode %s: %v", mime, err)
-	}
-	return mime, data, img
-}
-
-func TestRasterDataURLPassesPNGAndJPEGThrough(t *testing.T) {
-	for name, want := range map[string]string{"a.png": "image/png", "b.jpg": "image/jpeg", "c.JPEG": "image/jpeg"} {
-		path := writeRaster(t, name, 40, 30)
-		url, err := RasterDataURL(path)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		mime, data, _ := decodeDataURL(t, url)
-		orig, _ := os.ReadFile(path)
-		if mime != want || !bytes.Equal(data, orig) {
-			t.Errorf("%s: got %s (%d bytes), want %s with the original %d bytes", name, mime, len(data), want, len(orig))
-		}
-	}
-}
-
-func TestRasterDataURLConvertsTIFF(t *testing.T) {
-	url, err := RasterDataURL(writeRaster(t, "a.tif", 40, 30))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mime, _, img := decodeDataURL(t, url)
-	if mime != "image/png" || img.Bounds().Dx() != 40 || img.Bounds().Dy() != 30 {
-		t.Errorf("got %s %v, want a 40x30 PNG", mime, img.Bounds())
-	}
-}
-
-func TestRenderRasterPreviewDownscales(t *testing.T) {
+func TestRenderRasterDownscales(t *testing.T) {
 	for _, name := range []string{"big.png", "big.tiff", "big.jpg"} {
-		p, err := RenderRasterPreview(writeRaster(t, name, 200, 100), 64)
+		img, err := RenderRaster(writeRaster(t, name, 200, 100), 64)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		mime, _, img := decodeDataURL(t, p.DataURL)
-		if mime != "image/jpeg" || p.Width != 64 || p.Height != 32 || img.Bounds().Dx() != 64 {
-			t.Errorf("%s: got %s %dx%d (image %v), want a 64x32 JPEG", name, mime, p.Width, p.Height, img.Bounds())
+		if b := img.Bounds(); b.Dx() != 64 || b.Dy() != 32 {
+			t.Errorf("%s: got %v, want 64x32", name, b)
 		}
 	}
 }
 
-func TestRenderRasterPreviewKeepsSmallJPEG(t *testing.T) {
-	path := writeRaster(t, "small.jpg", 50, 40)
-	p, err := RenderRasterPreview(path, 64)
+func TestRenderRasterNative(t *testing.T) {
+	img, err := RenderRaster(writeRaster(t, "a.tif", 40, 30), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, data, _ := decodeDataURL(t, p.DataURL)
-	orig, _ := os.ReadFile(path)
-	if !bytes.Equal(data, orig) || p.Width != 50 || p.Height != 40 {
-		t.Errorf("small JPEG re-encoded or wrong size: %dx%d", p.Width, p.Height)
+	if b := img.Bounds(); b.Dx() != 40 || b.Dy() != 30 {
+		t.Errorf("got %v, want the native 40x30", b)
 	}
 }
 
@@ -119,11 +70,11 @@ func TestRasterUnreadable(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("not an image"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RenderRasterPreview(bad, 64); err == nil {
-		t.Error("RenderRasterPreview of a broken file succeeded")
+	if _, err := RenderRaster(bad, 64); err == nil {
+		t.Error("RenderRaster of a broken file succeeded")
 	}
-	if _, err := RasterDataURL(filepath.Join(t.TempDir(), "missing.tif")); err == nil {
-		t.Error("RasterDataURL of a missing file succeeded")
+	if _, err := RenderRaster(filepath.Join(t.TempDir(), "missing.tif"), 0); err == nil {
+		t.Error("RenderRaster of a missing file succeeded")
 	}
 }
 

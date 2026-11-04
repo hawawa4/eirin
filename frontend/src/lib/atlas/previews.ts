@@ -1,76 +1,56 @@
 // ── Preview images for overlaid frames ──────────────────────────────────────
-// Previews are rendered once into offscreen canvases and drawn at footprint
-// size each frame. They are large (up to 2048 px RGBA), so the cache keeps the
-// overlaid frames plus a few recently viewed ones and evicts the rest.
+// Each overlaid frame asks for the preview level that matches its size on
+// screen (see targetLevels in SkyAtlas): small when zoomed out, sharper —
+// up to the native image — as the user zooms in. A frame with nothing to
+// show yet gets a small level first so it appears quickly, then the sharper
+// one replaces it. Decoded bitmaps are large, so the cache keeps the overlaid
+// frames plus a few recently viewed ones, and steps frames that no longer
+// need their resolution back down once it holds too many pixels.
 
 import type * as app from "$models/app";
-import { GeneratePreviewRawSized, LoadRasterImage } from "$app";
-import { renderStretched } from "../stretchPreview";
-import { isRasterFile } from "../utils";
+import { NATIVE, fetchBitmap, levelRank, previewUrl, stretchFor } from "../images";
 
 /** Extra (non-overlaid) previews kept around for quick re-selection. */
 const SPARE_PREVIEWS = 4;
-/** Previews fetched/decoded at the same time (a bulk overlay would otherwise flood the backend). */
-const MAX_CONCURRENT = 3;
-
+/** Previews fetched at the same time (a bulk overlay would otherwise flood the backend). */
+const MAX_CONCURRENT = 4;
+/** Level a frame with nothing on screen yet starts at. */
+const FIRST_LEVEL = 512;
 /**
- * Longest preview side for an overlay of `count` frames. Each preview is an
- * RGBA canvas (16 MB at 2048 px), so a bulk overlay trades resolution for
- * memory; shrinking the overlay again reloads the survivors at full size.
+ * Decoded pixels held before frames shown smaller than they're loaded are
+ * stepped down, and only the frame nearest the centre loads past TIGHT_LEVEL.
  */
-export function previewSizeFor(count: number): number {
-  if (count <= 6) return 2048;
-  if (count <= 24) return 1024;
-  return 512;
+const PIXEL_BUDGET = 120e6;
+const TIGHT_LEVEL = 2048;
+
+/** A frame's wanted preview level, in priority order. */
+export interface PreviewTarget {
+  entry: app.AtlasIndexEntry;
+  level: number;
 }
 
-function loadRaster(path: string, maxSize: number): Promise<HTMLCanvasElement> {
-  return LoadRasterImage(path).then(
-    (dataUrl: string) =>
-      new Promise<HTMLCanvasElement>((resolve, reject) => {
-        const imgEl = new Image();
-        imgEl.onload = () => {
-          const k = Math.min(1, maxSize / Math.max(imgEl.naturalWidth, imgEl.naturalHeight));
-          const c = document.createElement("canvas");
-          c.width = Math.max(1, Math.round(imgEl.naturalWidth * k));
-          c.height = Math.max(1, Math.round(imgEl.naturalHeight * k));
-          c.getContext("2d")!.drawImage(imgEl, 0, 0, c.width, c.height);
-          resolve(c);
-        };
-        imgEl.onerror = () => reject(new Error("could not decode image"));
-        imgEl.src = dataUrl;
-      }),
-  );
+interface Loaded {
+  bmp: ImageBitmap;
+  level: number;
 }
 
-async function loadFits(entry: app.AtlasIndexEntry, maxSize: number): Promise<HTMLCanvasElement> {
-  // Rows arrive top-down (the Go side flips FITS' bottom-up row order).
-  const result = await GeneratePreviewRawSized(entry.nasPath, maxSize);
-  const bin = atob(result.data);
-  const u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  const f32 = new Float32Array(u8.buffer);
-  const linear = entry.frameType === "processed" || entry.frameType === "image";
-  return renderStretched(
-    f32,
-    result.width,
-    result.height,
-    result.channels,
-    result.stats,
-    result.balance,
-    linear ? 0 : 2,
-  );
+interface Load {
+  entry: app.AtlasIndexEntry;
+  level: number;
+  /** A replacement for an image already shown (not a first load). */
+  upgrade: boolean;
+  ctrl: AbortController;
 }
 
 export class PreviewCache {
-  private readonly images = new Map<string, HTMLCanvasElement>();
-  private readonly loading = new Set<string>();
-  private readonly failed = new Set<string>();
-  /** Longest side each cached image was loaded at. */
-  private readonly loadedSize = new Map<string, number>();
-  /** Loads waiting for a free slot, in priority order. */
-  private queue: { entry: app.AtlasIndexEntry; size: number }[] = [];
+  private readonly images = new Map<string, Loaded>();
+  /** Queued or running loads, one per path. */
+  private readonly loads = new Map<string, Load>();
+  private queue: Load[] = [];
   private running = 0;
+  private readonly failed = new Set<string>();
+  /** Targets of the last sync, by path. */
+  private wanted = new Map<string, PreviewTarget>();
   /** Most-recently-used order (last = newest). */
   private lru: string[] = [];
 
@@ -79,16 +59,20 @@ export class PreviewCache {
     private readonly onError: (entry: app.AtlasIndexEntry, err: unknown) => void,
   ) {}
 
-  get(path: string): HTMLCanvasElement | undefined {
-    return this.images.get(path);
+  get(path: string): ImageBitmap | undefined {
+    return this.images.get(path)?.bmp;
   }
 
+  /** Nothing is shown for `path` yet, but it's on its way. */
   isLoading(path: string): boolean {
-    return this.loading.has(path);
+    return this.loads.has(path) && !this.images.has(path);
   }
 
+  /** Frames waiting for their first image (sharper replacements aren't counted). */
   get loadingCount(): number {
-    return this.loading.size;
+    let n = 0;
+    for (const p of this.loads.keys()) if (!this.images.has(p)) n++;
+    return n;
   }
 
   /** Allows a previously failed preview to be retried (e.g. the user clicked it again). */
@@ -96,82 +80,145 @@ export class PreviewCache {
     this.failed.delete(path);
   }
 
-  /** Ensures previews for `entries` are loaded/loading, and trims the cache. */
-  sync(entries: app.AtlasIndexEntry[]): void {
-    const wanted = new Set(entries.map((e) => e.nasPath));
-    const size = previewSizeFor(entries.length);
-    // Drop queued loads nobody wants any more (the overlay changed under them).
-    const dropped = this.queue.filter((q) => !wanted.has(q.entry.nasPath));
-    if (dropped.length > 0) {
-      this.queue = this.queue.filter((q) => wanted.has(q.entry.nasPath));
-      for (const q of dropped) this.loading.delete(q.entry.nasPath);
-      this.onChange();
+  /** Loads what `targets` need, drops what nobody wants, and trims the cache. */
+  sync(targets: PreviewTarget[]): void {
+    // Short of memory, only the most important frame gets past TIGHT_LEVEL.
+    if (this.overBudget()) {
+      targets = targets.map((t, i) =>
+        i > 0 && levelRank(t.level) > TIGHT_LEVEL ? { ...t, level: TIGHT_LEVEL } : t,
+      );
     }
-    for (const e of entries) {
-      const path = e.nasPath;
-      this.touch(path);
-      if (this.loading.has(path) || this.failed.has(path)) continue;
-      const have = this.loadedSize.get(path);
-      if (this.images.has(path) && (have === undefined || have >= size)) continue;
-      this.enqueue(e, size);
+    this.wanted = new Map(targets.map((t) => [t.entry.nasPath, t]));
+    let changed = false;
+
+    // Loads nobody wants any more (the overlay changed under them).
+    for (const [path, load] of this.loads) {
+      if (!this.wanted.has(path)) {
+        this.cancel(path, load);
+        changed = true;
+      }
     }
-    // Evict least-recently-used previews that aren't overlaid, beyond the spare budget.
-    const spare = this.lru.filter((p) => !wanted.has(p) && this.images.has(p));
-    for (const p of spare.slice(0, Math.max(0, spare.length - SPARE_PREVIEWS))) {
-      this.images.delete(p);
-      this.loadedSize.delete(p);
-      this.lru = this.lru.filter((x) => x !== p);
+
+    for (const t of targets) {
+      this.touch(t.entry.nasPath);
+      if (this.request(t)) changed = true;
     }
+    if (this.trim()) changed = true;
+    // Most important first: first loads, then in target order.
+    const order = new Map(targets.map((t, i) => [t.entry.nasPath, i]));
+    this.queue.sort(
+      (a, b) =>
+        Number(a.upgrade) - Number(b.upgrade) ||
+        (order.get(a.entry.nasPath) ?? 0) - (order.get(b.entry.nasPath) ?? 0),
+    );
+    this.pump();
+    if (changed) this.onChange();
   }
 
   clear(): void {
+    for (const [path, load] of this.loads) this.cancel(path, load);
+    for (const { bmp } of this.images.values()) bmp.close();
     this.images.clear();
-    this.loading.clear();
     this.failed.clear();
-    this.loadedSize.clear();
+    this.wanted.clear();
     this.queue = [];
     this.lru = [];
     this.onChange();
   }
 
-  private touch(path: string): void {
-    this.lru = this.lru.filter((p) => p !== path);
-    this.lru.push(path);
+  /** Queues the load `t` needs next, if any. Returns whether anything changed. */
+  private request(t: PreviewTarget): boolean {
+    const path = t.entry.nasPath;
+    if (this.failed.has(path)) return false;
+    const have = this.images.get(path);
+    const level =
+      have || levelRank(t.level) <= FIRST_LEVEL
+        ? t.level
+        : Math.min(FIRST_LEVEL, levelRank(t.level));
+    if (have && have.level === level) return false;
+    // Already sharp enough, unless it's a step down to save memory (see trim).
+    if (have && levelRank(have.level) > levelRank(level) && !this.overBudget()) return false;
+    const pending = this.loads.get(path);
+    if (pending) {
+      if (pending.level === level) return false;
+      this.cancel(path, pending); // a sharper (or smaller) one is wanted now
+    }
+    const load: Load = { entry: t.entry, level, upgrade: !!have, ctrl: new AbortController() };
+    this.loads.set(path, load);
+    this.queue.push(load);
+    return true;
   }
 
-  private enqueue(entry: app.AtlasIndexEntry, size: number): void {
-    this.loading.add(entry.nasPath);
-    this.queue.push({ entry, size });
-    this.onChange();
-    this.pump();
+  private cancel(path: string, load: Load): void {
+    load.ctrl.abort();
+    this.loads.delete(path);
+    this.queue = this.queue.filter((q) => q !== load);
+  }
+
+  private overBudget(): boolean {
+    let px = 0;
+    for (const { bmp } of this.images.values()) px += bmp.width * bmp.height;
+    return px > PIXEL_BUDGET;
+  }
+
+  /** Evicts spare previews beyond the budget. Returns whether anything was dropped. */
+  private trim(): boolean {
+    const spare = this.lru.filter((p) => !this.wanted.has(p) && this.images.has(p));
+    const drop = spare.slice(0, Math.max(0, spare.length - SPARE_PREVIEWS));
+    for (const p of drop) {
+      this.images.get(p)?.bmp.close();
+      this.images.delete(p);
+    }
+    if (drop.length > 0) {
+      const gone = new Set(drop);
+      this.lru = this.lru.filter((p) => !gone.has(p));
+    }
+    return drop.length > 0;
+  }
+
+  private touch(path: string): void {
+    const i = this.lru.indexOf(path);
+    if (i >= 0) this.lru.splice(i, 1);
+    this.lru.push(path);
   }
 
   private pump(): void {
     while (this.running < MAX_CONCURRENT && this.queue.length > 0) {
-      const { entry, size } = this.queue.shift()!;
-      this.run(entry, size);
+      this.run(this.queue.shift()!);
     }
   }
 
-  private run(entry: app.AtlasIndexEntry, size: number): void {
+  private run(load: Load): void {
+    const { entry, level, ctrl } = load;
     const path = entry.nasPath;
     this.running++;
-    const p = isRasterFile(path) ? loadRaster(path, size) : loadFits(entry, size);
-    p.then((c) => {
-      if (!this.loading.has(path)) return;
-      this.images.set(path, c);
-      this.loadedSize.set(path, size);
-    })
+    fetchBitmap(previewUrl(path, level, stretchFor(entry.frameType)), ctrl.signal)
+      .then((bmp) => {
+        if (this.loads.get(path) !== load) {
+          bmp.close(); // cancelled or superseded meanwhile
+          return;
+        }
+        this.images.get(path)?.bmp.close();
+        // Smaller than the level asked for: that's the whole image, nothing sharper exists.
+        const whole = Math.max(bmp.width, bmp.height) < levelRank(level);
+        this.images.set(path, { bmp, level: whole ? NATIVE : level });
+      })
       .catch((err: unknown) => {
-        if (!this.loading.has(path)) return;
-        this.failed.add(path);
-        this.onError(entry, err);
+        if (ctrl.signal.aborted || this.loads.get(path) !== load) return;
+        // A failed sharper version leaves the shown one; a failed first load is reported.
+        if (!this.images.has(path)) {
+          this.failed.add(path);
+          this.onError(entry, err);
+        }
       })
       .finally(() => {
         this.running--;
-        this.loading.delete(path);
-        this.onChange();
+        if (this.loads.get(path) === load) this.loads.delete(path);
+        // The frame may want a sharper level now that something is shown.
+        const t = this.wanted.get(path);
+        if (t && !ctrl.signal.aborted) this.request(t);
         this.pump();
+        this.onChange();
       });
   }
 }

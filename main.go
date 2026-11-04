@@ -25,7 +25,8 @@ func main() {
 			application.NewService(a),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.BundledAssetFileServer(assets),
+			Handler:    application.BundledAssetFileServer(assets),
+			Middleware: app.AssetMiddleware(a),
 		},
 	})
 

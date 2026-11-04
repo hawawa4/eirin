@@ -42,10 +42,7 @@ func TestServerRefusesPathsOutsideLibrary(t *testing.T) {
 	calls := map[string]func() error{
 		"ReadFITSHeader":          func() error { _, err := a.ReadFITSHeader(other); return err },
 		"GeneratePreview":         func() error { _, err := a.GeneratePreview(other, 2); return err },
-		"GeneratePreviewRawSized": func() error { _, err := a.GeneratePreviewRawSized(other, 0); return err },
-		"LoadRasterImage":         func() error { _, err := a.LoadRasterImage(other); return err },
-		"GetAtlasFrameSize":       func() error { _, err := a.GetAtlasFrameSize(other); return err },
-		"GetViewerPreview":        func() error { _, err := a.GetViewerPreview(other, 2); return err },
+		"atlasFrameSize":          func() error { _, err := a.atlasFrameSize(other); return err },
 		"ListDirectory":           func() error { _, err := a.ListDirectory(dir); return err },
 		"ListDirectoryEnriched":   func() error { _, err := a.ListDirectoryEnriched(dir); return err },
 	}

@@ -221,19 +221,12 @@ func TestRasterPreviewOfFloatTIFF(t *testing.T) {
 	if err := os.WriteFile(path, floatTIFF(t, binary.LittleEndian, 100, 50, 3, vals, true, 7), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p, err := RenderRasterPreview(path, 40)
+	img, err := RenderRaster(path, 40)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Width != 40 || p.Height != 20 {
-		t.Errorf("preview %dx%d, want 40x20", p.Width, p.Height)
-	}
-	url, err := RasterDataURL(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mime, _, img := decodeDataURL(t, url); mime != "image/png" || img.Bounds().Dx() != 100 {
-		t.Errorf("RasterDataURL: %s %v, want a 100-wide PNG", mime, img.Bounds())
+	if b := img.Bounds(); b.Dx() != 40 || b.Dy() != 20 {
+		t.Errorf("preview %v, want 40x20", b)
 	}
 }
 

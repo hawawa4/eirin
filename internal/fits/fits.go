@@ -1,9 +1,7 @@
 package fits
 
 import (
-	"fmt"
 	"math"
-	"os"
 
 	fitsio "codeberg.org/astrogo/fitsio"
 )
@@ -12,27 +10,27 @@ import (
 // Multiple keyword aliases are tried for each field (e.g. EXPTIME vs EXPOSURE)
 // to cover different camera conventions.
 type FITSHeader struct {
-	Width      int            `json:"width"`
-	Height     int            `json:"height"`
-	Channels   int            `json:"channels"`
-	BitPix     int            `json:"bitpix"`
-	Object     string         `json:"object"`
-	Telescope  string         `json:"telescope"`
-	Instrument string         `json:"instrument"`
-	Filter     string         `json:"filter"`
-	ExpTime    float64        `json:"exptime"`
-	DateObs    string         `json:"dateObs"`
-	Gain       float64        `json:"gain"`
-	Offset     float64        `json:"offset"`
-	CCDTemp    float64        `json:"ccdTemp"`
-	RA         float64        `json:"ra"`
-	Dec        float64        `json:"dec"`
-	XBinning   int            `json:"xbinning"`
-	YBinning   int            `json:"ybinning"`
-	FocalLen   float64        `json:"focalLen"`
-	SiteElev   float64        `json:"siteElev"`
-	SiteLat    float64        `json:"siteLat"`
-	SiteLong   float64        `json:"siteLong"`
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	Channels   int     `json:"channels"`
+	BitPix     int     `json:"bitpix"`
+	Object     string  `json:"object"`
+	Telescope  string  `json:"telescope"`
+	Instrument string  `json:"instrument"`
+	Filter     string  `json:"filter"`
+	ExpTime    float64 `json:"exptime"`
+	DateObs    string  `json:"dateObs"`
+	Gain       float64 `json:"gain"`
+	Offset     float64 `json:"offset"`
+	CCDTemp    float64 `json:"ccdTemp"`
+	RA         float64 `json:"ra"`
+	Dec        float64 `json:"dec"`
+	XBinning   int     `json:"xbinning"`
+	YBinning   int     `json:"ybinning"`
+	FocalLen   float64 `json:"focalLen"`
+	SiteElev   float64 `json:"siteElev"`
+	SiteLat    float64 `json:"siteLat"`
+	SiteLong   float64 `json:"siteLong"`
 	// WCS-derived pixel scale in arcsec/pixel and field rotation in degrees.
 	// Non-zero only when the header contains usable WCS keywords.
 	PixelScale float64        `json:"pixelScale"`
@@ -47,43 +45,21 @@ type ChannelStats struct {
 	Sigma  float64 `json:"sigma"`
 }
 
-// RawPreviewData is returned by GeneratePreviewRawSized. The pixel data is a
-// base64-encoded little-endian float32 array in RGBA interleaved order
-// (R,G,B,1.0 per pixel, row-major, top-left origin). All channels share one
-// [0,1] normalisation (black at 0), so the camera's raw colour is kept; the
-// frontend multiplies by Balance and applies the linked stretch from Stats
-// (see stretch.go and frontend/src/lib/stretchPreview.ts).
-type RawPreviewData struct {
-	Data     string         `json:"data"`
-	Width    int            `json:"width"`
-	Height   int            `json:"height"`
-	Channels int            `json:"channels"` // 1 = mono, 3 = colour
-	Stats    []ChannelStats `json:"stats"`
-	// Balance holds per-channel gains that neutralise the sky background
-	// (all 1 for mono). Applied only when stretching.
-	Balance []float64 `json:"balance"`
-}
-
-
 // ── Implementation ────────────────────────────────────────────────────────────
 
+// ReadFITSHeader reads the primary header only; the pixel data is never read.
 func ReadFITSHeader(path string) (*FITSHeader, error) {
-	f, err := openFITS(path)
+	ph, err := readPrimaryHeader(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	return headerOf(ph), nil
+}
 
-	hdu := f.HDU(0)
-	if hdu == nil {
-		return nil, fmt.Errorf("no HDU in %s", path)
-	}
-	img, ok := hdu.(fitsio.Image)
-	if !ok {
-		return nil, fmt.Errorf("primary HDU is not an image")
-	}
-	hdr := img.Header()
-	axes := hdr.Axes()
+// headerOf builds the FITSHeader of a parsed primary header.
+func headerOf(ph *primaryHeader) *FITSHeader {
+	hdr := ph.hdr
+	axes := ph.axes
 
 	w, h, ch := 0, 0, 1
 	if len(axes) >= 1 {
@@ -130,7 +106,7 @@ func ReadFITSHeader(path string) (*FITSHeader, error) {
 		Width:      w,
 		Height:     h,
 		Channels:   ch,
-		BitPix:     hdr.Bitpix(),
+		BitPix:     ph.bitpix,
 		Object:     cardStr(hdr, "OBJECT"),
 		Telescope:  cardStr(hdr, "TELESCOP"),
 		Instrument: cardStr(hdr, "INSTRUME"),
@@ -151,127 +127,7 @@ func ReadFITSHeader(path string) (*FITSHeader, error) {
 		PixelScale: pixelScale,
 		Rotation:   rotation,
 		Extra:      extra,
-	}, nil
-}
-
-// ── Pixel readers ─────────────────────────────────────────────────────────────
-
-func openFITS(path string) (*fitsio.File, error) {
-	r, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	f, err := fitsio.Open(r)
-	if err != nil {
-		_ = r.Close()
-		return nil, fmt.Errorf("parse FITS %s: %w", path, err)
-	}
-	return f, nil
-}
-
-// readPixelsAsFloat64 reads all FITS pixels into float64 and applies BSCALE/BZERO.
-//
-// fitsio.Image.Read calls reflect.Value.SetLen(n) on the slice we pass in, which
-// panics when n > cap (i.e. for any nil/var-declared slice). Pre-allocating with
-// make avoids the panic.
-func readPixelsAsFloat64(img fitsio.Image, bscale, bzero float64) ([]float64, error) {
-	hdr := img.Header()
-	bitpix := hdr.Bitpix()
-
-	n := 1
-	for _, dim := range hdr.Axes() {
-		n *= dim
-	}
-	if n <= 0 {
-		return nil, fmt.Errorf("image has zero pixels")
-	}
-
-	switch bitpix {
-	case 8:
-		raw := make([]int8, n)
-		if err := img.Read(&raw); err != nil {
-			return nil, err
-		}
-		return applyScale8(raw, bscale, bzero), nil
-	case 16:
-		raw := make([]int16, n)
-		if err := img.Read(&raw); err != nil {
-			return nil, err
-		}
-		return applyScale16(raw, bscale, bzero), nil
-	case 32:
-		raw := make([]int32, n)
-		if err := img.Read(&raw); err != nil {
-			return nil, err
-		}
-		return applyScale32(raw, bscale, bzero), nil
-	case 64:
-		raw := make([]int64, n)
-		if err := img.Read(&raw); err != nil {
-			return nil, err
-		}
-		return applyScale64(raw, bscale, bzero), nil
-	case -32:
-		raw := make([]float32, n)
-		if err := img.Read(&raw); err != nil {
-			return nil, err
-		}
-		return applyScaleF32(raw, bscale, bzero), nil
-	case -64:
-		raw := make([]float64, n)
-		if err := img.Read(&raw); err != nil {
-			return nil, err
-		}
-		return applyScaleF64(raw, bscale, bzero), nil
-	default:
-		return nil, fmt.Errorf("unsupported BITPIX %d", bitpix)
-	}
-}
-
-func applyScale8(src []int8, s, z float64) []float64 {
-	out := make([]float64, len(src))
-	for i, v := range src {
-		out[i] = s*float64(v) + z
-	}
-	return out
-}
-func applyScale16(src []int16, s, z float64) []float64 {
-	out := make([]float64, len(src))
-	for i, v := range src {
-		out[i] = s*float64(v) + z
-	}
-	return out
-}
-func applyScale32(src []int32, s, z float64) []float64 {
-	out := make([]float64, len(src))
-	for i, v := range src {
-		out[i] = s*float64(v) + z
-	}
-	return out
-}
-func applyScale64(src []int64, s, z float64) []float64 {
-	out := make([]float64, len(src))
-	for i, v := range src {
-		out[i] = s*float64(v) + z
-	}
-	return out
-}
-func applyScaleF32(src []float32, s, z float64) []float64 {
-	out := make([]float64, len(src))
-	for i, v := range src {
-		out[i] = s*float64(v) + z
-	}
-	return out
-}
-func applyScaleF64(src []float64, s, z float64) []float64 {
-	if s == 1.0 && z == 0.0 {
-		return src
-	}
-	out := make([]float64, len(src))
-	for i, v := range src {
-		out[i] = s*v + z
-	}
-	return out
 }
 
 // ── Header card helpers ───────────────────────────────────────────────────────
@@ -367,14 +223,6 @@ func extractWCS(hdr *fitsio.Header) (pixelScale, rotation float64) {
 }
 
 // ── Misc helpers ──────────────────────────────────────────────────────────────
-
-func packF32(dst []byte, offset int, v float32) {
-	bits := math.Float32bits(v)
-	dst[offset+0] = byte(bits)
-	dst[offset+1] = byte(bits >> 8)
-	dst[offset+2] = byte(bits >> 16)
-	dst[offset+3] = byte(bits >> 24)
-}
 
 func toU8(v float64) uint8 {
 	if v <= 0 {
