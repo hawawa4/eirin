@@ -21,6 +21,11 @@ func main() {
 		Name:        "Eirin",
 		Description: "Astrophotography library manager",
 		Icon:        appIcon,
+		Linux: application.LinuxOptions{
+			// Wayland takes the window's app_id from this and matches it to
+			// eirin.desktop for the taskbar icon (window icons are ignored there).
+			ProgramName: "eirin",
+		},
 		Services: []application.Service{
 			application.NewService(a),
 		},
