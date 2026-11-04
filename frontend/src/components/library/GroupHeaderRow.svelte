@@ -176,11 +176,7 @@
 
   /* Centred in the 28px checkbox column, like the frame rows' boxes. */
   .group-check {
-    width: 28px;
-    flex-shrink: 0;
-    margin: 0 -6px 0 0;
-    accent-color: var(--accent);
-    cursor: pointer;
+    margin: 0 1px 0 7px;
   }
 
   .group-toggle {

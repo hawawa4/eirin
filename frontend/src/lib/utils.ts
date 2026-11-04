@@ -47,7 +47,7 @@ export function formatBytes(bytes: number): string {
 
 /** "1 frame", "3 frames" — `many` defaults to `one` + "s". */
 export function plural(n: number, one: string, many = one + "s"): string {
-  return `${n} ${n === 1 ? one : many}`;
+  return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 }
 
 /** Maps a library frame to the file-entry shape PreviewPane expects. */
