@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AppMode, Theme } from "../lib/types";
   import ModeSelector from "./ModeSelector.svelte";
+  import { MODES } from "../lib/shell/modes";
 
   interface Props {
     rootFolder: string;
@@ -20,6 +21,8 @@
     { id: "red", color: "#e07060", title: "Red (night) theme" },
     { id: "grey", color: "#9ba4b8", title: "Grey theme" },
   ];
+
+  const settingsHint = MODES.find((m) => m.value === "settings")?.hint ?? "";
 </script>
 
 <header>
@@ -45,6 +48,16 @@
         </button>
       {/each}
     </div>
+    <button
+      class="settings-btn"
+      class:active={appMode === "settings"}
+      aria-current={appMode === "settings" ? "page" : undefined}
+      onclick={() => onmodechange("settings")}
+      title="Settings — {settingsHint}"
+      aria-label="Settings"
+    >
+      <span aria-hidden="true">⚙</span>
+    </button>
   </div>
 </header>
 
@@ -89,7 +102,36 @@
     flex-shrink: 0;
     display: flex;
     align-items: center;
+    gap: 10px;
     -webkit-app-region: no-drag;
+  }
+
+  .settings-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-base);
+    color: var(--text-secondary);
+    font-size: var(--fs-lg);
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .settings-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-row-hover);
+  }
+  .settings-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-contrast);
   }
 
   .theme-toggle {

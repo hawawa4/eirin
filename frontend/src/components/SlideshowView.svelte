@@ -5,13 +5,16 @@
   import type * as app from "$models/app";
   import { GetLibraryFramesByType } from "$app";
   import { isModalOpen, isTypingTarget } from "../lib/keys";
-  import { isFits } from "../lib/utils";
+  import { isFits, isRasterFile } from "../lib/utils";
+  import { ui } from "../lib/uiState.svelte";
   import { Reel } from "../lib/reel.svelte";
   import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
   import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
   import { describeFrame } from "../lib/slideshow/frameInfo";
   import ReelControls from "./ReelControls.svelte";
   import FrameInfoCard from "./slideshow/FrameInfoCard.svelte";
+  import ActionMenu from "./ActionMenu.svelte";
+  import { fileMenuItems, type ActionMenuItem } from "../lib/shell/menu";
 
   interface Props {
     rootPath: string;
@@ -19,15 +22,82 @@
     active?: boolean;
     /** Desktop app: fullscreen is the native window rather than the browser's. */
     desktopMode?: boolean;
+    /** Request a library scan (empty state). */
+    onscan?: () => void;
+    onopeninlibrary?: (nasPath: string) => void;
+    onshowonatlas?: (nasPath: string) => void;
   }
 
-  let { rootPath, active = true, desktopMode = false }: Props = $props();
+  let {
+    rootPath,
+    active = true,
+    desktopMode = false,
+    onscan,
+    onopeninlibrary,
+    onshowonatlas,
+  }: Props = $props();
+
+  // ── Right-click menu ──────────────────────────────────────────────────────
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function openMenu(e: MouseEvent) {
+    e.preventDefault();
+    const f = reel.current;
+    if (!f) return;
+    const other = format === "fits" ? "PNG" : "FITS";
+    const items: ActionMenuItem[] = [
+      { heading: f.object || f.fileName },
+      {
+        label: reel.playing ? "Pause" : "Play",
+        hint: "Space",
+        primary: true,
+        run: () => reel.toggle(),
+      },
+      { label: "Next", hint: "→", run: () => reel.next() },
+      { label: "Previous", hint: "←", run: () => reel.prev() },
+      {
+        label: `Show ${other} images`,
+        hint: "P",
+        disabledReason: otherCount === 0 ? `No ${other} images` : undefined,
+        run: () => setFormat(format === "fits" ? "png" : "fits"),
+      },
+      {
+        label: immersive.on ? "Leave fullscreen" : "Fullscreen",
+        hint: "F",
+        run: () => toggleImmersive(desktopMode),
+      },
+      { separator: true },
+      ...fileMenuItems({
+        path: f.nasPath,
+        desktop: desktopMode,
+        onopeninlibrary: onopeninlibrary ? () => onopeninlibrary(f.nasPath) : undefined,
+        onshowonatlas:
+          onshowonatlas && f.ra !== 0 && f.pixelScale !== 0
+            ? () => onshowonatlas(f.nasPath)
+            : undefined,
+      }),
+    ];
+    menu = { x: e.clientX, y: e.clientY, items };
+  }
 
   /** Processed images are finished pictures: shown as they are, never stretched. */
   const STRETCH_LEVEL = 0;
   const FADE_MS = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 1400;
 
-  let frames = $state.raw<app.LibraryFrame[]>([]);
+  /** Final images by format; the slideshow shows one set, never both. */
+  let fitsFrames = $state.raw<app.LibraryFrame[]>([]);
+  let pngFrames = $state.raw<app.LibraryFrame[]>([]);
+  let format = $derived<"fits" | "png">(
+    ui.slideshowFormat ?? (fitsFrames.length > 0 || pngFrames.length === 0 ? "fits" : "png"),
+  );
+  let frames = $derived(format === "fits" ? fitsFrames : pngFrames);
+  let otherCount = $derived(format === "fits" ? pngFrames.length : fitsFrames.length);
+
+  function setFormat(f: "fits" | "png") {
+    if (f === format) return;
+    ui.slideshowFormat = f;
+    reel.index = 0;
+  }
   let loading = $state(true);
   let loadError = $state("");
   const reel = new Reel<app.LibraryFrame>(() => frames);
@@ -98,11 +168,18 @@
       return;
     }
     try {
-      const result = (await GetLibraryFramesByType(rootPath, "processed")) ?? [];
+      const [processed, images] = await Promise.all([
+        GetLibraryFramesByType(rootPath, "processed"),
+        GetLibraryFramesByType(rootPath, "image"),
+      ]);
       if (seq !== loadSeq) return;
       const keep = reel.current?.nasPath;
-      // Only the processed FITS: the PNG/JPEG/TIFF exports are renderings of those.
-      frames = result.filter((f) => !f.isRejected && isFits(f.fileName)).sort(byObjectThenName);
+      const all = [...(processed ?? []), ...(images ?? [])].filter((f) => !f.isRejected);
+      // Processed FITS, or the PNG/JPEG/TIFF exports — the same pictures rendered twice.
+      fitsFrames = all
+        .filter((f) => f.frameType === "processed" && isFits(f.fileName))
+        .sort(byObjectThenName);
+      pngFrames = all.filter((f) => isRasterFile(f.fileName)).sort(byObjectThenName);
       // A library update shouldn't throw the viewer back to the first picture.
       const i = keep ? frames.findIndex((f) => f.nasPath === keep) : -1;
       reel.index = Math.max(0, i);
@@ -155,7 +232,7 @@
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   function onKeydown(e: KeyboardEvent) {
-    if (!active || isTypingTarget(e) || isModalOpen()) return;
+    if (!active || isTypingTarget(e) || isModalOpen() || menu) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.key) {
       case " ":
@@ -174,6 +251,11 @@
       case "r":
       case "R":
         toggleRotate();
+        break;
+      case "p":
+      case "P":
+        if (otherCount === 0) return;
+        setFormat(format === "fits" ? "png" : "fits");
         break;
       case "Escape":
         if (!immersive.on) return;
@@ -194,6 +276,7 @@
   bind:clientWidth={areaW}
   bind:clientHeight={areaH}
   ondblclick={() => toggleImmersive(desktopMode)}
+  oncontextmenu={openMenu}
   role="presentation"
 >
   {#if shown}
@@ -220,10 +303,27 @@
     <p class="note" role="status">Loading images…</p>
   {:else if loadError}
     <p class="note error" role="alert">Couldn't load the library: {loadError}</p>
+  {:else if frames.length === 0 && otherCount > 0}
+    <div class="note">
+      <p class="note-title">No {format === "fits" ? "FITS" : "PNG"} images</p>
+      <p>
+        {otherCount}
+        {format === "fits" ? "PNG / JPEG / TIFF export" : "processed FITS image"}{otherCount === 1
+          ? ""
+          : "s"} can be shown instead.
+      </p>
+      <button class="note-btn" onclick={() => setFormat(format === "fits" ? "png" : "fits")}
+        >Show {format === "fits" ? "PNG" : "FITS"}</button
+      >
+    </div>
   {:else if frames.length === 0}
     <div class="note">
       <p class="note-title">No processed images yet</p>
-      <p>The slideshow shows every processed FITS image in your library.</p>
+      <p>
+        The slideshow shows your processed images: files with “processed”, “final” or “hero” in the
+        name, and exported PNG / JPEG / TIFF pictures.
+      </p>
+      {#if onscan}<button class="note-btn" onclick={onscan}>Scan library</button>{/if}
     </div>
   {:else if !shown && !slideError}
     <p class="note" role="status">Loading image…</p>
@@ -235,6 +335,12 @@
 
   {#if frames.length > 0}
     <ReelControls
+      format={{
+        value: format,
+        fitsCount: fitsFrames.length,
+        pngCount: pngFrames.length,
+        onchange: setFormat,
+      }}
       {reel}
       fullscreen={immersive.on}
       onfullscreen={() => toggleImmersive(desktopMode)}
@@ -245,6 +351,10 @@
     />
   {/if}
 </div>
+
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
 
 <style>
   .slideshow {
@@ -310,6 +420,19 @@
   .note-title {
     font-size: var(--fs-xl);
     color: #e8e8ea;
+  }
+  .note-btn {
+    margin-top: 10px;
+    padding: 6px 16px;
+    font-size: var(--fs-sm);
+    background: transparent;
+    color: #e8e8ea;
+    border: 1px solid #55555f;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .note-btn:hover {
+    border-color: #e8e8ea;
   }
   .note.error {
     color: #e07060;

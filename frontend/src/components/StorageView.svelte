@@ -1,10 +1,34 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import type * as app from "$models/app";
-  import { GetStorageStats, GetFrameTypeSummary } from "$app";
+  import {
+    GetLibraryFrames,
+    BatchRejectFiles,
+    BatchUnrejectFiles,
+    BatchHardDeleteFiles,
+  } from "$app";
+  import { Events } from "@wailsio/runtime";
   import { isTypingTarget, isModalOpen } from "../lib/keys";
   import { fmtFrames } from "../lib/storage/format";
-  import { formatBytes } from "../lib/utils";
+  import {
+    buildStorage,
+    commonFolder,
+    nodeAt,
+    validPrefix,
+    type StorageGroup,
+  } from "../lib/storage/tree";
+  import { formatBytes, plural } from "../lib/utils";
+  import { FRAME_TYPE_META, type FrameType } from "../lib/types";
+  import type { LibraryFocusFilter } from "../lib/library/filters";
+  import { forgetPreview } from "../lib/library/previewCache";
+  import { attempt, toast } from "../lib/toast.svelte";
+  import { openFolder } from "../lib/shell/fileActions";
+  import { copyPath } from "../lib/clipboard";
   import Treemap from "./storage/Treemap.svelte";
+  import ActionMenu from "./ActionMenu.svelte";
+  import type { ActionMenuItem } from "../lib/shell/menu";
+  import HardDeleteModal from "./HardDeleteModal.svelte";
 
   interface Props {
     rootPath: string;
@@ -12,76 +36,111 @@
     active?: boolean;
     /** Request a library (re)scan/index. */
     onscan?: () => void;
+    /** Open the Library filtered to a node's frames. */
+    onshowinlibrary?: (f: LibraryFocusFilter) => void;
+    /** Open the Library with these frames checked (for nodes a filter can't express). */
+    onselectinlibrary?: (paths: string[]) => void;
   }
 
-  let { rootPath, active = true, onscan }: Props = $props();
+  let { rootPath, active = true, onscan, onshowinlibrary, onselectinlibrary }: Props = $props();
 
   // ── Data ──────────────────────────────────────────────────────────────────
-  let root = $state<app.StorageNode | null>(null);
-  let typeSummary = $state<app.StorageNode[]>([]);
+  let frames = $state.raw<app.LibraryFrame[]>([]);
+  let loaded = $state(false);
   let loading = $state(false);
   let error = $state("");
-  let reloadKey = $state(0);
   let requestId = 0;
 
-  /** Drill-down path: labels from the root's children downwards. */
+  async function reload() {
+    const rp = rootPath;
+    if (!rp) return;
+    const id = ++requestId;
+    loading = true;
+    try {
+      const res = (await GetLibraryFrames(rp)) ?? [];
+      if (id !== requestId) return;
+      frames = res;
+      loaded = true;
+      error = "";
+    } catch (e) {
+      if (id !== requestId) return;
+      if (loaded) toast.error(`Couldn't refresh storage data: ${String(e)}`);
+      else error = String(e);
+    } finally {
+      if (id === requestId) loading = false;
+    }
+  }
+
+  $effect(() => {
+    void rootPath;
+    untrack(() => {
+      frames = [];
+      loaded = false;
+      error = "";
+      path = [];
+      reload();
+    });
+  });
+
+  // Picks up scans, imports, rejects and deletes made in other views. Only
+  // reloads while visible; switching back to the tab catches up.
+  let stale = false;
+  $effect(() => {
+    return Events.On("library:updated", () => {
+      if (active) reload();
+      else stale = true;
+    });
+  });
+  $effect(() => {
+    if (active && stale) {
+      stale = false;
+      untrack(reload);
+    }
+  });
+
+  // ── Lens: frame types / rejected only ─────────────────────────────────────
+  const types = new SvelteSet<string>();
+  let rejectedOnly = $state(false);
+
+  function toggleType(t: string, additive: boolean) {
+    if (!additive) {
+      const only = types.size === 1 && types.has(t);
+      types.clear();
+      if (!only) types.add(t);
+      return;
+    }
+    if (types.has(t)) types.delete(t);
+    else types.add(t);
+  }
+
+  function clearLens() {
+    types.clear();
+    rejectedOnly = false;
+  }
+
+  let summary = $derived(buildStorage(frames, types, rejectedOnly));
+  let total = $derived(frames.reduce((s, f) => s + f.fileSize, 0));
+  let lensActive = $derived(types.size > 0 || rejectedOnly);
+
+  // ── Drill-down ────────────────────────────────────────────────────────────
+  /** Labels from the root's children downwards. */
   let path = $state<string[]>([]);
   let hovered = $state<string | null>(null);
 
+  // A refresh or lens change can remove the node we're in; climb to what's left.
   $effect(() => {
-    const rp = rootPath;
-    void reloadKey;
-    if (!rp) {
-      root = null;
-      typeSummary = [];
-      error = "";
-      loading = false;
-      return;
-    }
-    const id = ++requestId;
-    loading = true;
-    error = "";
-    Promise.all([GetStorageStats(rp), GetFrameTypeSummary(rp)])
-      .then(([r, t]) => {
-        if (id !== requestId) return;
-        root = r;
-        typeSummary = t ?? [];
-        path = validPrefix(r, path);
-      })
-      .catch((e) => {
-        if (id !== requestId) return;
-        error = String(e);
-      })
-      .finally(() => {
-        if (id === requestId) loading = false;
-      });
+    const valid = validPrefix(
+      summary.root,
+      untrack(() => path),
+    );
+    if (valid.length !== untrack(() => path.length)) path = valid;
   });
 
-  /** Longest prefix of `p` that still exists in `tree` (after a refresh). */
-  function validPrefix(tree: app.StorageNode | null, p: string[]): string[] {
-    const out: string[] = [];
-    let node = tree;
-    for (const label of p) {
-      const next = node?.children?.find((c) => c.label === label);
-      if (!next?.children?.length) break;
-      out.push(label);
-      node = next;
-    }
-    return out;
-  }
-
-  let current = $derived.by(() => {
-    let node = root;
-    for (const label of path) node = node?.children?.find((c) => c.label === label) ?? node;
-    return node;
-  });
-  let levelNodes = $derived(
-    (current?.children ?? []).slice().sort((a, b) => b.totalBytes - a.totalBytes),
-  );
+  let current = $derived(nodeAt(summary.root, path) ?? summary.root);
+  let levelNodes = $derived(current.children ?? []);
   let levelTotal = $derived(levelNodes.reduce((s, n) => s + n.totalBytes, 0));
-  let hasData = $derived(!!root && (root.children?.length ?? 0) > 0);
 
-  function drill(node: app.StorageNode) {
+  function drill(node: StorageGroup) {
     if (!node.children?.length) return;
     hovered = null;
     path = [...path, node.label];
@@ -93,7 +152,7 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (active === false || path.length === 0) return;
+    if (active === false || path.length === 0 || menu || confirmDel) return;
     if (e.key !== "Backspace" && e.key !== "Escape") return;
     if (isTypingTarget(e) || isModalOpen()) return;
     e.preventDefault();
@@ -101,7 +160,136 @@
   }
 
   function typeLabel(t: string): string {
-    return t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown";
+    return FRAME_TYPE_META[t]?.label ?? (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
+  }
+
+  /** "M 31", "M 31 · 2026-03-25", "All objects". */
+  function nodeTitle(node: StorageGroup): string {
+    if (node === summary.root) return "All objects";
+    return node.date !== undefined
+      ? `${node.object || "Unknown object"} · ${node.label}`
+      : node.label;
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  function showInLibrary(node: StorageGroup, rejected = rejectedOnly) {
+    const isRoot = node === summary.root;
+    if (!isRoot && !node.object) {
+      // The Library's filters can't express "no object"; check the frames instead.
+      onselectinlibrary?.(rejected ? node.rejectedPaths : node.paths);
+      return;
+    }
+    onshowinlibrary?.({
+      object: isRoot ? undefined : node.object,
+      date: node.date || undefined,
+      types: [...types] as FrameType[],
+      rejected,
+    });
+  }
+
+  async function rejectNode(node: StorageGroup) {
+    const rejected = new Set(node.rejectedPaths);
+    const list = node.paths.filter((p) => !rejected.has(p));
+    if (list.length === 0) return;
+    const ok = await attempt(
+      async () => {
+        await BatchRejectFiles(list);
+        return true;
+      },
+      `Couldn't reject ${plural(list.length, "frame")}`,
+    );
+    await reload();
+    if (!ok) return;
+    toast.success(`Rejected ${plural(list.length, "frame")} in ${nodeTitle(node)}`, {
+      action: {
+        label: "Undo",
+        run: async () => {
+          await attempt(() => BatchUnrejectFiles(list), "Couldn't restore the frames");
+          await reload();
+        },
+      },
+    });
+  }
+
+  let confirmDel = $state<{ paths: string[]; name: string; count: number; bytes: number } | null>(
+    null,
+  );
+
+  function askDelete(node: StorageGroup, onlyRejected: boolean) {
+    const paths = onlyRejected ? node.rejectedPaths : node.paths;
+    if (paths.length === 0) return;
+    const what = onlyRejected ? "rejected frames" : "frames";
+    confirmDel = {
+      paths,
+      name: `${nodeTitle(node)} — ${paths.length.toLocaleString()} ${paths.length === 1 ? what.slice(0, -1) : what}`,
+      count: paths.length,
+      bytes: onlyRejected ? node.rejectedBytes : node.totalBytes,
+    };
+  }
+
+  async function confirmDelete() {
+    const target = confirmDel;
+    confirmDel = null;
+    if (!target) return;
+    const ok = await attempt(
+      async () => {
+        await BatchHardDeleteFiles(target.paths);
+        return true;
+      },
+      `Couldn't delete ${plural(target.paths.length, "file")}`,
+    );
+    for (const p of target.paths) forgetPreview(p);
+    await reload();
+    if (ok) {
+      toast.success(
+        `Deleted ${plural(target.paths.length, "file")} · ${formatBytes(target.bytes)} freed`,
+      );
+    }
+  }
+
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function openMenu(node: StorageGroup, x: number, y: number) {
+    const live = node.frameCount - node.rejectedPaths.length;
+    const folder = commonFolder(node.paths);
+    const items: ActionMenuItem[] = [
+      { heading: `${nodeTitle(node)} · ${formatBytes(node.totalBytes)}` },
+    ];
+    if (onshowinlibrary) {
+      items.push({ label: "Show in Library", primary: true, run: () => showInLibrary(node) });
+    }
+    if (node.children?.length && node !== current) {
+      items.push({ label: "Open nights", run: () => drill(node) });
+    }
+    if (folder) {
+      items.push(
+        { label: "Open folder", run: () => openFolder(folder) },
+        { label: "Copy folder path", run: () => copyPath(folder) },
+      );
+    }
+    items.push({ separator: true });
+    if (!rejectedOnly) {
+      items.push({
+        label: live > 0 ? `Reject ${plural(live, "frame")}` : "Reject frames",
+        disabledReason: live === 0 ? "Every frame here is already rejected" : undefined,
+        run: () => rejectNode(node),
+      });
+    }
+    if (node.rejectedPaths.length > 0) {
+      items.push({
+        label: `Delete ${plural(node.rejectedPaths.length, "rejected frame")} (${formatBytes(node.rejectedBytes)})…`,
+        danger: true,
+        run: () => askDelete(node, true),
+      });
+    }
+    if (!rejectedOnly) {
+      items.push({
+        label: `Delete all ${plural(node.frameCount, "frame")} (${formatBytes(node.totalBytes)})…`,
+        danger: true,
+        run: () => askDelete(node, false),
+      });
+    }
+    menu = { x, y, items };
   }
 </script>
 
@@ -110,17 +298,15 @@
 <div class="storage-view">
   <div class="storage-header">
     <h2 class="storage-title">Storage</h2>
-    {#if root && hasData}
-      <span class="storage-total"
-        >{formatBytes(root.totalBytes)} · {fmtFrames(root.frameCount)}</span
-      >
+    {#if loaded && frames.length > 0}
+      <span class="storage-total">{formatBytes(total)} · {fmtFrames(frames.length)}</span>
     {/if}
     <span class="spacer"></span>
-    {#if loading && root}
+    {#if loading && loaded}
       <span class="refreshing" role="status">Refreshing…</span>
     {/if}
     {#if rootPath}
-      <button class="btn-secondary" disabled={loading} onclick={() => reloadKey++}>Refresh</button>
+      <button class="btn-secondary" disabled={loading} onclick={reload}>Refresh</button>
     {/if}
   </div>
 
@@ -132,14 +318,14 @@
       </p>
       {#if onscan}<button class="btn-primary" onclick={onscan}>Scan library</button>{/if}
     </div>
-  {:else if loading && !root}
+  {:else if loading && !loaded}
     <div class="status">Loading storage data…</div>
   {:else if error}
     <div class="status error" role="alert">
       Couldn't load storage data: {error}
-      <button class="btn-secondary" onclick={() => reloadKey++}>Retry</button>
+      <button class="btn-secondary" onclick={reload}>Retry</button>
     </div>
-  {:else if !hasData}
+  {:else if frames.length === 0}
     <div class="empty">
       <p class="empty-title">No indexed frames yet</p>
       <p class="empty-sub">
@@ -148,16 +334,59 @@
       </p>
       {#if onscan}<button class="btn-primary" onclick={onscan}>Scan library</button>{/if}
     </div>
-  {:else if root}
-    {#if typeSummary.length > 0 && path.length === 0}
-      <div class="type-bar">
-        {#each typeSummary as t (t.label)}
-          <div class="type-chip">
-            <span class="type-label">{typeLabel(t.label)}</span>
-            <span class="type-size">{formatBytes(t.totalBytes)}</span>
-            <span class="type-count">{fmtFrames(t.frameCount)}</span>
-          </div>
-        {/each}
+  {:else}
+    <div class="lens" role="group" aria-label="Show only">
+      {#each summary.byType as t (t.type)}
+        {@const meta = FRAME_TYPE_META[t.type]}
+        <button
+          class="lens-chip"
+          class:active={types.has(t.type)}
+          style:--chip-color={meta?.color ?? "var(--text-secondary)"}
+          aria-pressed={types.has(t.type)}
+          onclick={(e) => toggleType(t.type, e.ctrlKey || e.metaKey || e.shiftKey)}
+          title="Show only {typeLabel(t.type).toLowerCase()} frames (Ctrl+click to combine)"
+        >
+          <span class="lens-dot" aria-hidden="true"></span>
+          <span class="lens-label">{typeLabel(t.type)}</span>
+          <span class="lens-size">{formatBytes(t.bytes)}</span>
+          <span class="lens-count">{t.count.toLocaleString()}</span>
+        </button>
+      {/each}
+      {#if summary.rejectedCount > 0}
+        <span class="lens-sep" aria-hidden="true"></span>
+        <button
+          class="lens-chip rejected"
+          class:active={rejectedOnly}
+          aria-pressed={rejectedOnly}
+          onclick={() => (rejectedOnly = !rejectedOnly)}
+          title="Show only rejected frames — the space you can free by deleting them"
+        >
+          <span class="lens-label">Rejected</span>
+          <span class="lens-size">{formatBytes(summary.rejectedBytes)}</span>
+          <span class="lens-count">{summary.rejectedCount.toLocaleString()}</span>
+        </button>
+      {/if}
+      {#if lensActive}
+        <button class="lens-clear" onclick={clearLens}>Show all</button>
+      {/if}
+    </div>
+
+    {#if rejectedOnly && summary.root.frameCount > 0}
+      <div class="reclaim" role="note">
+        <span>
+          <strong>{formatBytes(summary.root.totalBytes)}</strong> can be freed by deleting
+          {plural(summary.root.frameCount, "rejected frame")}{types.size > 0
+            ? " of these types"
+            : ""}.
+        </span>
+        {#if onshowinlibrary}
+          <button class="btn-secondary" onclick={() => showInLibrary(summary.root, true)}
+            >Review in Library</button
+          >
+        {/if}
+        <button class="btn-danger" onclick={() => askDelete(summary.root, true)}
+          >Delete all rejected…</button
+        >
       </div>
     {/if}
 
@@ -174,38 +403,94 @@
             <button class="crumb" onclick={() => goTo(i + 1)}>{label}</button>
           {/if}
         {/each}
-        <span class="crumb-hint">Backspace or Esc to go up</span>
+      {/if}
+      <span class="crumb-hint">
+        {path.length > 0
+          ? "Backspace to go up · "
+          : "Click an object to see its nights · "}Right-click a tile or row for actions
+      </span>
+      {#if path.length > 0}
+        <span class="spacer"></span>
+        <button class="btn-ghost small" onclick={(e) => openMenu(current, e.clientX, e.clientY)}
+          >Actions for {current.label} ▾</button
+        >
       {/if}
     </nav>
 
-    <Treemap nodes={levelNodes} {hovered} onhover={(l) => (hovered = l)} ondrill={drill} />
+    {#if levelNodes.length === 0}
+      <div class="status">Nothing matches this filter.</div>
+    {:else}
+      <Treemap
+        nodes={levelNodes}
+        {hovered}
+        onhover={(l) => (hovered = l)}
+        ondrill={drill}
+        onmenu={openMenu}
+      />
 
-    <ul class="object-list">
-      {#each levelNodes as node (node.label)}
-        {@const pct = levelTotal > 0 ? (node.totalBytes / levelTotal) * 100 : 0}
-        <li
-          class="object-row"
-          class:hovered={hovered === node.label}
-          onmouseenter={() => (hovered = node.label)}
-          onmouseleave={() => (hovered = null)}
-        >
-          {#if node.children?.length}
-            <button class="obj-label obj-link" onclick={() => drill(node)} title="Show {node.label}"
-              >{node.label}</button
+      <ul class="object-list">
+        {#each levelNodes as node (node.label)}
+          {@const pct = levelTotal > 0 ? (node.totalBytes / levelTotal) * 100 : 0}
+          {@const rejPct = levelTotal > 0 ? (node.rejectedBytes / levelTotal) * 100 : 0}
+          <li
+            class="object-row"
+            class:hovered={hovered === node.label}
+            onmouseenter={() => (hovered = node.label)}
+            onmouseleave={() => (hovered = null)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              openMenu(node, e.clientX, e.clientY);
+            }}
+          >
+            {#if node.children?.length}
+              <button
+                class="obj-label obj-link"
+                onclick={() => drill(node)}
+                title="Show the nights of {node.label}">{node.label}</button
+              >
+            {:else}
+              <span class="obj-label">{node.label}</span>
+            {/if}
+            <span class="obj-count">{fmtFrames(node.frameCount)}</span>
+            <div class="obj-bar-wrap" title="{pct.toFixed(1)}% of this level">
+              <div class="obj-bar" style:width="{pct}%"></div>
+              {#if rejPct > 0 && !rejectedOnly}
+                <div
+                  class="obj-bar-rej"
+                  style:left="{pct - rejPct}%"
+                  style:width="{rejPct}%"
+                  title="{formatBytes(node.rejectedBytes)} rejected"
+                ></div>
+              {/if}
+            </div>
+            <span class="obj-size">{formatBytes(node.totalBytes)}</span>
+            <button
+              class="row-menu"
+              aria-label="Actions for {node.label}"
+              title="Actions"
+              onclick={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                openMenu(node, r.left, r.bottom + 2);
+              }}>⋯</button
             >
-          {:else}
-            <span class="obj-label">{node.label}</span>
-          {/if}
-          <span class="obj-count">{fmtFrames(node.frameCount)}</span>
-          <div class="obj-bar-wrap" title="{pct.toFixed(1)}% of this level">
-            <div class="obj-bar" style:width="{pct}%"></div>
-          </div>
-          <span class="obj-size">{formatBytes(node.totalBytes)}</span>
-        </li>
-      {/each}
-    </ul>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   {/if}
 </div>
+
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
+
+{#if confirmDel}
+  <HardDeleteModal
+    target={confirmDel}
+    onconfirm={confirmDelete}
+    oncancel={() => (confirmDel = null)}
+  />
+{/if}
 
 <style>
   .storage-view {
@@ -240,9 +525,6 @@
   .refreshing {
     font-size: var(--fs-sm);
     color: var(--text-secondary);
-  }
-  .storage-header .btn-secondary {
-    margin-right: 0;
   }
 
   .status {
@@ -285,34 +567,91 @@
     color: var(--text-primary);
   }
 
-  /* ── Type summary ───────────────────────────────────────────────────── */
-  .type-bar {
+  /* ── Lens chips ─────────────────────────────────────────────────────── */
+  .lens {
     display: flex;
+    align-items: center;
     gap: 8px;
     flex-wrap: wrap;
     flex-shrink: 0;
   }
-  .type-chip {
+  .lens-chip {
     display: flex;
     align-items: baseline;
     gap: 8px;
     background: var(--bg-panel);
     border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 4px 10px;
+    border-radius: 6px;
+    padding: 5px 11px;
     font-size: var(--fs-sm);
-  }
-  .type-label {
     color: var(--text-primary);
+    cursor: pointer;
+    transition:
+      border-color 0.12s,
+      background 0.12s;
+  }
+  .lens-chip:hover {
+    border-color: var(--chip-color, var(--accent));
+  }
+  .lens-chip.active {
+    border-color: var(--chip-color, var(--accent));
+    background: color-mix(in srgb, var(--bg-panel) 75%, var(--chip-color, var(--accent)) 25%);
+  }
+  .lens-chip.rejected {
+    --chip-color: var(--danger);
+  }
+  .lens-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--chip-color);
+    align-self: center;
+  }
+  .lens-label {
     font-weight: 600;
   }
-  .type-size {
-    color: var(--text-primary);
+  .lens-size {
     font-variant-numeric: tabular-nums;
   }
-  .type-count {
+  .lens-count {
     color: var(--text-secondary);
+    font-size: var(--fs-xs);
     font-variant-numeric: tabular-nums;
+  }
+  .lens-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+    margin: 0 2px;
+  }
+  .lens-clear {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+  .lens-clear:hover {
+    text-decoration: underline;
+  }
+
+  .reclaim {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--border));
+    background: color-mix(in srgb, var(--bg-panel) 88%, var(--danger) 12%);
+    border-radius: 6px;
+    font-size: var(--fs-sm);
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+  .reclaim span {
+    flex: 1;
+    min-width: 200px;
   }
 
   /* ── Breadcrumb ─────────────────────────────────────────────────────── */
@@ -349,6 +688,10 @@
     font-size: var(--fs-xs);
     color: var(--text-secondary);
   }
+  .btn-ghost.small {
+    font-size: var(--fs-xs);
+    padding: 3px 10px;
+  }
 
   /* ── Object list (table view of the map) ────────────────────────────── */
   .object-list {
@@ -364,7 +707,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 5px 8px;
+    padding: 3px 4px 3px 8px;
     border-radius: 4px;
     transition: background 0.1s;
   }
@@ -402,6 +745,7 @@
     flex-shrink: 0;
   }
   .obj-bar-wrap {
+    position: relative;
     flex: 1;
     height: 6px;
     background: var(--bg-row);
@@ -414,6 +758,12 @@
     border-radius: 3px;
     transition: width 0.3s;
   }
+  .obj-bar-rej {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--danger);
+  }
   .obj-size {
     font-size: var(--fs-sm);
     color: var(--text-secondary);
@@ -421,5 +771,26 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
+  }
+  .row-menu {
+    width: 26px;
+    height: 24px;
+    flex-shrink: 0;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .object-row:hover .row-menu,
+  .row-menu:focus-visible {
+    opacity: 1;
+  }
+  .row-menu:hover {
+    border-color: var(--border-accent);
+    color: var(--text-primary);
   }
 </style>

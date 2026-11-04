@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionMenu from "../ActionMenu.svelte";
+  import type { ActionMenuItem } from "../../lib/shell/menu";
   // Library for the read-only server viewer: browse the final images (stacked,
   // processed, raster) one at a time. The desktop's LibraryView is the
   // culling/processing tool; this is just for looking.
@@ -80,6 +82,21 @@
       : null,
   );
   let onAtlas = $derived(!!selected && selected.ra !== 0 && selected.pixelScale !== 0);
+
+  // ── Right-click menu ──────────────────────────────────────────────────────
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function openMenu(e: MouseEvent, f: app.LibraryFrame) {
+    e.preventDefault();
+    const items: ActionMenuItem[] = [
+      { heading: f.fileName },
+      { label: "Preview", primary: true, run: () => select(f.nasPath) },
+    ];
+    if (onshowonatlas && f.ra !== 0 && f.pixelScale !== 0) {
+      items.push({ label: "Show on Sky Atlas", run: () => onshowonatlas(f.nasPath) });
+    }
+    menu = { x: e.clientX, y: e.clientY, items };
+  }
 
   function objectLabel(f: app.LibraryFrame): string {
     return f.object || "Unknown object";
@@ -208,6 +225,7 @@
                   data-path={f.nasPath}
                   aria-current={f.nasPath === selectedPath ? "true" : undefined}
                   onclick={() => select(f.nasPath)}
+                  oncontextmenu={(e) => openMenu(e, f)}
                 >
                   <span class="badge" style:color={meta.color} style:background={meta.bg}
                     >{meta.short}</span
@@ -229,6 +247,7 @@
   {#snippet secondary()}
     {#if selected}
       <PreviewPane
+        {active}
         entry={libraryFrameToEntry(selected)}
         qualityFrame={selected}
         onclose={() => (selectedPath = null)}
@@ -241,6 +260,10 @@
     {/if}
   {/snippet}
 </SplitPane>
+
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
 
 <style>
   .viewer-list {

@@ -65,6 +65,14 @@ export function scopeLabel(telescope: string): string {
   return m ? m[1] : telescope;
 }
 
+/**
+ * The telescope to show for an image: what its file name says (Seestar exports
+ * carry "S50"/"S30 Pro"), else the FITS TELESCOP header without the serial.
+ */
+export function telescopeLabel(fileName: string, telescope: string): string | undefined {
+  return parseFrameName(fileName).telescope ?? (telescope ? scopeLabel(telescope) : undefined);
+}
+
 export function formatDuration(totalSeconds: number): string {
   const s = Math.round(totalSeconds);
   if (s < 60) return `${s} s`;
@@ -100,7 +108,7 @@ export function describeFrame(f: app.LibraryFrame): FrameInfo {
   const name = parseFrameName(f.fileName);
   const rows: FrameInfo["rows"] = [];
 
-  const telescope = name.telescope ?? (f.telescope ? scopeLabel(f.telescope) : undefined);
+  const telescope = telescopeLabel(f.fileName, f.telescope);
   if (telescope) rows.push(["Telescope", telescope]);
 
   if (name.subs && name.subExposure) {

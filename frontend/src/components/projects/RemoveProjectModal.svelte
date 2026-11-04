@@ -6,19 +6,21 @@
   interface Props {
     project: app.Project;
     onclose: () => void;
-    onremoved: (p: app.Project) => void;
+    /** `folderDeleted`: the folder went too, not just the list entry. */
+    onremoved: (p: app.Project, folderDeleted: boolean) => void;
   }
   let { project, onclose, onremoved }: Props = $props();
 
   let removing = $state(false);
   let error = $state("");
+  let deleteFolder = $state(true);
 
   async function remove() {
     removing = true;
     error = "";
     try {
-      await DeleteProject(project.id);
-      onremoved(project);
+      await DeleteProject(project.id, deleteFolder);
+      onremoved(project, deleteFolder);
     } catch (e) {
       error = String(e);
     } finally {
@@ -27,19 +29,33 @@
   }
 </script>
 
-<Modal title="Remove “{project.name}”?" {onclose} busy={removing} danger width="min(480px, 92vw)">
-  <p>
-    The project is removed from Eirin's list. <strong>Nothing is deleted from disk</strong> — the project
-    folder, its frame links and any outputs stay where they are:
-  </p>
+<Modal
+  title={deleteFolder ? `Delete “${project.name}”?` : `Remove “${project.name}” from the list?`}
+  {onclose}
+  busy={removing}
+  danger
+  width="min(500px, 92vw)"
+>
   <p class="path">{project.folder}</p>
-  <p>You can delete the folder yourself from your file manager if you no longer need it.</p>
-  {#if error}<p class="error" role="alert">Couldn't remove the project: {error}</p>{/if}
+  <label class="opt">
+    <input type="checkbox" bind:checked={deleteFolder} disabled={removing} />
+    Also delete the project folder
+  </label>
+  {#if deleteFolder}
+    <p>
+      The folder and <strong>everything in it</strong> are deleted: frame links, copied frames, and any
+      Siril outputs (stacks, processed images) you haven't saved to the library. This can't be undone.
+    </p>
+    <p class="safe">Your frames in the library aren't affected — the links only point at them.</p>
+  {:else}
+    <p>The project leaves Eirin's list; the folder stays on disk as it is.</p>
+  {/if}
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
 
   {#snippet actions()}
     <button class="btn-ghost" data-autofocus disabled={removing} onclick={onclose}>Cancel</button>
     <button class="btn-danger" disabled={removing} onclick={remove}>
-      {removing ? "Removing…" : "Remove from list"}
+      {removing ? "Removing…" : deleteFolder ? "Delete project and folder" : "Remove from list"}
     </button>
   {/snippet}
 </Modal>
@@ -59,5 +75,19 @@
   }
   .error {
     color: var(--danger);
+  }
+  .opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .opt input {
+    accent-color: var(--danger);
+  }
+  .safe {
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
   }
 </style>

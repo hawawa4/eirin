@@ -31,6 +31,10 @@
   import AtlasPanel from "./atlas/AtlasPanel.svelte";
   import AtlasTooltip from "./atlas/AtlasTooltip.svelte";
   import AtlasStatus from "./atlas/AtlasStatus.svelte";
+  import { ui } from "../lib/uiState.svelte";
+  import { telescopeLabel } from "../lib/slideshow/frameInfo";
+  import ActionMenu from "./ActionMenu.svelte";
+  import { fileMenuItems, type ActionMenuItem } from "../lib/shell/menu";
   import HelpPopover from "./atlas/HelpPopover.svelte";
   import ReelControls from "./ReelControls.svelte";
 
@@ -47,6 +51,13 @@
     readOnly?: boolean;
     /** Desktop app: fullscreen is the native window rather than the browser's. */
     desktopMode?: boolean;
+    /** A library scan is running (the empty state says so instead of offering one). */
+    scanning?: boolean;
+    scanProgress?: { done: number; total: number } | null;
+    /** Open the Library filtered to an object (desktop). */
+    onshowobject?: (object: string) => void;
+    /** Switch to another tab (empty-state shortcuts). */
+    onnavigate?: (mode: "import" | "library" | "projects" | "coverage") => void;
   }
 
   let {
@@ -57,6 +68,10 @@
     theme = "blue",
     readOnly = false,
     desktopMode = false,
+    scanning = false,
+    scanProgress = null,
+    onnavigate,
+    onshowobject,
   }: Props = $props();
 
   let palette = $derived(atlasPalette(theme));
@@ -80,6 +95,8 @@
   type ImageFormat = "fits" | "png";
   let formatChoice = $state<ImageFormat | null>(null);
   let finals = $derived(index.filter(isFinalImage));
+  /** Nothing to draw: the controls are hidden and the status card explains why. */
+  let hasFinals = $derived(!loading && !loadError && finals.length > 0);
   let fitsCount = $derived(finals.filter(isFitsImage).length);
   let pngCount = $derived(finals.length - fitsCount);
   let format = $derived<ImageFormat>(
@@ -359,10 +376,47 @@
     if (!active && touring) untrack(stopTour);
   });
 
-  function selectGroup(g: ObjectGroup) {
+  /** Shows an object's best frame; `additive` (Shift/Ctrl-click) adds it to the comparison. */
+  function selectGroup(g: ObjectGroup, additive = false) {
     const top = topFrame(g.frames);
-    if (top) selectOnly(top);
+    if (top) {
+      if (additive) {
+        if (!overlayPaths.includes(top.nasPath)) toggleOverlay(top);
+      } else selectOnly(top);
+    }
     fitTargets(targetsOf(g.frames), { cluster: false, panel: true });
+  }
+
+  /** Overlays every visible frame of an object. */
+  function overlayGroup(g: ObjectGroup) {
+    const shown = new Set(visibleIndex.map((e) => e.nasPath));
+    const frames = g.frames.filter((f) => shown.has(f.nasPath));
+    for (const f of frames) prime(f);
+    overlayPaths = [...new Set([...overlayPaths, ...frames.map((f) => f.nasPath)])];
+    focus = null;
+    fitTargets(targetsOf(frames), { cluster: false, panel: true });
+  }
+
+  function openGroupMenu(g: ObjectGroup, x: number, y: number) {
+    const object = g.frames.find((f) => f.object)?.object ?? "";
+    menu = {
+      x,
+      y,
+      items: [
+        { heading: `${g.name} · ${g.count} image${g.count === 1 ? "" : "s"}` },
+        { label: "Show", primary: true, run: () => selectGroup(g) },
+        { label: "Add to comparison", hint: "Shift-click", run: () => selectGroup(g, true) },
+        {
+          label: `Overlay all ${g.count} images`,
+          disabledReason: g.count < 2 ? "Only one image of this object" : undefined,
+          run: () => overlayGroup(g),
+        },
+        { separator: true },
+        ...(onshowobject && object
+          ? [{ label: "Show in Library", run: () => onshowobject(object) }]
+          : []),
+      ],
+    };
   }
 
   function selectCatalog(obj: app.CatalogObject) {
@@ -425,11 +479,92 @@
     else selectOnly(hit);
   }
 
+  // ── Right-click menu ──────────────────────────────────────────────────────
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function frameMenuItems(e: app.AtlasIndexEntry): ActionMenuItem[] {
+    const inOverlay = overlayPaths.includes(e.nasPath);
+    const items: ActionMenuItem[] = [{ heading: e.object || e.name }];
+    if (!(inOverlay && overlayPaths.length === 1)) {
+      items.push({ label: "Preview", primary: true, run: () => selectOnly(e) });
+    }
+    items.push(
+      {
+        label: inOverlay ? "Remove from comparison" : "Add to comparison",
+        hint: "Shift-click",
+        run: () => toggleOverlay(e),
+      },
+      {
+        label: "Zoom to image",
+        run: () => fitTargets(targetsOf([e]), { cluster: false, panel: true }),
+      },
+    );
+    if (tourFrames.some((f) => f.nasPath === e.nasPath)) {
+      items.push({
+        label: "Start tour from here",
+        run: () => {
+          selectOnly(e);
+          startTour();
+        },
+      });
+    }
+    items.push(
+      { separator: true },
+      ...fileMenuItems({
+        path: e.nasPath,
+        desktop: desktopMode && !readOnly,
+        onopeninlibrary: onframeopen ? () => onframeopen(e.nasPath) : undefined,
+      }),
+    );
+    return items;
+  }
+
+  function skyMenuItems(): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [
+      { label: "Fit all images", hint: "0", run: fitAll },
+      {
+        label: everythingShown ? "Hide all previews" : "Show everything",
+        disabledReason: visibleIndex.length === 0 ? "No images to show" : undefined,
+        run: showEverything,
+      },
+      {
+        label: "Start tour",
+        hint: "T",
+        disabledReason: tourFrames.length === 0 ? "No images to tour" : undefined,
+        run: startTour,
+      },
+    ];
+    if (overlayPaths.length > 0 || focus) {
+      items.push({ label: "Clear selection", hint: "Esc", run: clearSelection });
+    }
+    items.push(
+      { separator: true },
+      { label: showLabels ? "Hide labels" : "Show labels", run: () => (showLabels = !showLabels) },
+      { label: "Help", hint: "?", run: () => (helpOpen = true) },
+    );
+    return items;
+  }
+
+  function onCanvasContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    if (touring || !hasFinals) return;
+    const [mx, my] = localXY(e);
+    const hit = hitTest(scene, mx, my);
+    hoveredEntry = null;
+    menu = { x: e.clientX, y: e.clientY, items: hit ? frameMenuItems(hit) : skyMenuItems() };
+  }
+
+  /** The overlay list in the side panel offers the same menu as the canvas. */
+  function openFrameMenu(nasPath: string, x: number, y: number) {
+    const e = index.find((f) => f.nasPath === nasPath);
+    if (e) menu = { x, y, items: frameMenuItems(e) };
+  }
+
   // ── Keyboard ──────────────────────────────────────────────────────────────
   let browser = $state<ReturnType<typeof ObjectBrowser> | null>(null);
 
   function onKeydown(e: KeyboardEvent) {
-    if (!active || isTypingTarget(e) || isModalOpen()) return;
+    if (!active || isTypingTarget(e) || isModalOpen() || menu) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (touring) {
       switch (e.key) {
@@ -476,6 +611,9 @@
       case "t":
       case "T":
         startTour();
+        break;
+      case "?":
+        helpOpen = !helpOpen;
         break;
       case "/":
         if (!browser) return;
@@ -596,6 +734,7 @@
     onmousemove={onMouseMove}
     onmouseup={onMouseUp}
     onmousedown={(e) => cam.beginDrag(e)}
+    oncontextmenu={onCanvasContextMenu}
     onmouseleave={() => {
       cam.endDrag();
       hoveredEntry = null;
@@ -620,10 +759,13 @@
     }}
     {onscan}
     {readOnly}
+    {scanning}
+    {scanProgress}
+    {onnavigate}
   />
 
   <!-- HUD -->
-  {#if !touring}
+  {#if !touring && hasFinals}
     <div class="atlas-hud">
       <span title="{cam.ra.toFixed(4)}°">RA {formatRA(cam.ra)}</span>
       <span title="{cam.dec.toFixed(4)}°">Dec {formatDec(cam.dec)}</span>
@@ -642,12 +784,13 @@
       {catalog}
       activeName={activeObject}
       onselectgroup={selectGroup}
+      onmenugroup={openGroupMenu}
       onselectcatalog={selectCatalog}
     />
   {/if}
 
   <!-- Top-right control cluster: frame filter, show everything, tour, labels, help -->
-  {#if !touring}
+  {#if !touring && hasFinals}
     <div class="atlas-controls">
       <div class="seg" role="group" aria-label="Final images, by format">
         <span class="seg-label">Final images</span>
@@ -694,7 +837,7 @@
   {/if}
 
   <!-- Zoom controls -->
-  {#if !touring}
+  {#if !touring && hasFinals}
     <div class="atlas-zoom" role="group" aria-label="Zoom">
       <button
         class="zoom-btn"
@@ -713,6 +856,21 @@
         title="Fit all frames (0)"
         aria-label="Fit all frames"
         onclick={fitAll}>⤢</button
+      >
+    </div>
+  {/if}
+
+  {#if !touring && hasFinals && !ui.atlasHintDismissed && sizesBusy === 0 && previewsBusy === 0 && !panelShown}
+    <div class="atlas-hint" role="note">
+      <span
+        >Drag to pan · scroll to zoom · click an image to preview it · Shift-click to compare</span
+      >
+      <span><kbd>T</kbd> tour · <kbd>/</kbd> find an object · <kbd>?</kbd> help</span>
+      <button
+        class="hint-close"
+        aria-label="Dismiss hint"
+        title="Don't show this again"
+        onclick={() => (ui.atlasHintDismissed = true)}>✕</button
       >
     </div>
   {/if}
@@ -755,12 +913,20 @@
       onclearall={clearSelection}
       onfixchange={(fix) => panelEntry && setFix(panelEntry.nasPath, fix)}
       onopen={onframeopen}
+      onmenu={openFrameMenu}
     />
+  {/if}
+
+  {#if menu}
+    <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
   {/if}
 
   {#if touring}
     {#if reel.current}
-      <div class="tour-caption">{objectKey(reel.current)}</div>
+      {@const scope = telescopeLabel(reel.current.name, reel.current.telescope)}
+      <div class="tour-caption">
+        {objectKey(reel.current)}{#if scope}<span class="tour-scope"> · {scope}</span>{/if}
+      </div>
     {/if}
     <ReelControls
       {reel}
@@ -899,6 +1065,12 @@
     z-index: 20;
   }
 
+  .tour-scope {
+    font-size: var(--fs-lg);
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+
   /* Zoom controls, bottom-right */
   .atlas-zoom {
     position: absolute;
@@ -930,6 +1102,48 @@
   }
 
   /* Background-loading indicator, bottom-centre */
+  .atlas-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 14px;
+    max-width: min(760px, calc(100% - 120px));
+    padding: 6px 8px 6px 14px;
+    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+  }
+  .atlas-hint kbd {
+    font-family: inherit;
+    font-size: var(--fs-xs);
+    color: var(--text-primary);
+    border: 1px solid var(--border-accent);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .hint-close {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .hint-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-row-hover);
+  }
+
   .atlas-busy {
     position: absolute;
     bottom: 16px;

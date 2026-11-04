@@ -1,6 +1,7 @@
 <script lang="ts">
   import type * as app from "$models/app";
   import { formatDec, formatRA } from "../../lib/utils";
+  import { telescopeLabel } from "../../lib/slideshow/frameInfo";
 
   interface Props {
     entry: app.AtlasIndexEntry;
@@ -18,6 +19,7 @@
   const H = 110;
   let left = $derived(x + 16 + W > boundsW ? Math.max(4, x - 16 - W) : x + 16);
   let top = $derived(Math.max(4, Math.min(y - 10, boundsH - H)));
+  let telescope = $derived(telescopeLabel(entry.name, entry.telescope));
 </script>
 
 <div class="atlas-tooltip" style="left: {left}px; top: {top}px; width: {W}px;">
@@ -26,7 +28,10 @@
     <span>{formatRA(entry.ra)}</span>
     <span>{formatDec(entry.dec)}</span>
   </div>
-  <div class="tt-row">{entry.pixelScale.toFixed(2)} ″/px · {entry.frameType}</div>
+  <div class="tt-row">
+    {#if telescope}{telescope} ·
+    {/if}{entry.pixelScale.toFixed(2)} ″/px · {entry.frameType}
+  </div>
   <div class="tt-hint">
     {#if selected}
       Shift/Ctrl+click to remove from overlay

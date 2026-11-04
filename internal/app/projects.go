@@ -98,10 +98,29 @@ func (a *App) CreateProject(name, description string) (Project, error) {
 	}, nil
 }
 
-// DeleteProject removes the project from the database (does not delete files).
-func (a *App) DeleteProject(id int64) error {
+// DeleteProject removes the project from the database and, with deleteFolder,
+// its folder on disk (frame links, copied frames and any Siril outputs; the NAS
+// frames the links point at are untouched). The folder goes first, so a failed
+// delete leaves the project listed rather than orphaning a folder.
+func (a *App) DeleteProject(id int64, deleteFolder bool) error {
 	if err := a.requireWritable(); err != nil {
 		return err
+	}
+	if deleteFolder {
+		rows, err := a.store().ListProjects()
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			if r.ID != id {
+				continue
+			}
+			if err := projectfs.Remove(a.store().Load().ProjectsFolder, r.Folder); err != nil {
+				return fmt.Errorf("couldn't delete the project folder: %w", err)
+			}
+			slog.Info("projects: deleted folder", "id", id, "folder", r.Folder)
+			break
+		}
 	}
 	return a.store().DeleteProject(id)
 }

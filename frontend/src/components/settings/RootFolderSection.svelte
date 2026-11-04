@@ -27,7 +27,7 @@
 </script>
 
 <section class="card">
-  <h2 class="section-title">Root Folder</h2>
+  <h2 class="section-title">Library folder</h2>
   <p class="section-desc">
     The NAS folder that Eirin treats as the root of your astrophotography library.
   </p>
@@ -47,7 +47,7 @@
   </div>
   {#if !desktopMode}
     <p class="action-hint">
-      In server mode the root folder comes from the server's preferences database and can't be
+      In server mode the library folder comes from the server's preferences database and can't be
       changed here.
     </p>
   {/if}
@@ -70,9 +70,9 @@
     </div>
     <p class="action-hint">
       <strong>Scan for new files</strong> walks every subfolder and reads FITS headers only for
-      files that aren't in the library yet. It runs automatically after you change the root folder
-      or import new frames. <strong>Re-read all files</strong> reads every header again from scratch —
-      only needed if the library looks wrong.
+      files that aren't in the library yet. It runs automatically after you change the library
+      folder or import new frames. <strong>Re-read all files</strong> reads every header again from scratch
+      — only needed if the library looks wrong.
     </p>
   {/if}
 </section>
@@ -85,8 +85,8 @@
     }}
   >
     <p class="modal-text">
-      This re-reads the FITS header of <strong>every</strong> file under the root folder, including files
-      already in the library. On a NAS with many frames this can take a long time.
+      This re-reads the FITS header of <strong>every</strong> file under the library folder, including
+      files already in the library. On a NAS with many frames this can take a long time.
     </p>
     <p class="modal-text">
       Plate-solve (WCS) results are kept. You can keep using Eirin and cancel the scan at any time.

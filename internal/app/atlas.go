@@ -22,6 +22,7 @@ type AtlasIndexEntry struct {
 	Dec        float64 `json:"dec"`
 	PixelScale float64 `json:"pixelScale"` // arcsec/pixel
 	Rotation   float64 `json:"rotation"`   // degrees (N through E)
+	Telescope  string  `json:"telescope"`  // FITS TELESCOP (may carry a Seestar serial suffix)
 }
 
 // AtlasFrameSize holds the pixel dimensions read from a FITS header.
@@ -79,6 +80,7 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 			Dec:        dec,
 			PixelScale: scale,
 			Rotation:   rot,
+			Telescope:  f.Telescope,
 		})
 	}
 	return out

@@ -10,14 +10,14 @@
 
   // Routes registered in internal/app/server.go.
   const ENDPOINTS: { path: string; desc: string }[] = [
-    { path: "/api/status", desc: "server status and configured root folder (JSON)" },
-    { path: "/api/frames", desc: "all indexed frames under the root folder (JSON)" },
-    { path: "/api/image?path=<file>", desc: "a raster file (PNG/TIFF) under the root folder" },
+    { path: "/api/status", desc: "server status and configured library folder (JSON)" },
+    { path: "/api/frames", desc: "all indexed frames under the library folder (JSON)" },
+    { path: "/api/image?path=<file>", desc: "a raster file (PNG/TIFF) under the library folder" },
   ];
 </script>
 
 <section class="card">
-  <h2 class="section-title">API Server</h2>
+  <h2 class="section-title">API server</h2>
   <p class="section-desc">
     A local HTTP server that exposes the library over a read-only REST API. Useful for scripting and
     external tool integration.

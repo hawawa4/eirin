@@ -124,3 +124,15 @@ export function distinctValues(
     .map(([value, count]) => ({ value, count }))
     .sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true }));
 }
+
+/** What another view asks the Library to show (e.g. Storage → "Show in Library"). */
+export interface LibraryFocusFilter {
+  /** Exact object name; "" means frames without one. */
+  object?: string;
+  /** YYYY-MM-DD night. */
+  date?: string;
+  /** Only these frame types (all when empty). */
+  types?: FrameType[];
+  /** Open the Rejected tab instead of Frames. */
+  rejected?: boolean;
+}

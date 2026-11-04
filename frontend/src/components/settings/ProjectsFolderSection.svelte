@@ -31,10 +31,11 @@
 </script>
 
 <section class="card">
-  <h2 class="section-title">Projects Folder</h2>
+  <h2 class="section-title">Projects folder</h2>
   <p class="section-desc">
-    Local folder where Siril projects are stored. Each project gets its own subfolder containing a
-    <code>lights/</code> directory with symlinks or copies of your frames.
+    Local folder where Siril projects are stored. Each project gets its own subfolder with
+    <code>lights/</code>, <code>darks/</code>, <code>flats/</code> and <code>biases/</code> holding symlinks
+    to (or copies of) your frames.
   </p>
 
   <div class="path-row">

@@ -1,5 +1,10 @@
 <script lang="ts">
   import type * as app from "$models/app";
+  import { OpenFolder, OpenProjectInSiril } from "$app";
+  import { attempt, toast } from "../../lib/toast.svelte";
+  import { copyPath } from "../../lib/clipboard";
+  import ActionMenu from "../ActionMenu.svelte";
+  import type { ActionMenuItem } from "../../lib/shell/menu";
   import { formatShortDate } from "../../lib/projects/frames";
 
   interface Props {
@@ -11,9 +16,51 @@
     onselect: (p: app.Project) => void;
     oncreate: () => void;
     onretry: () => void;
+    sirilAvailable?: boolean;
+    /** Asks to remove a project from the list (right-click menu). */
+    onremove?: (p: app.Project) => void;
   }
-  let { projects, selectedId, loading, error, projectsFolder, onselect, oncreate, onretry }: Props =
-    $props();
+  let {
+    projects,
+    selectedId,
+    loading,
+    error,
+    projectsFolder,
+    onselect,
+    oncreate,
+    onretry,
+    sirilAvailable = false,
+    onremove,
+  }: Props = $props();
+
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function openMenu(p: app.Project, x: number, y: number) {
+    const items: ActionMenuItem[] = [
+      { heading: p.name },
+      {
+        label: "Open in Siril",
+        primary: true,
+        disabledReason: sirilAvailable ? undefined : "Siril not found — configure it in Settings",
+        run: () => {
+          toast.info("Opening project in Siril…");
+          void attempt(() => OpenProjectInSiril(p.folder), "Couldn't open Siril");
+        },
+      },
+      {
+        label: "Open folder",
+        run: () => void attempt(() => OpenFolder(p.folder), "Couldn't open the project folder"),
+      },
+      { label: "Copy folder path", run: () => void copyPath(p.folder) },
+    ];
+    if (onremove) {
+      items.push(
+        { separator: true },
+        { label: "Delete project…", danger: true, run: () => onremove(p) },
+      );
+    }
+    menu = { x, y, items };
+  }
 </script>
 
 <aside class="project-sidebar">
@@ -51,6 +98,10 @@
             class="project-item-btn"
             aria-current={selectedId === p.id ? "true" : undefined}
             onclick={() => onselect(p)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              openMenu(p, e.clientX, e.clientY);
+            }}
           >
             <span class="project-name" title={p.name}>{p.name}</span>
             <span class="project-date">{formatShortDate(p.createdAt)}</span>
@@ -60,6 +111,10 @@
     </ul>
   {/if}
 </aside>
+
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
 
 <style>
   .project-sidebar {

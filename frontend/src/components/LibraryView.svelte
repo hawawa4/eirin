@@ -14,6 +14,7 @@
     AnalyzeFrames,
     CancelAnalysis,
     RevealPath,
+    OpenFolder,
   } from "$app";
   import { Events } from "@wailsio/runtime";
   import type * as app from "$models/app";
@@ -37,8 +38,11 @@
     distinctValues,
     matchesColFilters,
     matchesSearch,
+    isColFilterActive,
     type ColFilters,
+    type LibraryFocusFilter,
   } from "../lib/library/filters";
+  import { commonFolder } from "../lib/storage/tree";
   import {
     buildGroups,
     cursorAfterRemoval,
@@ -54,6 +58,8 @@
   import { planBlink, type BlinkPlan } from "../lib/library/blink";
   import { isProjectFrameType, suggestProjectName } from "../lib/projects/frames";
   import ContextMenu from "./ContextMenu.svelte";
+  import ActionMenu from "./ActionMenu.svelte";
+  import type { ActionMenuItem } from "../lib/shell/menu";
   import HardDeleteModal from "./HardDeleteModal.svelte";
   import BlinkModal from "./BlinkModal.svelte";
   import SplitPane from "./SplitPane.svelte";
@@ -83,6 +89,8 @@
     onscan?: () => void;
     /** True while a library index build is running. */
     indexRunning?: boolean;
+    /** Show a final image on the Sky Atlas. */
+    onshowonatlas?: (nasPath: string) => void;
   }
 
   let {
@@ -94,6 +102,7 @@
     active = true,
     onscan,
     indexRunning = false,
+    onshowonatlas,
   }: Props = $props();
 
   const SEARCH_DEBOUNCE_MS = 150;
@@ -208,6 +217,23 @@
     colFilters = { ...colFilters, [colId]: { ...colFilters[colId], numOp } };
   }
 
+  /** Type chips: show only `type` (null = all), or add/remove it when `additive`. */
+  function pickType(type: FrameType | null, additive: boolean) {
+    const current = colFilters.frameType?.types ?? [];
+    let types: FrameType[];
+    if (type === null) types = [];
+    else if (additive)
+      types = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
+    else types = current.length === 1 && current[0] === type ? [] : [type];
+    colFilters = { ...colFilters, frameType: { ...colFilters.frameType, types } };
+  }
+
+  /** Active column filters other than frame type (those have their own chips). */
+  let colFilterCount = $derived(
+    Object.keys(colFilters).filter((k) => k !== "frameType" && isColFilterActive(colFilters, k))
+      .length,
+  );
+
   function toggleTypeFilter(type: FrameType) {
     const current = colFilters.frameType?.types ?? [];
     const types = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
@@ -239,11 +265,34 @@
   // ── Derived rows ──────────────────────────────────────────────────────────
   let rejectedCount = $derived(frames.reduce((n, f) => n + (f.isRejected ? 1 : 0), 0));
   let tabFrames = $derived(frames.filter((f) => f.isRejected === showRejected));
-  let filtered = $derived(
-    filtering
-      ? tabFrames.filter((f) => matchesSearch(f, search) && matchesColFilters(f, colFilters))
+  /** Everything but the type filter, so the type chips can show what each type would add. */
+  let nonTypeFilters = $derived.by((): ColFilters => {
+    const rest = { ...colFilters };
+    delete rest.frameType;
+    return rest;
+  });
+  let preTypeFiltered = $derived(
+    search || anyColFilterActive(nonTypeFilters)
+      ? tabFrames.filter((f) => matchesSearch(f, search) && matchesColFilters(f, nonTypeFilters))
       : tabFrames,
   );
+  let selectedTypes = $derived(colFilters.frameType?.types ?? []);
+  let filtered = $derived(
+    selectedTypes.length > 0
+      ? preTypeFiltered.filter((f) => selectedTypes.includes(f.frameType as FrameType))
+      : preTypeFiltered,
+  );
+  const CHIP_TYPES = ["light", "dark", "flat", "bias", "stacked", "processed", "image"];
+  let typeCounts = $derived.by(() => {
+    const counts: Record<string, number> = Object.fromEntries(CHIP_TYPES.map((t) => [t, 0]));
+    for (const f of preTypeFiltered) counts[f.frameType] = (counts[f.frameType] ?? 0) + 1;
+    // Hide types the library doesn't have at all, unless they're selected.
+    const present: Record<string, true> = {};
+    for (const f of tabFrames) present[f.frameType] = true;
+    return Object.entries(counts)
+      .filter(([t]) => present[t] || selectedTypes.includes(t as FrameType))
+      .map(([type, count]) => ({ type, count }));
+  });
   let sorted = $derived(sortFrames(filtered, sort));
   let pickerOptions = $derived(
     valuePicker ? distinctValues(tabFrames, valuePicker.colId, search, colFilters) : [],
@@ -253,20 +302,23 @@
   let projectFrames = $derived(sorted.filter((f) => isProjectFrameType(f.frameType)));
 
   // ── Group expansion ───────────────────────────────────────────────────────
-  // Explicit choices only; without one, a group is expanded while filtering (so
-  // matches are visible) or when there are ≤ 3 groups. Choices made while filtering
-  // are temporary and dropped when the filters clear, restoring the manual set.
+  // Explicit choices only; without one, a group is expanded while searching or
+  // column-filtering (so matches are visible) or when there are ≤ 3 groups. The type
+  // chips don't expand anything: they narrow the overview (e.g. lights per object).
+  // Choices made while filtering are temporary and dropped when the filters clear,
+  // restoring the manual set.
+  let expandFiltering = $derived(!!search || anyColFilterActive(nonTypeFilters));
   const manualExpanded = new SvelteMap<string, boolean>();
   const filterExpanded = new SvelteMap<string, boolean>();
 
   function isExpanded(key: string): boolean {
-    const choice = (filtering ? filterExpanded : manualExpanded).get(key);
+    const choice = (expandFiltering ? filterExpanded : manualExpanded).get(key);
     if (choice !== undefined) return choice;
-    return filtering || groups.length <= 3;
+    return expandFiltering || groups.length <= 3;
   }
 
   $effect(() => {
-    if (!filtering) untrack(() => filterExpanded.clear());
+    if (!expandFiltering) untrack(() => filterExpanded.clear());
   });
 
   $effect(() => {
@@ -277,11 +329,11 @@
   });
 
   function toggleGroup(key: string) {
-    (filtering ? filterExpanded : manualExpanded).set(key, !isExpanded(key));
+    (expandFiltering ? filterExpanded : manualExpanded).set(key, !isExpanded(key));
   }
 
   function setAllExpanded(expanded: boolean) {
-    const m = filtering ? filterExpanded : manualExpanded;
+    const m = expandFiltering ? filterExpanded : manualExpanded;
     for (const g of groups) m.set(g.key, expanded);
   }
 
@@ -294,7 +346,7 @@
     const f = frameByPath.get(path);
     if (!f) return;
     const key = groupKeyFor(f, groupBy);
-    if (!isExpanded(key)) (filtering ? filterExpanded : manualExpanded).set(key, true);
+    if (!isExpanded(key)) (expandFiltering ? filterExpanded : manualExpanded).set(key, true);
   }
 
   // ── Virtualized table body ────────────────────────────────────────────────
@@ -486,6 +538,27 @@
     selectedPaths.clear();
   }
 
+  function checkStateOf(list: readonly app.LibraryFrame[]): "none" | "some" | "all" {
+    let n = 0;
+    for (const f of list) if (selectedPaths.has(f.nasPath)) n++;
+    return n === 0 ? "none" : n === list.length ? "all" : "some";
+  }
+
+  let allCheckState = $derived(checkStateOf(sorted));
+
+  function toggleAllChecked() {
+    if (allCheckState === "all") selectedPaths.clear();
+    else selectAll();
+  }
+
+  function toggleGroupChecked(group: LibGroup) {
+    if (checkStateOf(group.frames) === "all") {
+      for (const f of group.frames) selectedPaths.delete(f.nasPath);
+    } else {
+      for (const f of group.frames) selectedPaths.add(f.nasPath);
+    }
+  }
+
   /** Checked rows, or the previewed row when nothing is checked. */
   function targetPaths(): string[] {
     if (selectedPaths.size > 0) return [...selectedPaths];
@@ -526,6 +599,8 @@
         applyFocus(pendingFocus);
       } else if (pendingSelect && loadedOnce) {
         applySelect(pendingSelect);
+      } else if (pendingFilter && loadedOnce) {
+        applyFilter(pendingFilter);
       }
     }
   }
@@ -614,6 +689,29 @@
     if (missing > 0)
       toast.info(`${plural(missing, "frame")} not found in the library — try a scan.`);
     if (first) setCursor(first);
+  }
+
+  /** Show only the frames matching `f` (e.g. from Storage); queued until loaded. */
+  let pendingFilter: LibraryFocusFilter | null = null;
+  export function showFiltered(f: LibraryFocusFilter): void {
+    if (!loadedOnce || loading || refreshing) {
+      pendingFilter = f;
+      return;
+    }
+    applyFilter(f);
+  }
+
+  function applyFilter(f: LibraryFocusFilter) {
+    pendingFilter = null;
+    clearAllFilters();
+    switchTab(!!f.rejected);
+    selectedPaths.clear();
+    const next: ColFilters = {};
+    if (f.object) next.object = { text: f.object, exact: true };
+    if (f.date) next.dateObs = { text: f.date, exact: false };
+    if (f.types?.length) next.frameType = { types: [...f.types] };
+    colFilters = next;
+    if (f.date) ui.libraryFilterRow = true; // the date filter only shows in the filter row
   }
 
   // ── Events ───────────────────────────────────────────────────────────────
@@ -721,7 +819,9 @@
     return result;
   }
 
-  let confirmDel = $state<{ paths: string[]; name: string } | null>(null);
+  let confirmDel = $state<{ paths: string[]; name: string; count: number; bytes: number } | null>(
+    null,
+  );
 
   function askDelete(paths: string[]) {
     if (paths.length === 0) return;
@@ -730,7 +830,9 @@
       name:
         paths.length === 1
           ? (frameByPath.get(paths[0])?.fileName ?? baseName(paths[0]))
-          : `${paths.length} frames`,
+          : `${paths.length.toLocaleString()} frames`,
+      count: paths.length,
+      bytes: paths.reduce((s, p) => s + (frameByPath.get(p)?.fileSize ?? 0), 0),
     };
   }
 
@@ -815,6 +917,84 @@
 
   function closeCtx() {
     ctxMenu = null;
+  }
+
+  // ── Group menu ───────────────────────────────────────────────────────────
+  let groupMenu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function openGroupMenu(group: LibGroup, x: number, y: number) {
+    const n = group.frames.length;
+    const paths = group.frames.map((f) => f.nasPath);
+    const projectable = group.frames.filter((f) => isProjectFrameType(f.frameType));
+    const folder = commonFolder(paths);
+    const items: ActionMenuItem[] = [{ heading: `${group.label} · ${plural(n, "frame")}` }];
+    items.push(
+      checkStateOf(group.frames) === "all"
+        ? {
+            label: "Unselect this group",
+            run: () => toggleGroupChecked(group),
+          }
+        : { label: `Select all ${plural(n, "frame")}`, run: () => toggleGroupChecked(group) },
+    );
+    if (oncreateproject && !showRejected) {
+      items.push({
+        label:
+          projectable.length > 0
+            ? `New project from ${plural(projectable.length, "frame")}…`
+            : "New project…",
+        primary: true,
+        disabledReason:
+          projectable.length === 0
+            ? "No light, dark, flat or bias frames in this group"
+            : undefined,
+        run: () => (cpFrames = projectable),
+      });
+    }
+    if (sirilAvailable) {
+      items.push(
+        { separator: true },
+        {
+          label:
+            group.unanalyzedCount > 0
+              ? `Analyze ${plural(group.unanalyzedCount, "unanalyzed frame")}`
+              : "Analyze",
+          disabledReason:
+            analyzingGroup !== null
+              ? "An analysis is already running"
+              : group.unanalyzedCount === 0
+                ? "Every frame is analyzed — use Re-analyze"
+                : undefined,
+          run: () => analyzeGroup(group, false),
+        },
+        {
+          label: `Re-analyze all ${plural(n, "frame")}`,
+          disabledReason: analyzingGroup !== null ? "An analysis is already running" : undefined,
+          run: () => analyzeGroup(group, true),
+        },
+      );
+    }
+    if (folder) {
+      items.push(
+        { separator: true },
+        {
+          label: "Open folder",
+          run: () => attempt(() => OpenFolder(folder), "Couldn't open the folder"),
+        },
+        { label: "Copy file paths", run: () => copyPaths(paths) },
+      );
+    }
+    items.push({ separator: true });
+    if (showRejected) {
+      items.push({ label: `Restore ${plural(n, "frame")}`, run: () => applyReject(paths, false) });
+    } else {
+      items.push({ label: `Reject ${plural(n, "frame")}`, run: () => applyReject(paths, true) });
+    }
+    items.push({
+      label: `Delete ${plural(n, "frame")} from disk…`,
+      danger: true,
+      run: () => askDelete(paths),
+    });
+    groupMenu = { x, y, items };
   }
 
   // ── Modals ───────────────────────────────────────────────────────────────
@@ -913,6 +1093,7 @@
   }
 
   // ── Keyboard ─────────────────────────────────────────────────────────────
+  let toolbar = $state<{ focusSearch: () => void } | null>(null);
   function onWindowKeydown(e: KeyboardEvent) {
     if (active === false || e.defaultPrevented) return;
     // A focused row checkbox (after clicking it) shouldn't disable culling keys;
@@ -920,7 +1101,7 @@
     const onCheckbox = e.target instanceof HTMLInputElement && e.target.type === "checkbox";
     if ((isTypingTarget(e) && !onCheckbox) || isModalOpen()) return;
     if (onCheckbox && e.key === " ") return;
-    if (ctxMenu || showBlink || confirmDel) return;
+    if (ctxMenu || groupMenu || showBlink || confirmDel) return;
 
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.altKey && (e.key === "a" || e.key === "A")) {
@@ -967,6 +1148,10 @@
         e.preventDefault();
         showShortcuts = !showShortcuts;
         return;
+      case "/":
+        e.preventDefault();
+        toolbar?.focusSearch();
+        return;
       case "Escape":
         if (showShortcuts) showShortcuts = false;
         else if (previewPath) previewPath = null;
@@ -982,6 +1167,7 @@
 
 <div class="library-view">
   <LibraryToolbar
+    bind:this={toolbar}
     {showRejected}
     {rejectedCount}
     ontab={switchTab}
@@ -990,18 +1176,25 @@
     bind:search={searchInput}
     onexpandall={() => setAllExpanded(true)}
     oncollapseall={() => setAllExpanded(false)}
-    sortActive={!!sort}
+    sortLabel={sort ? (columns.find((c) => c.id === sort?.col)?.label ?? sort.col) : null}
     onclearsort={() => (ui.librarySort = null)}
     filtersActive={filtering || !!searchInput}
     onclearfilters={clearAllFilters}
     {refreshing}
     visibleCount={sorted.length}
-    onselectall={selectAll}
+    tabCount={tabFrames.length}
+    {typeCounts}
+    typeTotal={preTypeFiltered.length}
+    {selectedTypes}
+    onpicktype={pickType}
     onsuggest={sirilAvailable ? () => (showSuggest = true) : undefined}
     oncreateproject={oncreateproject ? createProjectFromView : undefined}
     projectFrameCount={projectFrames.length}
     {columns}
     ontogglecolumn={toggleColumn}
+    filterRowOpen={ui.libraryFilterRow}
+    {colFilterCount}
+    ontogglefilterrow={() => (ui.libraryFilterRow = !ui.libraryFilterRow)}
     shortcutsOpen={showShortcuts}
     onshortcuts={() => (showShortcuts = !showShortcuts)}
   />
@@ -1068,6 +1261,10 @@
               }}
               onpickvalues={toggleValuePicker}
               pickerCol={valuePicker?.colId ?? null}
+              showFilters={ui.libraryFilterRow}
+              checkState={allCheckState}
+              oncheckall={toggleAllChecked}
+              visibleCount={sorted.length}
             />
             <tbody>
               {#if groups.length === 0}
@@ -1114,6 +1311,9 @@
                     colspan={visibleColumns.length + 1}
                     expanded={isExpanded(group.key)}
                     ontoggle={() => toggleGroup(group.key)}
+                    checkState={checkStateOf(group.frames)}
+                    oncheck={() => toggleGroupChecked(group)}
+                    onmenu={(x, y) => openGroupMenu(group, x, y)}
                     {sirilAvailable}
                     analyzing={analyzingGroup === group.key}
                     analysisBusy={analyzingGroup !== null}
@@ -1149,6 +1349,7 @@
       {#if previewEntry && previewFrame}
         {@const path = previewFrame.nasPath}
         <PreviewPane
+          {active}
           entry={previewEntry}
           qualityFrame={previewFrame}
           onclose={() => (previewPath = null)}
@@ -1160,6 +1361,12 @@
           onreveal={() => reveal(path)}
           onblink={blinkPlan ? openBlink : undefined}
           blinkTitle={blinkPlan ? `Blink ${blinkPlan.label} (b)` : undefined}
+          onshowonatlas={onshowonatlas &&
+          !isProjectFrameType(previewFrame.frameType) &&
+          previewFrame.ra !== 0 &&
+          previewFrame.pixelScale !== 0
+            ? () => onshowonatlas(path)
+            : undefined}
           prefetch={nextPath}
         />
       {/if}
@@ -1237,6 +1444,15 @@
       closeCtx();
       copyPaths(ctxPaths);
     }}
+  />
+{/if}
+
+{#if groupMenu}
+  <ActionMenu
+    x={groupMenu.x}
+    y={groupMenu.y}
+    items={groupMenu.items}
+    onclose={() => (groupMenu = null)}
   />
 {/if}
 

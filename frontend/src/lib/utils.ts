@@ -14,13 +14,6 @@ export function isRasterFile(path: string): boolean {
   return RASTER_EXTENSIONS.some((ext) => l.endsWith(ext));
 }
 
-export function truncatePath(path: string, maxLen = 60): string {
-  if (path.length <= maxLen) return path;
-  const parts = path.split("/");
-  if (parts.length <= 2) return "…" + path.slice(-(maxLen - 1));
-  return "…/" + parts.slice(-2).join("/");
-}
-
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-US", {
@@ -55,37 +48,6 @@ export function formatBytes(bytes: number): string {
 /** "1 frame", "3 frames" — `many` defaults to `one` + "s". */
 export function plural(n: number, one: string, many = one + "s"): string {
   return `${n} ${n === 1 ? one : many}`;
-}
-
-export function getCellValue(entry: app.EnrichedFileEntry, colId: string): string {
-  switch (colId) {
-    case "name":
-      return entry.name;
-    case "object":
-      return entry.hasMeta ? entry.object || "—" : entry.isDir ? "—" : "";
-    case "filter":
-      return entry.hasMeta ? entry.filter || "—" : entry.isDir ? "—" : "";
-    case "dateObs":
-      return entry.hasMeta
-        ? entry.dateObs
-          ? entry.dateObs.substring(0, 10)
-          : "—"
-        : entry.isDir
-          ? "—"
-          : "";
-    case "expTime":
-      return entry.hasMeta ? formatExpTime(entry.expTime) : entry.isDir ? "—" : "";
-    case "modTime":
-      return formatDate(entry.modTime);
-    case "size":
-      return entry.isDir ? "—" : formatBytes(entry.size);
-    case "gain":
-      return entry.hasMeta ? (entry.gain ? String(entry.gain) : "—") : "";
-    case "ccdTemp":
-      return entry.hasMeta ? (entry.ccdTemp ? entry.ccdTemp.toFixed(1) + " °C" : "—") : "";
-    default:
-      return "—";
-  }
 }
 
 /** Maps a library frame to the file-entry shape PreviewPane expects. */

@@ -3,6 +3,10 @@
   import { allFolderPaths, buildTree, flattenTree } from "../../lib/import/tree";
   import { formatBytes } from "../../lib/utils";
   import Spinner from "./Spinner.svelte";
+  import ActionMenu from "../ActionMenu.svelte";
+  import { fileMenuItems, type ActionMenuItem } from "../../lib/shell/menu";
+  import { openFolder } from "../../lib/shell/fileActions";
+  import { copyPath } from "../../lib/clipboard";
 
   interface Props {
     candidates: Candidate[];
@@ -26,6 +30,53 @@
   }
   function expandAll() {
     collapsedFolders.clear();
+  }
+
+  // ── Right-click menu ──────────────────────────────────────────────────────
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  /** Absolute source path of a tree folder (folder paths are relative to the scan root). */
+  function absFolder(folderPath: string): string | null {
+    const c = candidates.find((x) =>
+      x.relativePath.replaceAll("\\", "/").startsWith(folderPath + "/"),
+    );
+    if (!c) return null;
+    const base = c.sourcePath.slice(0, c.sourcePath.length - c.relativePath.length);
+    const sep = c.sourcePath.includes("\\") && !c.sourcePath.includes("/") ? "\\" : "/";
+    return base + folderPath.split("/").join(sep);
+  }
+
+  function folderMenu(e: MouseEvent, folderPath: string, name: string) {
+    e.preventDefault();
+    const abs = absFolder(folderPath);
+    const collapsed = collapsedFolders.has(folderPath);
+    const items: ActionMenuItem[] = [
+      { heading: name },
+      { label: collapsed ? "Expand" : "Collapse", run: () => toggleFolder(folderPath) },
+      { label: "Expand all", run: expandAll },
+      { label: "Collapse all", run: collapseAll },
+    ];
+    if (abs) {
+      items.push(
+        { separator: true },
+        { label: "Open source folder", run: () => void openFolder(abs) },
+        { label: "Copy source path", run: () => void copyPath(abs) },
+      );
+    }
+    menu = { x: e.clientX, y: e.clientY, items };
+  }
+
+  function fileMenu(e: MouseEvent, c: Candidate) {
+    e.preventDefault();
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { heading: c.relativePath },
+        ...fileMenuItems({ path: c.sourcePath, desktop: true }),
+        { label: "Copy destination path", run: () => void copyPath(c.destPath) },
+      ],
+    };
   }
 </script>
 
@@ -54,7 +105,7 @@
     <tbody>
       {#each rows as row (row.kind === "folder" ? "d:" + row.folderPath : "f:" + row.candidate.sourcePath)}
         {#if row.kind === "folder"}
-          <tr class="folder-row">
+          <tr class="folder-row" oncontextmenu={(e) => folderMenu(e, row.folderPath, row.name)}>
             <td style:padding-left="{row.depth * 18 + 10}px">
               <button
                 class="folder-toggle"
@@ -82,7 +133,7 @@
             <td class="size-cell">{formatBytes(row.size)}</td>
           </tr>
         {:else}
-          <tr class="file-row">
+          <tr class="file-row" oncontextmenu={(e) => fileMenu(e, row.candidate)}>
             <td style:padding-left="{row.depth * 18 + 32}px" class="file-name" title={row.name}
               >{row.name}</td
             >
@@ -94,6 +145,10 @@
     </tbody>
   </table>
 </div>
+
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
 
 <style>
   .tree-meta {

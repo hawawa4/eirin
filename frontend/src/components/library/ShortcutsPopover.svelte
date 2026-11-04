@@ -14,12 +14,21 @@
     [["Shift", "Click"], "Select range"],
     [["Space"], "Toggle checkbox of current frame"],
     [["Ctrl", "A"], "Select all frames in view"],
+    [["/"], "Search"],
     [["x"], "Reject current / selected, then advance"],
     [["u"], "Restore current / selected"],
     [["Delete"], "Delete from disk (asks first)"],
     [["b"], "Blink checked frames, or the previewed frame's object"],
     [["Esc"], "Close preview, then clear selection"],
+    [["s"], "Preview: stretch on / off"],
+    [["1–3"], "Preview: gentle / normal / strong stretch"],
+    [["c"], "Preview: cycle RGB / R / G / B"],
+    [["h"], "Preview: histogram"],
+    [["l"], "Preview: star / DSO labels"],
+    [["0"], "Preview: fit to window"],
     [["?"], "Show / hide this help"],
+    [["Right-click"], "Actions for a frame, a selection or a group"],
+    [["Ctrl", "1…7"], "Switch tabs"],
   ];
 
   let el: HTMLDivElement;

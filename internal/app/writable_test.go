@@ -43,7 +43,7 @@ func TestWriteMethodsReadOnlyInServer(t *testing.T) {
 		"SetFrameType":         func() error { return a.SetFrameType(path, store.FrameTypeLight) },
 		"SetProjectsFolder":    func() error { return a.SetProjectsFolder(dir) },
 		"CreateProject":        func() error { _, err := a.CreateProject("p", ""); return err },
-		"DeleteProject":        func() error { return a.DeleteProject(1) },
+		"DeleteProject":        func() error { return a.DeleteProject(1, true) },
 		"AddFramesToProject":   func() error { return a.AddFramesToProject(dir, []string{path}, "copy") },
 		"AddFramesToProjectDetailed": func() error {
 			_, err := a.AddFramesToProjectDetailed(dir, []string{path}, "copy")

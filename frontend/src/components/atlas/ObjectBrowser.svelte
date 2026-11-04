@@ -10,9 +10,12 @@
     /** `additive` is true for Shift/Ctrl/Cmd+click. */
     onselectgroup: (g: G, additive: boolean) => void;
     onselectcatalog: (obj: app.CatalogObject) => void;
+    /** Right-click on one of your objects. */
+    onmenugroup?: (g: G, x: number, y: number) => void;
   }
 
-  let { groups, catalog, activeName, onselectgroup, onselectcatalog }: Props = $props();
+  let { groups, catalog, activeName, onselectgroup, onselectcatalog, onmenugroup }: Props =
+    $props();
 
   let open = $state(true);
   let search = $state("");
@@ -75,6 +78,11 @@
                 class:active={g.name === activeName}
                 aria-current={g.name === activeName ? "true" : undefined}
                 onclick={(e) => onselectgroup(g, e.shiftKey || e.ctrlKey || e.metaKey)}
+                oncontextmenu={(e) => {
+                  if (!onmenugroup) return;
+                  e.preventDefault();
+                  onmenugroup(g, e.clientX, e.clientY);
+                }}
                 title="Show {g.name} ({g.count} frame{g.count === 1 ? '' : 's'})"
               >
                 <span class="obj-item-name">{g.name}</span>
