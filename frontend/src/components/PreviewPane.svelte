@@ -3,7 +3,7 @@
   import type * as app from "$models/app";
   import type * as fits from "$models/fits";
   import type * as catalog from "$models/catalog";
-  import { LoadRasterImage, GetAnnotations, ReadFITSHeader } from "$app";
+  import { GetAnnotations, ReadFITSHeader } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec, isRasterFile } from "../lib/utils";
   import { computeStretch } from "../lib/stretchPreview";
   import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
@@ -14,7 +14,7 @@
     type DecodedPreview,
     type HistBins,
   } from "../lib/library/previewCache";
-  import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
+  import { NATIVE, levelFor, levelRank, loadImage, previewUrl } from "../lib/images";
   import { copyPath } from "../lib/clipboard";
   import { isModalOpen, isTypingTarget } from "../lib/keys";
   import ActionMenu from "./ActionMenu.svelte";
@@ -38,7 +38,7 @@
     /** Path of the frame likely to be shown next; warmed into the preview cache. */
     prefetch?: string | null;
     /**
-     * Read-only server viewer: show JPEGs rendered by the server (GetViewerPreview)
+     * Read-only server viewer: show JPEGs rendered by the server (lib/images)
      * instead of loading raw pixels, which are tens of MB per frame over the network.
      */
     serverRendered?: boolean;
@@ -172,8 +172,12 @@
   let fitsHeader = $state<fits.FITSHeader | null>(null);
   let previewReqId = 0;
   let hasImage = $state(false);
-  let rasterDataUrl = $state("");
-  /** Pixel size of a server-rendered FITS preview (the raw preview's size; used for labels). */
+  /** URL of the <img> on screen (raster files, and every frame when server-rendered). */
+  let imageUrl = $state("");
+  /** Preview level of imageUrl (lib/images); sharper ones are fetched as the user zooms in. */
+  let imageLevel = $state(NATIVE);
+  let imageEl = $state<HTMLImageElement | null>(null);
+  /** Native pixel size of a server-rendered FITS frame (from its header; used for labels). */
   let serverSize = $state<{ width: number; height: number } | null>(null);
 
   // ── Zoom / pan ────────────────────────────────────────────────────────────
@@ -465,7 +469,7 @@ void main() {
     rawInfo = null;
     serverSize = null;
     hasImage = false;
-    rasterDataUrl = "";
+    imageUrl = "";
     histBins = null;
     annotations = [];
     showAnnotations = false;
@@ -477,30 +481,20 @@ void main() {
       if (!isRasterFile(path)) {
         ReadFITSHeader(path)
           .then((h) => {
-            if (id === previewReqId) fitsHeader = h;
+            if (id !== previewReqId) return;
+            fitsHeader = h;
+            if (h && h.width > 0 && h.height > 0) serverSize = { width: h.width, height: h.height };
           })
           .catch(() => {
             /* the header panel just stays empty */
           });
       }
-      loadServerImage(path, id);
+      loadImageView(path, id);
       return;
     }
 
     if (isRasterFile(path)) {
-      previewLoading = true;
-      LoadRasterImage(path)
-        .then((dataUrl: string) => {
-          if (id !== previewReqId) return;
-          rasterDataUrl = dataUrl;
-          hasImage = true;
-          previewLoading = false;
-        })
-        .catch((err: unknown) => {
-          if (id !== previewReqId) return;
-          previewError = err instanceof Error ? err.message : "Failed to load image";
-          previewLoading = false;
-        });
+      loadImageView(path, id);
       return;
     }
 
@@ -527,30 +521,69 @@ void main() {
     }, LOAD_DELAY_MS);
   }
 
-  /** Stretch level for a server-rendered preview: processed frames and raster images as they are. */
-  function serverLevel(path: string, processed: boolean): number {
+  /** Stretch for a server-rendered preview: processed frames and raster images as they are. */
+  function imageStretch(path: string, processed: boolean): number {
     if (isRasterFile(path) || processed || !pp.stretchEnabled) return 0;
     return pp.stretchLevel;
   }
 
-  /** Loads (or re-stretches) the server-rendered preview; the current image stays up meanwhile. */
-  function loadServerImage(path: string, id: number) {
-    previewLoading = true;
-    previewError = "";
-    loadViewerPreview(path, serverLevel(path, isProcessed))
-      .then((p) => {
+  /**
+   * The preview level that shows the <img> sharply at the current zoom: its
+   * on-screen size (the fitted box, before the zoom transform), or the
+   * viewport's before anything is shown.
+   */
+  function wantedLevel(z = zoom): number {
+    const el = imageEl;
+    const fitted =
+      hasImage && el && el.offsetWidth > 0
+        ? Math.max(el.offsetWidth, el.offsetHeight)
+        : Math.max(viewportW, viewportH) || 1024;
+    return levelFor(fitted * z);
+  }
+
+  /**
+   * Loads (or re-stretches, or sharpens) the <img> preview; the current image
+   * stays up meanwhile. `quiet`: no loading indicator and no error (a sharper
+   * version of what's shown).
+   */
+  function loadImageView(path: string, id: number, level = wantedLevel(), quiet = false) {
+    if (!quiet) {
+      previewLoading = true;
+      previewError = "";
+    }
+    const url = previewUrl(path, level, imageStretch(path, isProcessed));
+    loadImage(url)
+      .then((img) => {
         if (id !== previewReqId) return;
-        rasterDataUrl = p.dataUrl;
-        serverSize = isRasterFile(path) ? null : { width: p.width, height: p.height };
+        imageUrl = url;
+        // Smaller than the level asked for: that's the whole image.
+        imageLevel = Math.max(img.naturalWidth, img.naturalHeight) < level ? NATIVE : level;
         hasImage = true;
         previewLoading = false;
       })
       .catch((err: unknown) => {
-        if (id !== previewReqId) return;
+        if (id !== previewReqId || quiet) return;
         previewError = (err instanceof Error ? err.message : String(err)) || "Preview failed";
         previewLoading = false;
       });
   }
+
+  // Zooming in past the loaded resolution fetches a sharper level once the zoom settles.
+  $effect(() => {
+    void zoom;
+    void viewportW;
+    void viewportH;
+    if (!showAsImage || !hasImage) return;
+    const path = entryPath;
+    const id = previewReqId;
+    const t = setTimeout(() => {
+      const want = wantedLevel();
+      if (levelRank(want) > levelRank(untrack(() => imageLevel))) {
+        loadImageView(path, id, want, true);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  });
 
   function showPreview(p: DecodedPreview, id: number) {
     previewLoading = false;
@@ -582,13 +615,13 @@ void main() {
   $effect(() => {
     const next = prefetch;
     if (!next || previewLoading || next === entryPath) return;
-    if (serverRendered) {
-      // The next frame's type isn't known here; assume it's stretched like this one.
-      const level = serverLevel(next, false);
-      const t = setTimeout(() => prefetchViewerPreview(next, level), 120);
+    if (serverRendered || isRasterFile(next)) {
+      // The next frame's type isn't known here; assume it's stretched like this
+      // one. It opens fitted, whatever the zoom on this one.
+      const url = untrack(() => previewUrl(next, wantedLevel(1), imageStretch(next, false)));
+      const t = setTimeout(() => loadImage(url).catch(() => {}), 120);
       return () => clearTimeout(t);
     }
-    if (isRasterFile(next)) return;
     const t = setTimeout(() => prefetchPreview(next), 120);
     return () => clearTimeout(t);
   });
@@ -608,7 +641,7 @@ void main() {
     void pp.stretchLevel;
     if (!serverRendered) return;
     untrack(() => {
-      if (hasImage && !isRaster && !isProcessed) loadServerImage(entryPath, previewReqId);
+      if (hasImage && !isRaster && !isProcessed) loadImageView(entryPath, previewReqId);
     });
   });
   function setStretch(l: number) {
@@ -962,7 +995,8 @@ void main() {
     {#if showAsImage}
       <!-- Zoom/pan as a transform about the centre: the same mapping imgToViewport uses. -->
       <img
-        src={rasterDataUrl}
+        bind:this={imageEl}
+        src={imageUrl}
         alt={entry.name}
         class="raster-img"
         class:visible={hasImage}

@@ -213,13 +213,14 @@ export function GetAppVersion(): $CancellablePromise<string> {
 }
 
 /**
- * GetAtlasFrameSize reads pixel dimensions for any supported file type.
- * For FITS files the header is parsed; for PNG/JPEG/TIFF just the image size
- * is read (much cheaper — no full pixel decode). Called lazily by the frontend.
+ * GetAtlasFrameSizes reads the pixel dimensions of several files at once
+ * (one round trip for the server viewer), a few in parallel. Files that
+ * can't be read are left out of the result. For FITS only the header is
+ * read; for PNG/JPEG/TIFF just the image size.
  */
-export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.AtlasFrameSize> {
-    return $Call.ByID(2509712703, nasPath).then(($result: any) => {
-        return $$createType8($result);
+export function GetAtlasFrameSizes(nasPaths: string[]): $CancellablePromise<{ [_ in string]?: $models.AtlasFrameSize }> {
+    return $Call.ByID(3371978404, nasPaths).then(($result: any) => {
+        return $$createType9($result);
     });
 }
 
@@ -231,7 +232,7 @@ export function GetAtlasFrameSize(nasPath: string): $CancellablePromise<$models.
  */
 export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.AtlasIndexEntry[]> {
     return $Call.ByID(2651540675, rootPath).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
@@ -240,7 +241,7 @@ export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.Atl
  */
 export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
     return $Call.ByID(2280456341).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
@@ -250,7 +251,7 @@ export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
  */
 export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
     return $Call.ByID(1898321893).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
@@ -260,7 +261,7 @@ export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
  */
 export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(1729763907, rootPath).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -271,7 +272,7 @@ export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.
  */
 export function GetLibraryFramesByType(rootPath: string, frameType: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(991427518, rootPath, frameType).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -283,7 +284,7 @@ export function GetLibraryFramesByType(rootPath: string, frameType: string): $Ca
  */
 export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.LightCoverage> {
     return $Call.ByID(615631664, rootPath).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
@@ -293,7 +294,7 @@ export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.
  */
 export function GetLightFramesPaged(rootPath: string, objects: string[], offset: number): $CancellablePromise<$models.PagedLightFrames> {
     return $Call.ByID(2285453405, rootPath, objects, offset).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType18($result);
     });
 }
 
@@ -302,7 +303,7 @@ export function GetLightFramesPaged(rootPath: string, objects: string[], offset:
  */
 export function GetLightObjects(rootPath: string): $CancellablePromise<string[]> {
     return $Call.ByID(316973662, rootPath).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
@@ -312,7 +313,7 @@ export function GetLightObjects(rootPath: string): $CancellablePromise<string[]>
  */
 export function GetProjectFrames(projectFolder: string): $CancellablePromise<string[]> {
     return $Call.ByID(480177941, projectFolder).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
@@ -325,7 +326,7 @@ export function GetProjectFrames(projectFolder: string): $CancellablePromise<str
  */
 export function GetProjectLibraryFrames(projectFolder: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(425723200, projectFolder).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -336,7 +337,7 @@ export function GetProjectLibraryFrames(projectFolder: string): $CancellableProm
  */
 export function GetProjectOutputFiles(projectFolder: string): $CancellablePromise<$models.ProjectOutputFile[]> {
     return $Call.ByID(3884401349, projectFolder).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType21($result);
     });
 }
 
@@ -353,19 +354,6 @@ export function GetProjectsFolder(): $CancellablePromise<string> {
  */
 export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus> {
     return $Call.ByID(1964565836).then(($result: any) => {
-        return $$createType21($result);
-    });
-}
-
-/**
- * GetViewerPreview renders a preview on the server for the read-only viewer,
- * which reaches the backend over the network: a JPEG of at most
- * viewerPreviewSize pixels (~1 MB) instead of the raw float pixels or the
- * original file (tens of MB). FITS files are stretched at stretchLevel
- * (0=linear … 3=strong); raster images are shown as they are.
- */
-export function GetViewerPreview(path: string, stretchLevel: number): $CancellablePromise<fits$0.RenderedPreview> {
-    return $Call.ByID(4224584848, path, stretchLevel).then(($result: any) => {
         return $$createType22($result);
     });
 }
@@ -440,15 +428,6 @@ export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(361579588).then(($result: any) => {
         return $$createType29($result);
     });
-}
-
-/**
- * LoadRasterImage returns a PNG, JPEG or TIFF file as a data URL a browser
- * can display (TIFF is converted to PNG). The file must be under the
- * configured NAS root.
- */
-export function LoadRasterImage(path: string): $CancellablePromise<string> {
-    return $Call.ByID(3497382232, path);
 }
 
 /**
@@ -656,20 +635,20 @@ const $$createType5 = catalog$0.Annotation.createFrom;
 const $$createType6 = $Create.Array($$createType5);
 const $$createType7 = $models.AppInfo.createFrom;
 const $$createType8 = $models.AtlasFrameSize.createFrom;
-const $$createType9 = $models.AtlasIndexEntry.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = $models.CatalogObject.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = importer$0.Progress.createFrom;
-const $$createType14 = $models.LibraryFrame.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = $models.LightCoverage.createFrom;
-const $$createType17 = $models.PagedLightFrames.createFrom;
-const $$createType18 = $Create.Array($Create.Any);
-const $$createType19 = $models.ProjectOutputFile.createFrom;
-const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $models.SnapshotStatus.createFrom;
-const $$createType22 = fits$0.RenderedPreview.createFrom;
+const $$createType9 = $Create.Map($Create.Any, $$createType8);
+const $$createType10 = $models.AtlasIndexEntry.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = $models.CatalogObject.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = importer$0.Progress.createFrom;
+const $$createType15 = $models.LibraryFrame.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $models.LightCoverage.createFrom;
+const $$createType18 = $models.PagedLightFrames.createFrom;
+const $$createType19 = $Create.Array($Create.Any);
+const $$createType20 = $models.ProjectOutputFile.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = $models.SnapshotStatus.createFrom;
 const $$createType23 = $models.ImportOutputsResult.createFrom;
 const $$createType24 = $models.FileEntry.createFrom;
 const $$createType25 = $Create.Array($$createType24);

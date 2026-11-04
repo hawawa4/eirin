@@ -198,11 +198,14 @@ function drawMarker(
  */
 function drawImageInFootprint(
   ctx: CanvasRenderingContext2D,
-  img: HTMLCanvasElement,
+  img: ImageBitmap,
   pts: [number, number][],
 ) {
   const [tl, tr, , bl] = pts;
   ctx.save();
+  // Shrinking a sharper level than needed (just zoomed out) aliases with the
+  // default filter; "high" averages like a mipmap.
+  ctx.imageSmoothingQuality = "high";
   ctx.transform(
     (tr[0] - tl[0]) / img.width,
     (tr[1] - tl[1]) / img.width,

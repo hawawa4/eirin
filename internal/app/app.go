@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/hawawa4/eirin/internal/fits"
+	"github.com/hawawa4/eirin/internal/previews"
 	"github.com/hawawa4/eirin/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -20,6 +21,9 @@ type App struct {
 	imports importJob
 	// previews caches Blink previews across calls (see fits.PreviewCache).
 	previews fits.PreviewCache
+	// images renders and caches the display images served on PreviewRoute
+	// (Sky Atlas, Slideshow, server viewer). Nil until startup.
+	images atomic.Pointer[previews.Service]
 	// scopeSizes and frameSizes cache image sizes for the Coverage view, by
 	// telescope and by path.
 	scopeSizes sizeCache

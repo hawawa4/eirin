@@ -3,7 +3,7 @@
 # snapshot the desktop app publishes to <library>/.eirin/library.db (enable it
 # in the desktop app's Settings → Server viewer) and never writes to the
 # library. Mount the library at EIRIN_ROOT (read-only is fine) and /data for
-# the server's local copy of the snapshot.
+# the server's local copy of the snapshot and its preview cache (/data/previews).
 
 FROM node:24-alpine AS frontend-builder
 WORKDIR /app/frontend

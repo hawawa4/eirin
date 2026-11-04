@@ -5,6 +5,8 @@ package app
 import (
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hawawa4/eirin/internal/snapshot"
@@ -24,10 +26,21 @@ func (a *App) startup() error {
 		return err
 	}
 	a.db.Store(s)
+	a.startPreviews(desktopCacheDir())
 	a.startAutoBackup()
 	a.snapshots.publisher = snapshot.NewPublisher(a.store)
 	a.snapshots.publisher.Start()
 	return nil
+}
+
+// desktopCacheDir is where rendered previews are kept: the user cache
+// directory (~/.cache/eirin/previews on Linux).
+func desktopCacheDir() string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "eirin", "previews")
 }
 
 // shutdown publishes pending snapshot changes, giving a slow NAS a few seconds.

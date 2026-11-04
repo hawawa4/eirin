@@ -143,7 +143,7 @@ export class AtlasFrameSize {
 /**
  * AtlasIndexEntry holds the DB-resident data for a single stacked/processed
  * frame. Width and Height are NOT included — they require a FITS read and are
- * fetched lazily via GetAtlasFrameSize when the frame is visible in the viewport.
+ * fetched lazily via GetAtlasFrameSizes when the frame is visible in the viewport.
  */
 export class AtlasIndexEntry {
     "nasPath": string;

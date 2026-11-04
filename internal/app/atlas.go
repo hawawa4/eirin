@@ -1,9 +1,9 @@
 package app
 
 import (
-	"path/filepath"
-
 	"log/slog"
+	"path/filepath"
+	"sync"
 
 	"github.com/hawawa4/eirin/internal/catalog"
 	"github.com/hawawa4/eirin/internal/fits"
@@ -12,7 +12,7 @@ import (
 
 // AtlasIndexEntry holds the DB-resident data for a single stacked/processed
 // frame. Width and Height are NOT included — they require a FITS read and are
-// fetched lazily via GetAtlasFrameSize when the frame is visible in the viewport.
+// fetched lazily via GetAtlasFrameSizes when the frame is visible in the viewport.
 type AtlasIndexEntry struct {
 	NasPath    string  `json:"nasPath"`
 	Name       string  `json:"name"`
@@ -86,10 +86,38 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 	return out
 }
 
-// GetAtlasFrameSize reads pixel dimensions for any supported file type.
-// For FITS files the header is parsed; for PNG/JPEG/TIFF just the image size
-// is read (much cheaper — no full pixel decode). Called lazily by the frontend.
-func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
+// GetAtlasFrameSizes reads the pixel dimensions of several files at once
+// (one round trip for the server viewer), a few in parallel. Files that
+// can't be read are left out of the result. For FITS only the header is
+// read; for PNG/JPEG/TIFF just the image size.
+func (a *App) GetAtlasFrameSizes(nasPaths []string) map[string]AtlasFrameSize {
+	const workers = 8
+	out := make(map[string]AtlasFrameSize, len(nasPaths))
+	var mu sync.Mutex
+	jobs := make(chan string)
+	var wg sync.WaitGroup
+	for range min(workers, len(nasPaths)) {
+		wg.Go(func() {
+			for p := range jobs {
+				sz, err := a.atlasFrameSize(p)
+				if err != nil {
+					continue
+				}
+				mu.Lock()
+				out[p] = sz
+				mu.Unlock()
+			}
+		})
+	}
+	for _, p := range nasPaths {
+		jobs <- p
+	}
+	close(jobs)
+	wg.Wait()
+	return out
+}
+
+func (a *App) atlasFrameSize(nasPath string) (AtlasFrameSize, error) {
 	if err := a.checkServable(nasPath); err != nil {
 		return AtlasFrameSize{}, err
 	}
@@ -106,4 +134,3 @@ func (a *App) GetAtlasFrameSize(nasPath string) (AtlasFrameSize, error) {
 	}
 	return AtlasFrameSize{Width: hdr.Width, Height: hdr.Height}, nil
 }
-

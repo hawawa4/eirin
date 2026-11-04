@@ -5,68 +5,57 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
-	"image/color"
 	"image/jpeg"
 	"math"
 	"strings"
-
-	fitsio "codeberg.org/astrogo/fitsio"
 )
 
 const previewJPEGQuality = 90
+
+// MaxRenderSize caps the longest side of any rendered image, "native" ones
+// included: beyond it the 8-bit image alone would take hundreds of MB.
+const MaxRenderSize = 8192
 
 // previewImage is a FITS image prepared for display: debayered, chroma-
 // smoothed (raw subs), sized to fit and normalised to [0,1] with one shared
 // range. Rows are still in FITS order (bottom-up).
 type previewImage struct {
-	channels [][]float64
+	channels [][]float32
 	w, h     int
 	stats    []ChannelStats
 	gains    []float64
 }
 
+// loadPreviewImage reads and prepares path at most maxSize pixels on its
+// longest side (0 = native size, capped at MaxRenderSize).
 func loadPreviewImage(path string, maxSize int) (previewImage, error) {
-	f, err := openFITS(path)
+	if maxSize <= 0 || maxSize > MaxRenderSize {
+		maxSize = MaxRenderSize
+	}
+	ph, pixels, err := readPixels(path)
 	if err != nil {
 		return previewImage{}, err
 	}
-	defer f.Close()
-
-	hdu := f.HDU(0)
-	if hdu == nil {
-		return previewImage{}, fmt.Errorf("no HDU in %s", path)
-	}
-	img, ok := hdu.(fitsio.Image)
-	if !ok {
-		return previewImage{}, fmt.Errorf("primary HDU is not an image")
-	}
-	hdr := img.Header()
-	axes := hdr.Axes()
-	if len(axes) < 2 {
+	if len(ph.axes) < 2 {
 		return previewImage{}, fmt.Errorf("not a 2D image")
 	}
 
-	w, h := axes[0], axes[1]
+	w, h := ph.axes[0], ph.axes[1]
 	nch := 1
-	if len(axes) >= 3 {
-		nch = axes[2]
+	if len(ph.axes) >= 3 {
+		nch = max(1, ph.axes[2])
 	}
 
-	pixels, err := readPixelsAsFloat64(img, cardF64(hdr, 1.0, "BSCALE"), cardF64(hdr, 0.0, "BZERO"))
-	if err != nil {
-		return previewImage{}, fmt.Errorf("read pixels: %w", err)
-	}
-
-	var channels [][]float64
-	bayerpat := strings.ToUpper(strings.TrimSpace(cardStr(hdr, "BAYERPAT", "COLORTYP")))
+	var channels [][]float32
+	bayerpat := strings.ToUpper(strings.TrimSpace(cardStr(ph.hdr, "BAYERPAT", "COLORTYP")))
 	isRawSub := bayerpat != "" && nch == 1
 	if isRawSub {
 		r, g, b, dw, dh := debayerBlocks(pixels, w, h, bayerpat)
 		w, h = dw, dh
-		channels = [][]float64{r, g, b}
+		channels = [][]float32{r, g, b}
 	} else {
 		planeSize := w * h
-		channels = make([][]float64, nch)
+		channels = make([][]float32, nch)
 		for c := range nch {
 			channels[c] = pixels[c*planeSize : (c+1)*planeSize]
 		}
@@ -103,6 +92,77 @@ func loadPreviewImage(path string, maxSize int) (previewImage, error) {
 	}, nil
 }
 
+// RenderFITS renders the FITS image at path as an 8-bit image (RGBA for
+// colour, Gray for mono) at most maxSize pixels on its longest side (0 =
+// native size, capped at MaxRenderSize), stretched at stretchLevel:
+// 0=linear, 1=gentle, 2=normal, 3=strong.
+func RenderFITS(path string, maxSize, stretchLevel int) (image.Image, error) {
+	pi, err := loadPreviewImage(path, maxSize)
+	if err != nil {
+		return nil, err
+	}
+	return pi.render(stretchLevel), nil
+}
+
+// render stretches the prepared image to 8 bits, flipping it to top-down rows
+// (FITS pixel (0,0) is bottom-left; Go image (0,0) is top-left).
+func (pi previewImage) render(stretchLevel int) image.Image {
+	p := linkedStretch(pi.stats, pi.gains, stretchLevel)
+	w, h := pi.w, pi.h
+	// Large images go through a lookup table per channel: far cheaper than
+	// the stretch per pixel, and fine enough to be exact in 8 bits.
+	useLUT := w*h > stretchLUTSize
+	tables := make([][]uint8, min(3, len(pi.channels)))
+	for c := range tables {
+		if useLUT {
+			tables[c] = p.table(c)
+		}
+	}
+	px := func(c int, v float32) uint8 {
+		if useLUT {
+			return tables[c][int(v*(stretchLUTSize-1)+0.5)]
+		}
+		return toU8(p.apply(c, float64(v)))
+	}
+
+	if len(pi.channels) >= 3 {
+		rgba := image.NewRGBA(image.Rect(0, 0, w, h))
+		r, g, b := pi.channels[0], pi.channels[1], pi.channels[2]
+		for y := range h {
+			src := (h - 1 - y) * w
+			row := rgba.Pix[y*rgba.Stride : y*rgba.Stride+w*4]
+			for x := range w {
+				i := src + x
+				o := x * 4
+				row[o] = px(0, r[i])
+				row[o+1] = px(1, g[i])
+				row[o+2] = px(2, b[i])
+				row[o+3] = 255
+			}
+		}
+		return rgba
+	}
+	gray := image.NewGray(image.Rect(0, 0, w, h))
+	ch := pi.channels[0]
+	for y := range h {
+		src := (h - 1 - y) * w
+		row := gray.Pix[y*gray.Stride : y*gray.Stride+w]
+		for x := range w {
+			row[x] = px(0, ch[src+x])
+		}
+	}
+	return gray
+}
+
+// EncodeJPEG encodes img as a JPEG at the given quality (1–100).
+func EncodeJPEG(img image.Image, quality int) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, fmt.Errorf("encode JPEG: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
 // GeneratePreview renders a stretched JPEG preview (data URL) at most maxSize
 // pixels on its longest side. stretchLevel: 0=linear, 1=gentle, 2=normal, 3=strong.
 // JPEG rather than PNG: ~4× faster to encode and ~5× smaller to send, which
@@ -115,46 +175,16 @@ func GeneratePreview(path string, maxSize, stretchLevel int) (string, error) {
 // RenderPreview is GeneratePreview with the preview's pixel size, which is
 // the same as GeneratePreviewRaw's for the same maxSize.
 func RenderPreview(path string, maxSize, stretchLevel int) (RenderedPreview, error) {
-	pi, err := loadPreviewImage(path, maxSize)
+	img, err := RenderFITS(path, maxSize, stretchLevel)
 	if err != nil {
 		return RenderedPreview{}, err
 	}
-	p := linkedStretch(pi.stats, pi.gains, stretchLevel)
-	w, h := pi.w, pi.h
-
-	// FITS pixel (0,0) is bottom-left; Go image (0,0) is top-left — flip Y.
-	var outImg image.Image
-	if len(pi.channels) >= 3 {
-		rgba := image.NewRGBA(image.Rect(0, 0, w, h))
-		for y := range h {
-			src := (h - 1 - y) * w
-			for x := range w {
-				i := src + x
-				rgba.SetRGBA(x, y, color.RGBA{
-					R: toU8(p.apply(0, pi.channels[0][i])),
-					G: toU8(p.apply(1, pi.channels[1][i])),
-					B: toU8(p.apply(2, pi.channels[2][i])),
-					A: 255,
-				})
-			}
-		}
-		outImg = rgba
-	} else {
-		gray := image.NewGray(image.Rect(0, 0, w, h))
-		for y := range h {
-			src := (h - 1 - y) * w
-			for x := range w {
-				gray.SetGray(x, y, color.Gray{Y: toU8(p.apply(0, pi.channels[0][src+x]))})
-			}
-		}
-		outImg = gray
+	data, err := EncodeJPEG(img, previewJPEGQuality)
+	if err != nil {
+		return RenderedPreview{}, err
 	}
-
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, outImg, &jpeg.Options{Quality: previewJPEGQuality}); err != nil {
-		return RenderedPreview{}, fmt.Errorf("encode JPEG: %w", err)
-	}
-	return RenderedPreview{DataURL: dataURL("image/jpeg", buf.Bytes()), Width: w, Height: h}, nil
+	b := img.Bounds()
+	return RenderedPreview{DataURL: dataURL("image/jpeg", data), Width: b.Dx(), Height: b.Dy()}, nil
 }
 
 // GeneratePreviewRaw returns the normalised (unstretched) preview pixels plus
@@ -174,11 +204,11 @@ func GeneratePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
 		for x := range w {
 			i := src + x
 			base := (y*w + x) * 16
-			r := float32(pi.channels[0][i])
+			r := pi.channels[0][i]
 			g, b := r, r
 			if colour {
-				g = float32(pi.channels[1][i])
-				b = float32(pi.channels[2][i])
+				g = pi.channels[1][i]
+				b = pi.channels[2][i]
 			}
 			packF32(raw, base+0, r)
 			packF32(raw, base+4, g)

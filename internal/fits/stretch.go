@@ -78,6 +78,20 @@ func (p stretchParams) apply(c int, v float64) float64 {
 	return mtf(p.midtone, x)
 }
 
+// stretchLUTSize is the number of entries in a stretch lookup table over
+// [0,1]: fine enough that even the steepest midtone curve moves less than one
+// 8-bit step between neighbouring entries.
+const stretchLUTSize = 1 << 20
+
+// table returns apply(c, ·) sampled over [0,1] and converted to 8 bits.
+func (p stretchParams) table(c int) []uint8 {
+	t := make([]uint8, stretchLUTSize)
+	for i := range t {
+		t[i] = toU8(p.apply(c, float64(i)/(stretchLUTSize-1)))
+	}
+	return t
+}
+
 // mtf is the midtones transfer function: MTF(m, x) from PixInsight/Siril.
 func mtf(m, x float64) float64 {
 	switch {

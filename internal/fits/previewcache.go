@@ -42,14 +42,6 @@ func (c *PreviewCache) Rendered(path string, maxSize, stretchLevel int) (Rendere
 	})
 }
 
-// Raster returns RenderRasterPreview(path, maxSize), from the cache when the
-// file is unchanged.
-func (c *PreviewCache) Raster(path string, maxSize int) (RenderedPreview, error) {
-	return c.cached(path, fmt.Sprintf("raster\x00%d", maxSize), func() (RenderedPreview, error) {
-		return RenderRasterPreview(path, maxSize)
-	})
-}
-
 func (c *PreviewCache) cached(path, variant string, render func() (RenderedPreview, error)) (RenderedPreview, error) {
 	info, err := os.Stat(path)
 	if err != nil {

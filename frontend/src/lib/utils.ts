@@ -8,7 +8,7 @@ export function isFits(name: string): boolean {
 
 const RASTER_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tif", ".tiff"];
 
-/** PNG/JPEG/TIFF images, shown through LoadRasterImage (matches indexer.IsRasterFile). */
+/** PNG/JPEG/TIFF images, shown as they are (matches indexer.IsRasterFile). */
 export function isRasterFile(path: string): boolean {
   const l = path.toLowerCase();
   return RASTER_EXTENSIONS.some((ext) => l.endsWith(ext));

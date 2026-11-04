@@ -4,6 +4,5 @@
 export {
     ChannelStats,
     FITSHeader,
-    RawPreviewData,
-    RenderedPreview
+    RawPreviewData
 } from "./models.js";

@@ -33,7 +33,7 @@ export interface AtlasScene {
   /** Pulsing target ring after flying to a catalog object. */
   focus: { ra: number; dec: number } | null;
   size(path: string): FrameSize | undefined;
-  preview(path: string): HTMLCanvasElement | undefined;
+  preview(path: string): ImageBitmap | undefined;
   previewLoading(path: string): boolean;
   /** Effective rotation (stored rotation + any user orientation fix). */
   rotation(entry: app.AtlasIndexEntry): number;

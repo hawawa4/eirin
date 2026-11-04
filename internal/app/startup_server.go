@@ -8,7 +8,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 
+	"github.com/hawawa4/eirin/internal/indexer"
+	"github.com/hawawa4/eirin/internal/previews"
 	"github.com/hawawa4/eirin/internal/snapshot"
 	"github.com/hawawa4/eirin/internal/store"
 )
@@ -21,6 +24,9 @@ const EnvRoot = "EIRIN_ROOT"
 type snapshotSide struct {
 	loader *snapshot.Loader
 	cancel context.CancelFunc
+	// stopWarm cancels the preview warm-up of the previous snapshot.
+	warmMu   sync.Mutex
+	stopWarm context.CancelFunc
 }
 
 // startup opens the local viewer database and starts watching for snapshots.
@@ -35,6 +41,7 @@ func (a *App) startup() error {
 	l := snapshot.NewLoader(root, local, func(st *store.Store) *store.Store {
 		old := a.db.Swap(st)
 		a.emitEvent("library:updated", nil) // open viewers reload
+		a.warmPreviews()
 		return old
 	})
 	st, err := l.Open()
@@ -43,6 +50,8 @@ func (a *App) startup() error {
 		return err
 	}
 	a.db.Store(st)
+	a.startPreviews(filepath.Join(filepath.Dir(local), "previews"))
+	a.warmPreviews()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.snapshots = snapshotSide{loader: l, cancel: cancel}
@@ -55,6 +64,46 @@ func (a *App) shutdown() {
 	if a.snapshots.cancel != nil {
 		a.snapshots.cancel()
 	}
+	a.snapshots.warmMu.Lock()
+	if a.snapshots.stopWarm != nil {
+		a.snapshots.stopWarm()
+	}
+	a.snapshots.warmMu.Unlock()
+}
+
+// warmPreviews renders, in the background, every level of the final images
+// (what the Slideshow and the Sky Atlas show) that isn't cached yet, so
+// viewers rarely wait for a render. Stacks, seen one at a time in the
+// Library, render on demand. Set EIRIN_PREVIEW_WARM=0 to render only on
+// demand.
+func (a *App) warmPreviews() {
+	svc, st := a.images.Load(), a.store()
+	if svc == nil || st == nil || os.Getenv("EIRIN_PREVIEW_WARM") == "0" {
+		return
+	}
+	frames, err := st.GetAllFramesUnder(st.Load().RootFolder)
+	if err != nil {
+		slog.Warn("previews: warm-up", "err", err)
+		return
+	}
+	var reqs []previews.Request
+	for _, f := range frames {
+		if f.FrameType != store.FrameTypeProcessed && f.FrameType != store.FrameTypeImage {
+			continue
+		}
+		// Finished pictures are shown as they are: stretch 0, as in
+		// stretchFor (frontend/src/lib/images.ts).
+		reqs = append(reqs, previews.Request{Path: f.NasPath, Raster: indexer.IsRasterFile(f.NasPath)})
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	a.snapshots.warmMu.Lock()
+	if a.snapshots.stopWarm != nil {
+		a.snapshots.stopWarm()
+	}
+	a.snapshots.stopWarm = cancel
+	a.snapshots.warmMu.Unlock()
+	go svc.Warm(ctx, reqs)
 }
 
 // viewerDBPath is where the server keeps its local copy of the snapshot:

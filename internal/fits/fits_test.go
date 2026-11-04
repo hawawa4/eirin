@@ -6,42 +6,6 @@ import (
 	"testing"
 )
 
-// ── Scale helpers ─────────────────────────────────────────────────────────────
-
-func TestApplyScale8(t *testing.T) {
-	out := applyScale8([]int8{0, 100, -100}, 1.0, 0.0)
-	if out[0] != 0 || out[1] != 100 || out[2] != -100 {
-		t.Errorf("applyScale8 identity: %v", out)
-	}
-}
-
-func TestApplyScale16WithOffset(t *testing.T) {
-	// scale=1, zero=32768 (typical FITS unsigned short encoding)
-	out := applyScale16([]int16{-32768, 0, 32767}, 1.0, 32768.0)
-	if out[0] != 0 {
-		t.Errorf("out[0] = %f, want 0", out[0])
-	}
-	if out[1] != 32768 {
-		t.Errorf("out[1] = %f, want 32768", out[1])
-	}
-}
-
-func TestApplyScaleF64Identity(t *testing.T) {
-	src := []float64{1.0, 2.0, 3.0}
-	out := applyScaleF64(src, 1.0, 0.0)
-	// Identity case returns the src slice directly (no allocation).
-	if &out[0] != &src[0] {
-		t.Error("applyScaleF64 identity should return the same underlying slice")
-	}
-}
-
-func TestApplyScaleF64WithTransform(t *testing.T) {
-	out := applyScaleF64([]float64{1.0, 2.0}, 2.0, 10.0)
-	if out[0] != 12.0 || out[1] != 14.0 {
-		t.Errorf("applyScaleF64: %v, want [12, 14]", out)
-	}
-}
-
 // ── Misc helpers ──────────────────────────────────────────────────────────────
 
 func TestToU8(t *testing.T) {
