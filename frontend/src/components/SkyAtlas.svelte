@@ -32,6 +32,7 @@
   import AtlasTooltip from "./atlas/AtlasTooltip.svelte";
   import AtlasStatus from "./atlas/AtlasStatus.svelte";
   import { ui } from "../lib/uiState.svelte";
+  import { telescopeLabel } from "../lib/slideshow/frameInfo";
   import ActionMenu from "./ActionMenu.svelte";
   import { fileMenuItems, type ActionMenuItem } from "../lib/shell/menu";
   import HelpPopover from "./atlas/HelpPopover.svelte";
@@ -922,7 +923,10 @@
 
   {#if touring}
     {#if reel.current}
-      <div class="tour-caption">{objectKey(reel.current)}</div>
+      {@const scope = telescopeLabel(reel.current.name, reel.current.telescope)}
+      <div class="tour-caption">
+        {objectKey(reel.current)}{#if scope}<span class="tour-scope"> · {scope}</span>{/if}
+      </div>
     {/if}
     <ReelControls
       {reel}
@@ -1059,6 +1063,12 @@
     text-shadow: 0 1px 6px rgb(0 0 0 / 0.7);
     pointer-events: none;
     z-index: 20;
+  }
+
+  .tour-scope {
+    font-size: var(--fs-lg);
+    font-weight: 400;
+    color: var(--text-secondary);
   }
 
   /* Zoom controls, bottom-right */

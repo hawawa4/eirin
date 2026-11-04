@@ -3,6 +3,7 @@
   import { formatDec, formatRA } from "../../lib/utils";
   import type { FrameSize } from "../../lib/atlas/footprint";
   import type { OrientationFix } from "../../lib/atlas/orientation";
+  import { telescopeLabel } from "../../lib/slideshow/frameInfo";
 
   interface Props {
     /** Frame shown in the panel (top of the overlay). */
@@ -46,6 +47,7 @@
 
   // Top of the list = top of the stack.
   let stack = $derived([...overlay].reverse());
+  let telescope = $derived(telescopeLabel(entry.name, entry.telescope));
   let fixed = $derived(fix.offset !== 0 || fix.mirror);
 
   const OFFSETS: { value: number; label: string; title: string }[] = [
@@ -74,6 +76,10 @@
 
   <div class="ap-body">
     <dl class="ap-grid">
+      {#if telescope}
+        <dt>Telescope</dt>
+        <dd>{telescope}</dd>
+      {/if}
       <dt>Type</dt>
       <dd>{entry.frameType}{previewLoading ? " · loading preview…" : ""}</dd>
       <dt>RA</dt>

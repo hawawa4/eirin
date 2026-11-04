@@ -163,6 +163,11 @@ export class AtlasIndexEntry {
      */
     "rotation": number;
 
+    /**
+     * FITS TELESCOP (may carry a Seestar serial suffix)
+     */
+    "telescope": string;
+
     /** Creates a new AtlasIndexEntry instance. */
     constructor($$source: Partial<AtlasIndexEntry> = {}) {
         if (!("nasPath" in $$source)) {
@@ -188,6 +193,9 @@ export class AtlasIndexEntry {
         }
         if (!("rotation" in $$source)) {
             this["rotation"] = 0;
+        }
+        if (!("telescope" in $$source)) {
+            this["telescope"] = "";
         }
 
         Object.assign(this, $$source);
