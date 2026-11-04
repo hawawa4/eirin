@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,6 +61,14 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.next.outputs.version }}"
           git push origin "${{ steps.next.outputs.version }}"
+
+      # Tags pushed with GITHUB_TOKEN do not trigger other workflows, so the
+      # Release workflow has to be started explicitly, on the tag ref (the
+      # release job only runs when github.ref is a tag).
+      - name: Trigger release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref "${{ steps.next.outputs.version }}"
 
       - name: Summary
         run: echo "Tagged ${{ inputs.branch }} as ${{ steps.next.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
