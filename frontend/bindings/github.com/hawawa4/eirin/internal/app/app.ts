@@ -156,10 +156,13 @@ export function CreateProject(name: string, description: string): $CancellablePr
 }
 
 /**
- * DeleteProject removes the project from the database (does not delete files).
+ * DeleteProject removes the project from the database and, with deleteFolder,
+ * its folder on disk (frame links, copied frames and any Siril outputs; the NAS
+ * frames the links point at are untouched). The folder goes first, so a failed
+ * delete leaves the project listed rather than orphaning a folder.
  */
-export function DeleteProject(id: number): $CancellablePromise<void> {
-    return $Call.ByID(1156538166, id);
+export function DeleteProject(id: number, deleteFolder: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1156538166, id, deleteFolder);
 }
 
 /**

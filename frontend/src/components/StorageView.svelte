@@ -26,7 +26,8 @@
   import { openFolder } from "../lib/shell/fileActions";
   import { copyPath } from "../lib/clipboard";
   import Treemap from "./storage/Treemap.svelte";
-  import ActionMenu, { type ActionMenuItem } from "./ActionMenu.svelte";
+  import ActionMenu from "./ActionMenu.svelte";
+  import type { ActionMenuItem } from "../lib/shell/menu";
   import HardDeleteModal from "./HardDeleteModal.svelte";
 
   interface Props {

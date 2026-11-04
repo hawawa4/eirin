@@ -24,6 +24,8 @@ export interface UiState {
   libraryFilterRow: boolean;
   /** Sky Atlas: the "how to use it" hint was dismissed. */
   atlasHintDismissed: boolean;
+  /** Slideshow: "fits" or "png" images; null = automatic (FITS unless there are none). */
+  slideshowFormat: "fits" | "png" | null;
 }
 
 export const ui: UiState = $state({
@@ -34,6 +36,7 @@ export const ui: UiState = $state({
   uiScale: DEFAULT_UI_SCALE,
   libraryFilterRow: false,
   atlasHintDismissed: false,
+  slideshowFormat: null,
 });
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -57,6 +60,9 @@ function merge(raw: unknown) {
   if (UI_SCALES.includes(s.uiScale as UiScale)) ui.uiScale = s.uiScale as UiScale;
   if (typeof s.libraryFilterRow === "boolean") ui.libraryFilterRow = s.libraryFilterRow;
   if (typeof s.atlasHintDismissed === "boolean") ui.atlasHintDismissed = s.atlasHintDismissed;
+  if (s.slideshowFormat === "fits" || s.slideshowFormat === "png" || s.slideshowFormat === null) {
+    ui.slideshowFormat = s.slideshowFormat;
+  }
 }
 
 /**

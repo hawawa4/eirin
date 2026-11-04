@@ -1,24 +1,9 @@
-<script lang="ts" module>
-  // Generic right-click menu for things that aren't a single file (library groups,
-  // storage tiles, projects, folders). File rows use ContextMenu.svelte instead.
-  export type ActionMenuItem =
-    | {
-        label: string;
-        run: () => void;
-        /** Keyboard shortcut shown on the right, e.g. "x". */
-        hint?: string;
-        danger?: boolean;
-        /** Accent-coloured (the primary thing to do here). */
-        primary?: boolean;
-        /** Disabled with this explanation as the tooltip. */
-        disabledReason?: string;
-      }
-    | { separator: true }
-    | { heading: string };
-</script>
-
 <script lang="ts">
+  // Generic right-click menu for things that aren't a single library frame
+  // (groups, storage tiles, projects, atlas images…). Library frame rows use
+  // ContextMenu.svelte. Item type and shared builders live in lib/shell/menu.ts.
   import { onMount } from "svelte";
+  import { tidy, type ActionMenuItem } from "../lib/shell/menu";
 
   interface Props {
     x: number;
@@ -27,7 +12,8 @@
     onclose: () => void;
   }
 
-  let { x, y, items, onclose }: Props = $props();
+  let { x, y, items: rawItems, onclose }: Props = $props();
+  let items = $derived(tidy(rawItems));
 
   const EDGE = 4;
 

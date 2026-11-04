@@ -182,6 +182,66 @@ func TestCreateProjectFolderCollision(t *testing.T) {
 	}
 }
 
+func TestDeleteProjectFolderOption(t *testing.T) {
+	skipInServer(t)
+	a := newTestApp(t)
+	pf := t.TempDir()
+	if err := a.store().Set(store.KeyProjectsFolder, pf); err != nil {
+		t.Fatal(err)
+	}
+
+	keep, err := a.CreateProject("Keep", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeleteProject(keep.ID, false); err != nil {
+		t.Fatalf("DeleteProject(keep folder): %v", err)
+	}
+	if _, err := os.Stat(keep.Folder); err != nil {
+		t.Errorf("folder should stay when deleteFolder is false: %v", err)
+	}
+
+	gone, err := a.CreateProject("Gone", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeleteProject(gone.ID, true); err != nil {
+		t.Fatalf("DeleteProject(delete folder): %v", err)
+	}
+	if _, err := os.Stat(gone.Folder); !os.IsNotExist(err) {
+		t.Errorf("folder should be deleted (err=%v)", err)
+	}
+	if list, _ := a.ListProjects(); len(list) != 0 {
+		t.Errorf("projects in DB = %d, want 0", len(list))
+	}
+}
+
+func TestDeleteProjectRefusesFolderOutsideProjectsRoot(t *testing.T) {
+	skipInServer(t)
+	a := newTestApp(t)
+	pf := t.TempDir()
+	if err := a.store().Set(store.KeyProjectsFolder, pf); err != nil {
+		t.Fatal(err)
+	}
+	p, err := a.CreateProject("Moved", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The projects folder setting changed since the project was created.
+	if err := a.store().Set(store.KeyProjectsFolder, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeleteProject(p.ID, true); err == nil {
+		t.Error("expected an error for a folder outside the projects folder")
+	}
+	if _, err := os.Stat(p.Folder); err != nil {
+		t.Errorf("folder outside the projects root was touched: %v", err)
+	}
+	if list, _ := a.ListProjects(); len(list) != 1 {
+		t.Errorf("project should stay listed after a refused delete, got %d", len(list))
+	}
+}
+
 func TestImportOutputFilesNoOverwrite(t *testing.T) {
 	skipInServer(t)
 	a := newTestApp(t)

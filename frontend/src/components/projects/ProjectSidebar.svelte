@@ -3,7 +3,8 @@
   import { OpenFolder, OpenProjectInSiril } from "$app";
   import { attempt, toast } from "../../lib/toast.svelte";
   import { copyPath } from "../../lib/clipboard";
-  import ActionMenu, { type ActionMenuItem } from "../ActionMenu.svelte";
+  import ActionMenu from "../ActionMenu.svelte";
+  import type { ActionMenuItem } from "../../lib/shell/menu";
   import { formatShortDate } from "../../lib/projects/frames";
 
   interface Props {
@@ -55,7 +56,7 @@
     if (onremove) {
       items.push(
         { separator: true },
-        { label: "Remove from list…", danger: true, run: () => onremove(p) },
+        { label: "Delete project…", danger: true, run: () => onremove(p) },
       );
     }
     menu = { x, y, items };

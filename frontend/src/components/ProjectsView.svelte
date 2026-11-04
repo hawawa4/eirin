@@ -217,15 +217,19 @@
     toast.success(`Created project “${p.name}”`);
   }
 
-  function onRemoved(p: app.Project) {
+  function onRemoved(p: app.Project, folderDeleted: boolean) {
     removeTarget = null;
     projects = projects.filter((x) => x.id !== p.id);
     if (selected?.id === p.id) clearSelection();
     if (ui.lastProjectId === p.id) ui.lastProjectId = null;
-    toast.success(`Removed “${p.name}” from the list. Its folder is still on disk.`, {
-      action: { label: "Show folder", run: () => OpenFolder(p.folder) },
-      timeout: 8000,
-    });
+    if (folderDeleted) {
+      toast.success(`Deleted project “${p.name}” and its folder`);
+    } else {
+      toast.success(`Removed “${p.name}” from the list. Its folder is still on disk.`, {
+        action: { label: "Open folder", run: () => OpenFolder(p.folder) },
+        timeout: 8000,
+      });
+    }
   }
 
   function onAdded(result: app.AddFramesResult) {

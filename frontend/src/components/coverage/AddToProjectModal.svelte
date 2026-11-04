@@ -119,12 +119,12 @@
   }
   .input {
     width: 100%;
-    background: var(--bg-base);
+    background-color: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--text-primary);
     font-size: var(--fs-md);
-    padding: 6px 10px;
+    padding: 6px 26px 6px 10px;
     outline: none;
   }
   .input:focus {

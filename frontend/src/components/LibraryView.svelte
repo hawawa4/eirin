@@ -58,7 +58,8 @@
   import { planBlink, type BlinkPlan } from "../lib/library/blink";
   import { isProjectFrameType, suggestProjectName } from "../lib/projects/frames";
   import ContextMenu from "./ContextMenu.svelte";
-  import ActionMenu, { type ActionMenuItem } from "./ActionMenu.svelte";
+  import ActionMenu from "./ActionMenu.svelte";
+  import type { ActionMenuItem } from "../lib/shell/menu";
   import HardDeleteModal from "./HardDeleteModal.svelte";
   import BlinkModal from "./BlinkModal.svelte";
   import SplitPane from "./SplitPane.svelte";
@@ -1348,6 +1349,7 @@
       {#if previewEntry && previewFrame}
         {@const path = previewFrame.nasPath}
         <PreviewPane
+          {active}
           entry={previewEntry}
           qualityFrame={previewFrame}
           onclose={() => (previewPath = null)}

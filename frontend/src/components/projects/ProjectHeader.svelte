@@ -57,7 +57,7 @@
     <button
       class="btn-ghost danger"
       onclick={onremove}
-      title="Remove from Eirin's project list — the folder stays on disk">Remove…</button
+      title="Delete this project (asks first; you can keep the folder)">Delete…</button
     >
   </div>
 </div>

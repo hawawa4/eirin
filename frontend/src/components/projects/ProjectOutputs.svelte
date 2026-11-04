@@ -4,7 +4,8 @@
   import { attempt, toast } from "../../lib/toast.svelte";
   import { formatBytes } from "../../lib/utils";
   import { copyPath } from "../../lib/clipboard";
-  import ActionMenu, { type ActionMenuItem } from "../ActionMenu.svelte";
+  import ActionMenu from "../ActionMenu.svelte";
+  import type { ActionMenuItem } from "../../lib/shell/menu";
 
   interface Props {
     folder: string;

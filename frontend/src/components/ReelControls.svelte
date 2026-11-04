@@ -14,6 +14,13 @@
     autohide?: boolean;
     /** Whether the bar is currently shown; the parent hides the cursor with it. */
     visible?: boolean;
+    /** Adds a FITS / PNG switch (the slideshow never mixes the two). */
+    format?: {
+      value: "fits" | "png";
+      fitsCount: number;
+      pngCount: number;
+      onchange: (f: "fits" | "png") => void;
+    };
   }
 
   let {
@@ -25,6 +32,7 @@
     rotation = false,
     autohide = false,
     visible = $bindable(true),
+    format,
   }: Props = $props();
 
   const HIDE_AFTER_MS = 2500;
@@ -82,6 +90,26 @@
       <option value={s}>{s} s</option>
     {/each}
   </select>
+  {#if format}
+    <div class="rc-seg" role="group" aria-label="Image format">
+      <button
+        class="rc-seg-btn"
+        class:active={format.value === "fits"}
+        aria-pressed={format.value === "fits"}
+        disabled={format.fitsCount === 0}
+        title="Processed FITS images (P to switch)"
+        onclick={() => format.onchange("fits")}>FITS {format.fitsCount}</button
+      >
+      <button
+        class="rc-seg-btn"
+        class:active={format.value === "png"}
+        aria-pressed={format.value === "png"}
+        disabled={format.pngCount === 0}
+        title="Exported PNG, JPEG and TIFF images (P to switch)"
+        onclick={() => format.onchange("png")}>PNG {format.pngCount}</button
+      >
+    </div>
+  {/if}
   {#if onrotation}
     <button
       class="rc-btn"
@@ -157,13 +185,42 @@
     color: var(--text-secondary);
   }
 
+  .rc-seg {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .rc-seg-btn {
+    font-size: var(--fs-xs);
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .rc-seg-btn + .rc-seg-btn {
+    border-left: 1px solid var(--border);
+  }
+  .rc-seg-btn:hover:not(:disabled):not(.active) {
+    color: var(--text-primary);
+  }
+  .rc-seg-btn.active {
+    background: var(--accent);
+    color: var(--accent-contrast);
+  }
+  .rc-seg-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
   .rc-select {
     font-size: var(--fs-xs);
     color: var(--text-primary);
-    background: var(--bg-base);
+    background-color: var(--bg-base);
     border: 1px solid var(--border);
     border-radius: 5px;
-    padding: 4px 6px;
+    padding: 4px 22px 4px 6px;
     margin-right: 2px;
   }
 

@@ -26,6 +26,8 @@
     oncreateproject: () => void;
     onaddtoproject: () => void;
     onshowinlibrary: () => void;
+    /** Right-click on a framing row. */
+    onmenu?: (c: app.CoverageCluster, x: number, y: number) => void;
   }
 
   let {
@@ -40,7 +42,14 @@
     oncreateproject,
     onaddtoproject,
     onshowinlibrary,
+    onmenu,
   }: Props = $props();
+
+  function ctx(e: MouseEvent, c: app.CoverageCluster) {
+    if (!onmenu) return;
+    e.preventDefault();
+    onmenu(c, e.clientX, e.clientY);
+  }
 
   let sum = $derived(summarize(selected));
   let nearby = $derived(neighbours(all, selected));
@@ -97,7 +106,7 @@
       <div class="cp-section-head">Selection</div>
       <ul class="cp-list">
         {#each selected as c (c.id)}
-          <li>
+          <li oncontextmenu={(e) => ctx(e, c)}>
             <span class="cp-swatch" style:border-color={scopeCss(c.scope)} class:approx={c.approx}
             ></span>
             <button
@@ -133,7 +142,7 @@
         </div>
         <ul class="cp-list">
           {#each nearby as c (c.id)}
-            <li>
+            <li oncontextmenu={(e) => ctx(e, c)}>
               <span class="cp-swatch" style:border-color={scopeCss(c.scope)} class:approx={c.approx}
               ></span>
               <button class="cp-item" onclick={() => onfocus(c)} title="Show on the map">

@@ -350,13 +350,21 @@
               scanning={indexer.running}
               scanProgress={indexer.progress}
               onnavigate={readOnly ? undefined : setMode}
+              onshowobject={readOnly ? undefined : (object) => showFilteredInLibrary({ object })}
             />
           </div>
         {/if}
 
         {#if visited.slideshow}
           <div class="view" class:hidden={appMode !== "slideshow"}>
-            <SlideshowView rootPath={rootFolder} active={appMode === "slideshow"} {desktopMode} />
+            <SlideshowView
+              rootPath={rootFolder}
+              active={appMode === "slideshow"}
+              {desktopMode}
+              onscan={readOnly ? undefined : () => startScan()}
+              onopeninlibrary={openInLibrary}
+              onshowonatlas={showOnAtlas}
+            />
           </div>
         {/if}
 

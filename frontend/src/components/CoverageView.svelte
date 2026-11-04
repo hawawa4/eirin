@@ -14,9 +14,12 @@
   import { atlasPalette, paletteCssVars, rgba, type RGB } from "../lib/atlas/palette";
   import { drawCoverage } from "../lib/coverage/draw";
   import { clusterRadius, hitTest, isPlaced, type CoverageScene } from "../lib/coverage/scene";
+  import ActionMenu from "./ActionMenu.svelte";
+  import type { ActionMenuItem } from "../lib/shell/menu";
   import {
     formatIntegration,
     objectGroups,
+    clusterName,
     suggestName,
     summarize,
     type CoverageGroup,
@@ -258,7 +261,7 @@
   let browser = $state<ReturnType<typeof ObjectBrowser> | null>(null);
 
   function onKeydown(e: KeyboardEvent) {
-    if (!active || isTypingTarget(e) || isModalOpen()) return;
+    if (!active || isTypingTarget(e) || isModalOpen() || menu) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (cam.navKey(e.key)) {
       e.preventDefault();
@@ -283,9 +286,99 @@
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
-  let createPaths = $state.raw<string[] | null>(null);
+  let createPaths = $state.raw<{ paths: string[]; name: string } | null>(null);
   let addPaths = $state.raw<string[] | null>(null);
   let summary = $derived(summarize(selected));
+
+  // ── Right-click menus ─────────────────────────────────────────────────────
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  /** New project / add to project / show in Library for `clusters`. */
+  function dataItems(clusters: app.CoverageCluster[], what: string): ActionMenuItem[] {
+    const sum = summarize(clusters);
+    return [
+      {
+        label: `New project from ${what}…`,
+        primary: true,
+        run: () => (createPaths = { paths: sum.paths, name: suggestName(sum, scopeLabel) }),
+      },
+      { label: "Add to existing project…", run: () => (addPaths = sum.paths) },
+      { label: "Show in Library", run: () => onshowinlibrary(sum.paths) },
+    ];
+  }
+
+  function openClusterMenu(c: app.CoverageCluster, x: number, y: number) {
+    const isSel = selectedSet.has(c.id);
+    const items: ActionMenuItem[] = [
+      { heading: `${clusterName(c)} · ${scopeLabel(c.scope)} · ${plural(c.frames, "sub")}` },
+    ];
+    if (!(isSel && selectedIds.length === 1)) {
+      items.push({ label: "Select", run: () => selectOnly(c) });
+    }
+    items.push(
+      {
+        label: isSel ? "Remove from selection" : "Add to selection",
+        hint: "Shift-click",
+        run: () => toggle(c),
+      },
+      {
+        label: "Zoom to framing",
+        disabledReason: isPlaced(c) ? undefined : "No position known",
+        run: () => focusCluster(c),
+      },
+      { separator: true },
+      ...dataItems([c], "this framing"),
+    );
+    if (isSel && selected.length > 1) {
+      items.push(
+        { separator: true },
+        { heading: `Whole selection · ${selected.length} framings` },
+        ...dataItems(selected, `${selected.length} framings`),
+      );
+    }
+    menu = { x, y, items };
+  }
+
+  function openGroupMenu(g: CoverageGroup, x: number, y: number) {
+    const clusters = g.clusterIds
+      .map((id) => byId.get(id))
+      .filter((c): c is app.CoverageCluster => !!c);
+    menu = {
+      x,
+      y,
+      items: [
+        { heading: `${g.name} · ${plural(clusters.length, "framing")}` },
+        { label: "Select all framings", run: () => selectGroup(g, false) },
+        { label: "Add to selection", hint: "Shift-click", run: () => selectGroup(g, true) },
+        { separator: true },
+        ...dataItems(clusters, plural(clusters.length, "framing")),
+      ],
+    };
+  }
+
+  function onCanvasContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    if (all.length === 0) return;
+    const hit = hitTest(scene, ...localXY(e));
+    hovered = null;
+    if (hit) {
+      openClusterMenu(hit, e.clientX, e.clientY);
+      return;
+    }
+    const items: ActionMenuItem[] = [{ label: "Fit all framings", hint: "0", run: fitAll }];
+    if (selectedIds.length > 0) {
+      items.push(
+        { label: "Clear selection", hint: "Esc", run: clearSelection },
+        { separator: true },
+        ...dataItems(selected, plural(selected.length, "selected framing")),
+      );
+    }
+    items.push(
+      { separator: true },
+      { label: showLabels ? "Hide labels" : "Show labels", run: () => (showLabels = !showLabels) },
+    );
+    menu = { x: e.clientX, y: e.clientY, items };
+  }
 
   // ── Loading ───────────────────────────────────────────────────────────────
   let loadSeq = 0;
@@ -389,6 +482,7 @@
     aria-label="Coverage: the sky framed by your light frames, by telescope"
     onwheel={(e) => cam.wheel(e, ...localXY(e))}
     onmousedown={(e) => cam.beginDrag(e)}
+    oncontextmenu={onCanvasContextMenu}
     onmousemove={onMouseMove}
     onmouseup={onMouseUp}
     onmouseleave={() => {
@@ -438,6 +532,7 @@
       activeName={activeObject}
       onselectgroup={selectGroup}
       onselectcatalog={selectCatalog}
+      onmenugroup={openGroupMenu}
     />
   {/if}
 
@@ -526,17 +621,23 @@
       onadd={add}
       onremove={remove}
       onclear={clearSelection}
-      oncreateproject={() => (createPaths = summary.paths)}
+      oncreateproject={() =>
+        (createPaths = { paths: summary.paths, name: suggestName(summary, scopeLabel) })}
+      onmenu={openClusterMenu}
       onaddtoproject={() => (addPaths = summary.paths)}
       onshowinlibrary={() => onshowinlibrary(summary.paths)}
     />
   {/if}
 </div>
 
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
+
 {#if createPaths}
   <CreateProjectModal
-    frames={createPaths.map((nasPath) => ({ nasPath, frameType: "light" }))}
-    suggestedName={suggestName(summary, scopeLabel)}
+    frames={createPaths.paths.map((nasPath) => ({ nasPath, frameType: "light" }))}
+    suggestedName={createPaths.name}
     onclose={() => (createPaths = null)}
     oncreated={onopenproject}
   />

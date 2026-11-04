@@ -16,7 +16,9 @@
   } from "../lib/library/previewCache";
   import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
   import { copyPath } from "../lib/clipboard";
-  import ActionMenu, { type ActionMenuItem } from "./ActionMenu.svelte";
+  import { isModalOpen, isTypingTarget } from "../lib/keys";
+  import ActionMenu from "./ActionMenu.svelte";
+  import type { ActionMenuItem } from "../lib/shell/menu";
 
   interface Props {
     entry: app.EnrichedFileEntry;
@@ -40,6 +42,8 @@
      * instead of loading raw pixels, which are tens of MB per frame over the network.
      */
     serverRendered?: boolean;
+    /** The pane's view is visible: its keyboard shortcuts are on. */
+    active?: boolean;
   }
 
   let {
@@ -57,16 +61,57 @@
     blinkTitle = "Blink (b)",
     prefetch = null,
     serverRendered = false,
+    active = true,
   }: Props = $props();
 
   let isRejected = $derived(qualityFrame?.isRejected ?? entry.isRejected);
 
   const STRETCH_OPTIONS = [
-    { level: 0, label: "Off", title: "Linear: the raw pixel values, no stretch" },
-    { level: 1, label: "Gentle", title: "Gentle autostretch" },
-    { level: 2, label: "Normal", title: "Normal autostretch" },
-    { level: 3, label: "Strong", title: "Strong autostretch, for faint detail" },
+    { level: 0, label: "Off", title: "Linear: the raw pixel values, no stretch (s toggles)" },
+    { level: 1, label: "Gentle", title: "Gentle autostretch (1)" },
+    { level: 2, label: "Normal", title: "Normal autostretch (2)" },
+    { level: 3, label: "Strong", title: "Strong autostretch, for faint detail (3)" },
   ];
+
+  // ── Keyboard: view controls ──────────────────────────────────────────────
+  // Keys the Library doesn't use, matching Blink's (s, 1–3) where they overlap.
+  function onViewKeydown(e: KeyboardEvent) {
+    if (!active || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(e) || isModalOpen() || moreMenu) return;
+    if (document.activeElement?.closest('[role="menu"]')) return;
+    const fitsView = !isProcessed && !isRaster;
+    switch (e.key) {
+      case "s":
+        if (!fitsView) return;
+        pp.stretchEnabled = !pp.stretchEnabled;
+        break;
+      case "1":
+      case "2":
+      case "3":
+        if (!fitsView) return;
+        pp.stretchEnabled = true;
+        setStretch(Number(e.key));
+        break;
+      case "c":
+        if (!rawInfo || isRaster || rawInfo.channels !== 3) return;
+        setChannelMode(((channelMode + 1) % 4) as 0 | 1 | 2 | 3);
+        break;
+      case "h":
+        if (!rawInfo || isRaster) return;
+        showHistogram = !showHistogram;
+        break;
+      case "l":
+        if (annotations.length === 0) return;
+        showAnnotations = !showAnnotations;
+        break;
+      case "0":
+        resetView();
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  }
 
   // ── "More" menu ──────────────────────────────────────────────────────────
   let moreMenu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
@@ -748,6 +793,8 @@ void main() {
   }
 </script>
 
+<svelte:window onkeydown={onViewKeydown} />
+
 <div class="preview-pane">
   <div class="preview-titlebar">
     {#if onprev || onnext}
@@ -808,7 +855,8 @@ void main() {
       <button
         class="tool-btn"
         onclick={resetView}
-        title="Fit to window (or double-click the image). Scroll to zoom, drag to pan.">Fit</button
+        title="Fit to window (0, or double-click the image). Scroll to zoom, drag to pan."
+        >Fit</button
       >
       <span class="zoom-label">{Math.round(zoom * 100)}%</span>
     </div>
@@ -848,28 +896,28 @@ void main() {
             class="tool-btn ch-btn"
             class:active={channelMode === 0}
             aria-pressed={channelMode === 0}
-            title="All channels"
+            title="All channels (c cycles)"
             onclick={() => setChannelMode(0)}>RGB</button
           >
           <button
             class="tool-btn ch-btn ch-r"
             class:active={channelMode === 1}
             aria-pressed={channelMode === 1}
-            title="Red channel only"
+            title="Red channel only (c cycles)"
             onclick={() => setChannelMode(1)}>R</button
           >
           <button
             class="tool-btn ch-btn ch-g"
             class:active={channelMode === 2}
             aria-pressed={channelMode === 2}
-            title="Green channel only"
+            title="Green channel only (c cycles)"
             onclick={() => setChannelMode(2)}>G</button
           >
           <button
             class="tool-btn ch-btn ch-b"
             class:active={channelMode === 3}
             aria-pressed={channelMode === 3}
-            title="Blue channel only"
+            title="Blue channel only (c cycles)"
             onclick={() => setChannelMode(3)}>B</button
           >
         </div>
@@ -881,7 +929,7 @@ void main() {
           class:active={showHistogram}
           aria-pressed={showHistogram}
           onclick={() => (showHistogram = !showHistogram)}
-          title="Show the histogram over the image">Histogram</button
+          title="Show the histogram over the image (h)">Histogram</button
         >
       {/if}
 
@@ -892,8 +940,8 @@ void main() {
           aria-pressed={showAnnotations}
           onclick={() => (showAnnotations = !showAnnotations)}
           title={annotationsApprox
-            ? "Star / DSO labels — approximate: this frame isn't plate-solved, so positions come from the FITS header's pointing"
-            : "Star / DSO labels (plate-solved)"}>Labels{annotationsApprox ? " ≈" : ""}</button
+            ? "Star / DSO labels (l) — approximate: this frame isn't plate-solved, so positions come from the FITS header's pointing"
+            : "Star / DSO labels, plate-solved (l)"}>Labels{annotationsApprox ? " ≈" : ""}</button
         >
       {/if}
     </div>

@@ -424,12 +424,6 @@
   }
   .group-by select {
     font-size: var(--fs-sm);
-    background: var(--bg-base);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 3px 6px;
-    cursor: pointer;
   }
   .group-by select:hover {
     border-color: var(--accent);

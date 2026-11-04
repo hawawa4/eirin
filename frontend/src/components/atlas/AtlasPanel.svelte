@@ -18,6 +18,8 @@
     onclearall: () => void;
     onfixchange: (fix: OrientationFix) => void;
     onopen?: (nasPath: string) => void;
+    /** Right-click on the panel or an overlay row: the atlas's frame menu. */
+    onmenu?: (nasPath: string, x: number, y: number) => void;
   }
 
   let {
@@ -32,7 +34,15 @@
     onclearall,
     onfixchange,
     onopen,
+    onmenu,
   }: Props = $props();
+
+  function ctx(e: MouseEvent, path: string) {
+    if (!onmenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onmenu(path, e.clientX, e.clientY);
+  }
 
   // Top of the list = top of the stack.
   let stack = $derived([...overlay].reverse());
@@ -51,7 +61,7 @@
   }
 </script>
 
-<aside class="atlas-panel" aria-label="Selected frame">
+<aside class="atlas-panel" aria-label="Selected frame" oncontextmenu={(e) => ctx(e, entry.nasPath)}>
   <div class="ap-header">
     <div class="ap-title" title={entry.object || entry.name}>{entry.object || entry.name}</div>
     <button
@@ -96,7 +106,7 @@
         </div>
         <ul>
           {#each stack as f, i (f.nasPath)}
-            <li class:top={i === 0}>
+            <li class:top={i === 0} oncontextmenu={(e) => ctx(e, f.nasPath)}>
               <button
                 class="ap-ov-name"
                 onclick={() => onbringtofront(f.nasPath)}
