@@ -121,6 +121,75 @@ body {
   color: var(--text-primary);
 }
 
+/* Checkboxes and radios: GTK's light theme drew them as bright white boxes. */
+:where(input[type="checkbox"], input[type="radio"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+  background: var(--bg-base);
+  border: 1px solid var(--border-accent);
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+
+:where(input[type="radio"]) {
+  border-radius: 50%;
+}
+
+:where(input[type="checkbox"], input[type="radio"]):hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+:where(input[type="checkbox"]):checked,
+:where(input[type="checkbox"]):indeterminate {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Tick: a rotated L drawn with borders. */
+:where(input[type="checkbox"]):checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  margin-top: -2px;
+  border: solid var(--accent-contrast);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+:where(input[type="checkbox"]):indeterminate::after {
+  content: "";
+  width: 8px;
+  height: 2px;
+  background: var(--accent-contrast);
+}
+
+:where(input[type="radio"]):checked {
+  border-color: var(--accent);
+}
+
+:where(input[type="radio"]):checked::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+:where(input[type="checkbox"], input[type="radio"]):disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* ── Focus ring ───────────────────────────────────────────────────────────── */
 
 button:focus-visible,

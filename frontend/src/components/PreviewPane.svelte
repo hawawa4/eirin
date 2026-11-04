@@ -1171,7 +1171,7 @@ void main() {
             {:else if qualityFrame}
               <div class="meta-row stats-hint">
                 <span class="meta-val"
-                  >Not plate solved. Use <strong>✦ Analyze</strong> in the Library View.</span
+                  >Not plate solved. Analyze this group in the Library (hover it, or right-click).</span
                 >
               </div>
             {/if}
@@ -1240,7 +1240,7 @@ void main() {
             {:else}
               <div class="meta-row stats-hint">
                 <span class="meta-val"
-                  >Not analyzed. Use <strong>✦ Analyze</strong> in the Library View.</span
+                  >Not analyzed. Analyze this group in the Library (hover it, or right-click).</span
                 >
               </div>
             {/if}
