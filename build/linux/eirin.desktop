@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Eirin
+Comment=Astrophotography library manager
+Exec=eirin
+Icon=eirin
+Terminal=false
+Categories=Graphics;Photography;Science;
+StartupWMClass=eirin
