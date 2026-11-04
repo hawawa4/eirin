@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hawawa4/eirin/internal/fits"
 	"github.com/hawawa4/eirin/internal/indexer"
 	"github.com/hawawa4/eirin/internal/previews"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -21,6 +23,19 @@ import (
 //
 //	GET /eirin/preview?path=<nas path>&size=<px, 0 = native>&stretch=<0–3>
 const PreviewRoute = "/eirin/preview"
+
+// RawPreviewRoute serves the normalised, unstretched pixels the desktop
+// Library stretches itself (adjustable stretch, histogram), as binary
+// (fits.EncodeRawPreview) — a quarter of the old float32 RPC payload, with
+// no base64 or JSON string to decode.
+//
+//	GET /eirin/raw?path=<FITS path>&size=<px, 0 = native; default 2048>
+const RawPreviewRoute = "/eirin/raw"
+
+// rawSlots bounds concurrent raw renders. Requests wait for a slot with
+// their context, so the frames a user skipped past are dropped instead of
+// queueing ahead of the one they stopped on.
+var rawSlots = make(chan struct{}, 2)
 
 // Environment overrides for the preview disk cache.
 const (
@@ -35,8 +50,12 @@ const (
 func AssetMiddleware(a *App) application.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == PreviewRoute {
+			switch r.URL.Path {
+			case PreviewRoute:
 				a.servePreview(w, r)
+				return
+			case RawPreviewRoute:
+				a.serveRawPreview(w, r)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -136,4 +155,66 @@ func (a *App) servePreview(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
 	http.ServeContent(w, r, "", mod, bytes.NewReader(img.Data))
+}
+
+func (a *App) serveRawPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	path := q.Get("path")
+	if path == "" || !filepath.IsAbs(path) || !indexer.IsFitsFile(path) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	path = filepath.Clean(path)
+	size := 2048
+	if v := q.Get("size"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		size = n
+	}
+	if a.store() == nil {
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		return
+	}
+	if err := a.checkServable(path); err != nil {
+		http.Error(w, "not in the library", http.StatusNotFound)
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	tag := fmt.Sprintf(`"raw-%x-%x-%d"`, info.Size(), info.ModTime().UnixNano(), size)
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("ETag", tag)
+	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, tag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	select {
+	case rawSlots <- struct{}{}:
+		defer func() { <-rawSlots }()
+	case <-r.Context().Done():
+		return // the user moved on
+	}
+	if r.Context().Err() != nil {
+		return
+	}
+	data, err := fits.EncodeRawPreview(path, size)
+	if err != nil {
+		slog.Warn("raw preview", "path", path, "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeContent(w, r, "", info.ModTime(), bytes.NewReader(data))
 }

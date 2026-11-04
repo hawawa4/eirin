@@ -48,6 +48,33 @@
     visited[m] = true;
   }
 
+  // ── Background preloading ─────────────────────────────────────────────────
+  // Once the Sky Atlas (the landing view) is on screen, the Library mounts
+  // hidden and loads, then (desktop) Coverage, so opening either later doesn't
+  // wait for tens of thousands of frames to load. One at a time, each after
+  // the previous one, so the Atlas gets the backend and the main thread first.
+  const PRELOAD_DELAY_MS = 400;
+
+  function afterIdle(run: () => void) {
+    setTimeout(() => {
+      // WebKit has no requestIdleCallback; there the delay alone has to do.
+      if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 2000 });
+      else run();
+    }, PRELOAD_DELAY_MS);
+  }
+
+  function preloadLibrary() {
+    afterIdle(() => {
+      if (!visited.library) visited.library = true;
+      else preloadCoverage(); // already open: go straight on
+    });
+  }
+
+  function preloadCoverage() {
+    if (!desktopMode || visited.coverage) return;
+    afterIdle(() => (visited.coverage = true));
+  }
+
   // ── Theme ─────────────────────────────────────────────────────────────────
   let theme = $state<Theme>("blue");
 
@@ -307,6 +334,7 @@
                 onsavecolumns={saveLibraryColumnConfig}
                 oncreateproject={openProject}
                 onshowonatlas={showOnAtlas}
+                onloaded={preloadCoverage}
               />
             {/if}
           </div>
@@ -351,6 +379,7 @@
               scanProgress={indexer.progress}
               onnavigate={readOnly ? undefined : setMode}
               onshowobject={readOnly ? undefined : (object) => showFilteredInLibrary({ object })}
+              onready={preloadLibrary}
             />
           </div>
         {/if}

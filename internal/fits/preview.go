@@ -2,7 +2,8 @@ package fits
 
 import (
 	"bytes"
-	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -20,6 +21,7 @@ const MaxRenderSize = 8192
 // smoothed (raw subs), sized to fit and normalised to [0,1] with one shared
 // range. Rows are still in FITS order (bottom-up).
 type previewImage struct {
+	ph       *primaryHeader
 	channels [][]float32
 	w, h     int
 	stats    []ChannelStats
@@ -84,6 +86,7 @@ func loadPreviewImage(path string, maxSize int) (previewImage, error) {
 		stats[c] = nr.stats(raw[c])
 	}
 	return previewImage{
+		ph:       ph,
 		channels: channels,
 		w:        outW,
 		h:        outH,
@@ -187,46 +190,69 @@ func RenderPreview(path string, maxSize, stretchLevel int) (RenderedPreview, err
 	return RenderedPreview{DataURL: dataURL("image/jpeg", data), Width: b.Dx(), Height: b.Dy()}, nil
 }
 
-// GeneratePreviewRaw returns the normalised (unstretched) preview pixels plus
-// the stats and balance gains the frontend needs to stretch them.
-func GeneratePreviewRaw(path string, maxSize int) (RawPreviewData, error) {
+// RawPreviewMeta describes the samples EncodeRawPreview returns.
+type RawPreviewMeta struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+	// Channels is the number of samples per pixel: 1 = mono, 3 = colour.
+	Channels int            `json:"channels"`
+	Stats    []ChannelStats `json:"stats"`
+	// Balance holds per-channel gains that neutralise the sky background
+	// (all 1 for mono). Applied only when stretching.
+	Balance []float64   `json:"balance"`
+	Header  *FITSHeader `json:"header"`
+}
+
+// EncodeRawPreview returns the normalised, unstretched preview of path (at
+// most maxSize pixels on its longest side, 0 = native) for a client that
+// stretches it itself — the desktop Library, whose stretch is adjustable:
+//
+//	uint32 LE n | n bytes of RawPreviewMeta JSON | samples
+//
+// The JSON is space-padded so the samples start 4-byte aligned. Samples are
+// uint16 LE (v/65535, v in [0,1]), pixel-interleaved, rows top-down. All
+// channels share one normalisation (black at 0), so the camera's raw colour
+// is kept; the client multiplies by Balance and applies the linked stretch
+// from Stats (see stretch.go and frontend/src/lib/stretchPreview.ts).
+func EncodeRawPreview(path string, maxSize int) ([]byte, error) {
 	pi, err := loadPreviewImage(path, maxSize)
 	if err != nil {
-		return RawPreviewData{}, err
+		return nil, err
 	}
-	w, h := pi.w, pi.h
-	colour := len(pi.channels) >= 3
-
-	// Pack as RGBA float32, interleaved, row-major; flip Y so row 0 = visual top.
-	raw := make([]byte, w*h*16) // 4 components × 4 bytes each
-	for y := range h {
-		src := (h - 1 - y) * w
-		for x := range w {
-			i := src + x
-			base := (y*w + x) * 16
-			r := pi.channels[0][i]
-			g, b := r, r
-			if colour {
-				g = pi.channels[1][i]
-				b = pi.channels[2][i]
-			}
-			packF32(raw, base+0, r)
-			packF32(raw, base+4, g)
-			packF32(raw, base+8, b)
-			packF32(raw, base+12, 1.0)
-		}
-	}
-
 	channels := 1
-	if colour {
+	if len(pi.channels) >= 3 {
 		channels = 3
 	}
-	return RawPreviewData{
-		Data:     base64.StdEncoding.EncodeToString(raw),
-		Width:    w,
-		Height:   h,
+	meta, err := json.Marshal(RawPreviewMeta{
+		Width:    pi.w,
+		Height:   pi.h,
 		Channels: channels,
 		Stats:    pi.stats[:channels],
 		Balance:  pi.gains[:channels],
-	}, nil
+		Header:   headerOf(pi.ph),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for (4+len(meta))%4 != 0 {
+		meta = append(meta, ' ')
+	}
+
+	w, h := pi.w, pi.h
+	out := make([]byte, 4+len(meta)+w*h*channels*2)
+	binary.LittleEndian.PutUint32(out, uint32(len(meta)))
+	copy(out[4:], meta)
+	samples := out[4+len(meta):]
+	o := 0
+	for y := range h {
+		src := (h - 1 - y) * w // FITS rows are bottom-up
+		for x := range w {
+			for c := range channels {
+				v := pi.channels[c][src+x] // normalised to [0,1]
+				binary.LittleEndian.PutUint16(samples[o:], uint16(v*65535+0.5))
+				o += 2
+			}
+		}
+	}
+	return out, nil
 }

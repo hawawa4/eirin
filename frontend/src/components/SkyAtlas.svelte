@@ -57,6 +57,8 @@
     scanProgress?: { done: number; total: number } | null;
     /** Open the Library filtered to an object (desktop). */
     onshowobject?: (object: string) => void;
+    /** Called once, when the first load has finished and is drawn on screen. */
+    onready?: () => void;
     /** Switch to another tab (empty-state shortcuts). */
     onnavigate?: (mode: "import" | "library" | "projects" | "coverage") => void;
   }
@@ -73,6 +75,7 @@
     scanProgress = null,
     onnavigate,
     onshowobject,
+    onready,
   }: Props = $props();
 
   let palette = $derived(atlasPalette(theme));
@@ -692,8 +695,19 @@
     } catch (err) {
       if (seq === loadSeq) loadError = String(err);
     } finally {
-      if (seq === loadSeq) loading = false;
+      if (seq === loadSeq) {
+        loading = false;
+        signalReady();
+      }
     }
+  }
+
+  let readySignalled = false;
+  /** Tells the app the Atlas is up, once its first frame has been painted. */
+  function signalReady() {
+    if (readySignalled || !onready) return;
+    readySignalled = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => onready?.()));
   }
 
   // (Re)load whenever the library root changes — including the first mount.

@@ -1,17 +1,25 @@
 package app
 
 import (
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/hawawa4/eirin/internal/fits"
 	"github.com/hawawa4/eirin/internal/previews"
 	"github.com/hawawa4/eirin/internal/store"
 )
@@ -115,5 +123,111 @@ func TestServePreviewServerRefusesOutsideLibrary(t *testing.T) {
 	AssetMiddleware(a)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", previewURL(other, ""), nil))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status %d, want 404 for a file outside the library", rec.Code)
+	}
+}
+
+// writeTestFITS writes a w×h mono float FITS file into the library of a.
+func writeTestFITS(t *testing.T, a *App, w, h int) string {
+	t.Helper()
+	var hdr []byte
+	card := func(s string) { hdr = append(hdr, fmt.Sprintf("%-80s", s)...) }
+	card(fmt.Sprintf("%-8s= %20s", "SIMPLE", "T"))
+	card(fmt.Sprintf("%-8s= %20d", "BITPIX", -32))
+	card(fmt.Sprintf("%-8s= %20d", "NAXIS", 2))
+	card(fmt.Sprintf("%-8s= %20d", "NAXIS1", w))
+	card(fmt.Sprintf("%-8s= %20d", "NAXIS2", h))
+	card("END")
+	for len(hdr)%2880 != 0 {
+		hdr = append(hdr, ' ')
+	}
+	data := make([]byte, 4*w*h)
+	for i := range w * h {
+		binary.BigEndian.PutUint32(data[i*4:], math.Float32bits(float32(10+i%w)))
+	}
+	for len(data)%2880 != 0 {
+		data = append(data, 0)
+	}
+	path := filepath.Join(t.TempDir(), "stack.fit")
+	must(t, os.WriteFile(path, append(hdr, data...), 0o644))
+	must(t, a.store().UpsertFrame(path, store.Frame{FrameType: store.FrameTypeStacked}))
+	return path
+}
+
+func rawURL(path, params string) string {
+	return RawPreviewRoute + "?path=" + url.QueryEscape(path) + params
+}
+
+func TestServeRawPreview(t *testing.T) {
+	a := newTestApp(t)
+	path := writeTestFITS(t, a, 300, 200)
+	h := AssetMiddleware(a)(http.NotFoundHandler())
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", rawURL(path, "&size=150"), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	b := rec.Body.Bytes()
+	n := int(binary.LittleEndian.Uint32(b))
+	var meta fits.RawPreviewMeta
+	must(t, json.Unmarshal(b[4:4+n], &meta))
+	if meta.Width != 150 || meta.Height != 100 || meta.Channels != 1 {
+		t.Errorf("meta = %+v, want 150×100 mono", meta)
+	}
+	if meta.Header == nil || meta.Header.Width != 300 {
+		t.Errorf("header = %+v, want the file's (300 wide)", meta.Header)
+	}
+	if got := len(b) - 4 - n; got != 150*100*2 {
+		t.Errorf("%d sample bytes, want %d", got, 150*100*2)
+	}
+
+	req := httptest.NewRequest("GET", rawURL(path, "&size=150"), nil)
+	req.Header.Set("If-None-Match", rec.Header().Get("ETag"))
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified {
+		t.Errorf("revalidation: status %d, want 304", rec.Code)
+	}
+
+	for u, want := range map[string]int{
+		rawURL(path, "&size=-3"):                            http.StatusBadRequest,
+		rawURL(strings.TrimSuffix(path, ".fit")+".png", ""): http.StatusBadRequest,
+		rawURL(filepath.Join(t.TempDir(), "gone.fit"), ""):  http.StatusNotFound,
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", u, nil))
+		if rec.Code != want {
+			t.Errorf("%s: status %d, want %d", u, rec.Code, want)
+		}
+	}
+}
+
+func TestServeRawPreviewDropsAbandonedRequests(t *testing.T) {
+	a := newTestApp(t)
+	path := writeTestFITS(t, a, 64, 64)
+	// Every slot busy: a request whose client has gone must not wait for one.
+	for range cap(rawSlots) {
+		rawSlots <- struct{}{}
+	}
+	defer func() {
+		for range cap(rawSlots) {
+			<-rawSlots
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		AssetMiddleware(a)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", rawURL(path, ""), nil).WithContext(ctx))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("an abandoned request waited for a render slot")
+	}
+	if rec.Body.Len() != 0 {
+		t.Error("an abandoned request was rendered")
 	}
 }

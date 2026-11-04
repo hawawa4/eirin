@@ -1,4 +1,8 @@
-import type * as fits from "$models/fits";
+/** Per-channel statistics of normalised preview data (ChannelStats). */
+export interface ChannelStats {
+  median: number;
+  sigma: number;
+}
 
 // ── Linked autostretch ──────────────────────────────────────────────────────
 // Siril/PixInsight-style MTF autostretch, *linked*: one black point and one
@@ -44,7 +48,7 @@ export function mtf(m: number, x: number): number {
  * the backend's background-balance gains (ignored when linear).
  */
 export function computeStretch(
-  stats: fits.ChannelStats[],
+  stats: ChannelStats[],
   balance: number[] | null | undefined,
   level: number,
 ): StretchParams {
@@ -87,7 +91,7 @@ export function renderStretched(
   width: number,
   height: number,
   channels: number,
-  stats: fits.ChannelStats[],
+  stats: ChannelStats[],
   balance: number[] | null | undefined,
   stretchLevel: number,
 ): HTMLCanvasElement {

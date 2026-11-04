@@ -175,24 +175,13 @@ export function GeneratePreview(path: string, stretchLevel: number): $Cancellabl
 }
 
 /**
- * GeneratePreviewRawSized returns raw float32 RGBA pixel data (base64-encoded) plus
- * per-channel statistics for CPU/GPU-based MTF rendering on the frontend.
- * maxSize=0 means native resolution (no downscaling).
- */
-export function GeneratePreviewRawSized(path: string, maxSize: number): $CancellablePromise<fits$0.RawPreviewData> {
-    return $Call.ByID(2730633038, path, maxSize).then(($result: any) => {
-        return $$createType4($result);
-    });
-}
-
-/**
  * GetAnnotations returns catalog objects visible within the frame defined by the
  * plate-solve result (raCenter/decCenter in degrees, pixelScale in arcsec/pixel,
  * rotation in degrees CCW from North, image dimensions in pixels).
  */
 export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: number, rotation: number, width: number, height: number): $CancellablePromise<catalog$0.Annotation[]> {
     return $Call.ByID(2125905796, raCenter, decCenter, pixelScale, rotation, width, height).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType5($result);
     });
 }
 
@@ -201,7 +190,7 @@ export function GetAnnotations(raCenter: number, decCenter: number, pixelScale: 
  */
 export function GetAppInfo(): $CancellablePromise<$models.AppInfo> {
     return $Call.ByID(2384808821).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType6($result);
     });
 }
 
@@ -220,7 +209,7 @@ export function GetAppVersion(): $CancellablePromise<string> {
  */
 export function GetAtlasFrameSizes(nasPaths: string[]): $CancellablePromise<{ [_ in string]?: $models.AtlasFrameSize }> {
     return $Call.ByID(3371978404, nasPaths).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType8($result);
     });
 }
 
@@ -232,7 +221,7 @@ export function GetAtlasFrameSizes(nasPaths: string[]): $CancellablePromise<{ [_
  */
 export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.AtlasIndexEntry[]> {
     return $Call.ByID(2651540675, rootPath).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType10($result);
     });
 }
 
@@ -241,7 +230,7 @@ export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.Atl
  */
 export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
     return $Call.ByID(2280456341).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType12($result);
     });
 }
 
@@ -251,7 +240,7 @@ export function GetCatalog(): $CancellablePromise<$models.CatalogObject[]> {
  */
 export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
     return $Call.ByID(1898321893).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType13($result);
     });
 }
 
@@ -261,7 +250,7 @@ export function GetImportStatus(): $CancellablePromise<$models.ImportProgress> {
  */
 export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(1729763907, rootPath).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType15($result);
     });
 }
 
@@ -272,7 +261,7 @@ export function GetLibraryFrames(rootPath: string): $CancellablePromise<$models.
  */
 export function GetLibraryFramesByType(rootPath: string, frameType: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(991427518, rootPath, frameType).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType15($result);
     });
 }
 
@@ -284,7 +273,7 @@ export function GetLibraryFramesByType(rootPath: string, frameType: string): $Ca
  */
 export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.LightCoverage> {
     return $Call.ByID(615631664, rootPath).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType16($result);
     });
 }
 
@@ -294,7 +283,7 @@ export function GetLightCoverage(rootPath: string): $CancellablePromise<$models.
  */
 export function GetLightFramesPaged(rootPath: string, objects: string[], offset: number): $CancellablePromise<$models.PagedLightFrames> {
     return $Call.ByID(2285453405, rootPath, objects, offset).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType17($result);
     });
 }
 
@@ -303,7 +292,7 @@ export function GetLightFramesPaged(rootPath: string, objects: string[], offset:
  */
 export function GetLightObjects(rootPath: string): $CancellablePromise<string[]> {
     return $Call.ByID(316973662, rootPath).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType18($result);
     });
 }
 
@@ -313,7 +302,7 @@ export function GetLightObjects(rootPath: string): $CancellablePromise<string[]>
  */
 export function GetProjectFrames(projectFolder: string): $CancellablePromise<string[]> {
     return $Call.ByID(480177941, projectFolder).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType18($result);
     });
 }
 
@@ -326,7 +315,7 @@ export function GetProjectFrames(projectFolder: string): $CancellablePromise<str
  */
 export function GetProjectLibraryFrames(projectFolder: string): $CancellablePromise<$models.LibraryFrame[]> {
     return $Call.ByID(425723200, projectFolder).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType15($result);
     });
 }
 
@@ -337,7 +326,7 @@ export function GetProjectLibraryFrames(projectFolder: string): $CancellableProm
  */
 export function GetProjectOutputFiles(projectFolder: string): $CancellablePromise<$models.ProjectOutputFile[]> {
     return $Call.ByID(3884401349, projectFolder).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType20($result);
     });
 }
 
@@ -354,7 +343,7 @@ export function GetProjectsFolder(): $CancellablePromise<string> {
  */
 export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus> {
     return $Call.ByID(1964565836).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType21($result);
     });
 }
 
@@ -381,7 +370,7 @@ export function HardDeleteFile(path: string): $CancellablePromise<void> {
  */
 export function ImportOutputFiles(filePaths: string[], destFolder: string): $CancellablePromise<$models.ImportOutputsResult> {
     return $Call.ByID(3674431189, filePaths, destFolder).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType22($result);
     });
 }
 
@@ -397,7 +386,7 @@ export function InstallUpdate(): $CancellablePromise<void> {
 
 export function ListDirectory(path: string): $CancellablePromise<$models.FileEntry[]> {
     return $Call.ByID(1182641653, path).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType24($result);
     });
 }
 
@@ -408,7 +397,7 @@ export function ListDirectory(path: string): $CancellablePromise<$models.FileEnt
  */
 export function ListDirectoryEnriched(path: string): $CancellablePromise<$models.EnrichedFileEntry[]> {
     return $Call.ByID(2240621337, path).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType26($result);
     });
 }
 
@@ -417,7 +406,7 @@ export function ListDirectoryEnriched(path: string): $CancellablePromise<$models
  */
 export function ListProjects(): $CancellablePromise<$models.Project[]> {
     return $Call.ByID(217387348).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType27($result);
     });
 }
 
@@ -426,7 +415,7 @@ export function ListProjects(): $CancellablePromise<$models.Project[]> {
  */
 export function LoadPrefs(): $CancellablePromise<store$0.Prefs> {
     return $Call.ByID(361579588).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType28($result);
     });
 }
 
@@ -470,7 +459,7 @@ export function PublishSnapshot(): $CancellablePromise<void> {
 
 export function ReadFITSHeader(path: string): $CancellablePromise<fits$0.FITSHeader | null> {
     return $Call.ByID(1775527807, path).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType30($result);
     });
 }
 
@@ -523,7 +512,7 @@ export function RevealPath(path: string): $CancellablePromise<void> {
  */
 export function ScanImportCandidates(sourceFolder: string, extensions: string[]): $CancellablePromise<$models.ImportCandidate[]> {
     return $Call.ByID(2590149388, sourceFolder, extensions).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType32($result);
     });
 }
 
@@ -606,7 +595,7 @@ export function StartImport(sourceFolder: string, extensions: string[], deleteAf
  */
 export function SuggestRejects(rootPath: string, threshold: number): $CancellablePromise<$models.SuggestResult[]> {
     return $Call.ByID(3483751288, rootPath, threshold).then(($result: any) => {
-        return $$createType35($result);
+        return $$createType34($result);
     });
 }
 
@@ -630,35 +619,34 @@ const $$createType0 = $models.AddFramesResult.createFrom;
 const $$createType1 = $models.UpdateInfo.createFrom;
 const $$createType2 = siril$0.SirilInfo.createFrom;
 const $$createType3 = $models.Project.createFrom;
-const $$createType4 = fits$0.RawPreviewData.createFrom;
-const $$createType5 = catalog$0.Annotation.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $models.AppInfo.createFrom;
-const $$createType8 = $models.AtlasFrameSize.createFrom;
-const $$createType9 = $Create.Map($Create.Any, $$createType8);
-const $$createType10 = $models.AtlasIndexEntry.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = $models.CatalogObject.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = importer$0.Progress.createFrom;
-const $$createType15 = $models.LibraryFrame.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = $models.LightCoverage.createFrom;
-const $$createType18 = $models.PagedLightFrames.createFrom;
-const $$createType19 = $Create.Array($Create.Any);
-const $$createType20 = $models.ProjectOutputFile.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = $models.SnapshotStatus.createFrom;
-const $$createType23 = $models.ImportOutputsResult.createFrom;
-const $$createType24 = $models.FileEntry.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = $models.EnrichedFileEntry.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = $Create.Array($$createType3);
-const $$createType29 = store$0.Prefs.createFrom;
-const $$createType30 = fits$0.FITSHeader.createFrom;
-const $$createType31 = $Create.Nullable($$createType30);
-const $$createType32 = importer$0.Candidate.createFrom;
-const $$createType33 = $Create.Array($$createType32);
-const $$createType34 = $models.SuggestResult.createFrom;
-const $$createType35 = $Create.Array($$createType34);
+const $$createType4 = catalog$0.Annotation.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.AppInfo.createFrom;
+const $$createType7 = $models.AtlasFrameSize.createFrom;
+const $$createType8 = $Create.Map($Create.Any, $$createType7);
+const $$createType9 = $models.AtlasIndexEntry.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = $models.CatalogObject.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = importer$0.Progress.createFrom;
+const $$createType14 = $models.LibraryFrame.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = $models.LightCoverage.createFrom;
+const $$createType17 = $models.PagedLightFrames.createFrom;
+const $$createType18 = $Create.Array($Create.Any);
+const $$createType19 = $models.ProjectOutputFile.createFrom;
+const $$createType20 = $Create.Array($$createType19);
+const $$createType21 = $models.SnapshotStatus.createFrom;
+const $$createType22 = $models.ImportOutputsResult.createFrom;
+const $$createType23 = $models.FileEntry.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = $models.EnrichedFileEntry.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = $Create.Array($$createType3);
+const $$createType28 = store$0.Prefs.createFrom;
+const $$createType29 = fits$0.FITSHeader.createFrom;
+const $$createType30 = $Create.Nullable($$createType29);
+const $$createType31 = importer$0.Candidate.createFrom;
+const $$createType32 = $Create.Array($$createType31);
+const $$createType33 = $models.SuggestResult.createFrom;
+const $$createType34 = $Create.Array($$createType33);

@@ -20,16 +20,3 @@ func (a *App) GeneratePreview(path string, stretchLevel int) (string, error) {
 	}
 	return a.previews.Preview(path, 1024, stretchLevel)
 }
-
-// GeneratePreviewRawSized returns raw float32 RGBA pixel data (base64-encoded) plus
-// per-channel statistics for CPU/GPU-based MTF rendering on the frontend.
-// maxSize=0 means native resolution (no downscaling).
-func (a *App) GeneratePreviewRawSized(path string, maxSize int) (fits.RawPreviewData, error) {
-	if err := a.checkServable(path); err != nil {
-		return fits.RawPreviewData{}, err
-	}
-	if maxSize <= 0 {
-		maxSize = 1<<31 - 1
-	}
-	return fits.GeneratePreviewRaw(path, maxSize)
-}

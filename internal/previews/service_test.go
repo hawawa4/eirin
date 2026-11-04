@@ -67,6 +67,15 @@ func writePNG(t *testing.T, dir string, w, h int) string {
 	return p
 }
 
+// newService returns a Service that has finished all its background work
+// (levels still being encoded after Get returned) by the end of the test.
+func newService(t *testing.T, dir string, maxBytes int64) *Service {
+	t.Helper()
+	s := New(dir, maxBytes)
+	t.Cleanup(s.running.Wait)
+	return s
+}
+
 func jpegSize(t *testing.T, b []byte) (int, int) {
 	t.Helper()
 	cfg, err := jpeg.DecodeConfig(bytes.NewReader(b))
@@ -97,7 +106,7 @@ func TestLevelsFor(t *testing.T) {
 func TestGetLevelsAndDiskCache(t *testing.T) {
 	src, cache := t.TempDir(), t.TempDir()
 	path := writeFITS(t, src, 1500, 600)
-	s := New(cache, 1<<30)
+	s := newService(t, cache, 1<<30)
 	ctx := context.Background()
 
 	cases := []struct{ size, w, h int }{
@@ -118,7 +127,7 @@ func TestGetLevelsAndDiskCache(t *testing.T) {
 
 	// A new service (a restart) serves the same bytes from disk.
 	first, _ := s.Get(ctx, Request{Path: path, Stretch: 2, Size: 512})
-	s2 := New(cache, 1<<30)
+	s2 := newService(t, cache, 1<<30)
 	key, _, _ := source(Request{Path: path, Stretch: 2})
 	if !s2.complete(key) {
 		t.Fatal("not every level was written to disk")
@@ -141,7 +150,7 @@ func TestGetLevelsAndDiskCache(t *testing.T) {
 func TestGetChangesWithFile(t *testing.T) {
 	src := t.TempDir()
 	path := writeFITS(t, src, 64, 32)
-	s := New(t.TempDir(), 1<<30)
+	s := newService(t, t.TempDir(), 1<<30)
 	a, err := s.Get(context.Background(), Request{Path: path, Size: 512})
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +171,7 @@ func TestGetChangesWithFile(t *testing.T) {
 
 func TestGetRaster(t *testing.T) {
 	path := writePNG(t, t.TempDir(), 900, 300)
-	s := New("", 0) // memory only
+	s := newService(t, "", 0) // memory only
 	img, err := s.Get(context.Background(), Request{Path: path, Raster: true, Size: 512})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +183,7 @@ func TestGetRaster(t *testing.T) {
 
 func TestGetConcurrentRequestsShareOneRender(t *testing.T) {
 	path := writeFITS(t, t.TempDir(), 3000, 200)
-	s := New(t.TempDir(), 1<<30)
+	s := newService(t, t.TempDir(), 1<<30)
 	var wg sync.WaitGroup
 	sizes := []int{512, 1024, 2048, 0, 512, 0}
 	errs := make([]error, len(sizes))
@@ -196,7 +205,7 @@ func TestGetConcurrentRequestsShareOneRender(t *testing.T) {
 }
 
 func TestGetErrors(t *testing.T) {
-	s := New("", 0)
+	s := newService(t, "", 0)
 	if _, err := s.Get(context.Background(), Request{Path: filepath.Join(t.TempDir(), "nope.fit")}); err == nil {
 		t.Error("expected an error for a missing file")
 	}
@@ -213,7 +222,7 @@ func TestWarmFillsTheDisk(t *testing.T) {
 		{Path: writeFITS(t, src, 700, 300), Stretch: 2},
 		{Path: writePNG(t, src, 100, 50), Raster: true},
 	}
-	s := New(t.TempDir(), 1<<30)
+	s := newService(t, t.TempDir(), 1<<30)
 	s.Warm(context.Background(), reqs)
 	for _, r := range reqs {
 		key, _, _ := source(r)
@@ -225,7 +234,7 @@ func TestWarmFillsTheDisk(t *testing.T) {
 
 func TestDiskPruneEvictsLeastRecentlyUsed(t *testing.T) {
 	src, cache := t.TempDir(), t.TempDir()
-	s := New(cache, 1<<30)
+	s := newService(t, cache, 1<<30)
 	var keys []string
 	for i := range 3 {
 		path := writeFITS(t, src, 600+i, 400)
@@ -234,10 +243,12 @@ func TestDiskPruneEvictsLeastRecentlyUsed(t *testing.T) {
 		}
 		key, _, _ := source(Request{Path: path})
 		keys = append(keys, key)
+		s.running.Wait() // every level written: this image is now the newest
 	}
-	// Shrink the budget so only about one image fits.
+	// Shrink the budget so that only the newest image fits under the 90% a
+	// prune brings the cache down to.
 	s.disk.mu.Lock()
-	s.disk.maxBytes = s.disk.entries[keys[2]].bytes + 1
+	s.disk.maxBytes = s.disk.entries[keys[2]].bytes*10/9 + 10
 	s.disk.mu.Unlock()
 	s.disk.prune()
 	if _, err := os.Stat(filepath.Join(cache, keys[0])); !os.IsNotExist(err) {
@@ -250,7 +261,7 @@ func TestDiskPruneEvictsLeastRecentlyUsed(t *testing.T) {
 
 func TestWarmStopsBeforeEvicting(t *testing.T) {
 	src := t.TempDir()
-	s := New(t.TempDir(), 1<<30)
+	s := newService(t, t.TempDir(), 1<<30)
 	first := Request{Path: writeFITS(t, src, 700, 300)}
 	s.Warm(context.Background(), []Request{first})
 	// Budget now just above what's cached: warming more would evict.

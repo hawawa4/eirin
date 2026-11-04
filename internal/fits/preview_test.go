@@ -3,6 +3,7 @@ package fits
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"image/jpeg"
 	"math"
 	"os"
@@ -60,25 +61,36 @@ func writeBayerSky(t *testing.T, w, h int) string {
 	return path
 }
 
-func decodeRawPixels(t *testing.T, d RawPreviewData) []float32 {
+// decodeRaw splits EncodeRawPreview's output into its metadata and samples
+// (as [0,1] floats).
+func decodeRaw(t *testing.T, b []byte) (RawPreviewMeta, []float32) {
 	t.Helper()
-	b, err := base64.StdEncoding.DecodeString(d.Data)
-	if err != nil {
+	n := int(binary.LittleEndian.Uint32(b))
+	if (4+n)%4 != 0 {
+		t.Fatalf("samples start at %d, not 4-aligned", 4+n)
+	}
+	var m RawPreviewMeta
+	if err := json.Unmarshal(b[4:4+n], &m); err != nil {
 		t.Fatal(err)
 	}
-	px := make([]float32, len(b)/4)
-	for i := range px {
-		px[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
+	raw := b[4+n:]
+	if len(raw) != m.Width*m.Height*m.Channels*2 {
+		t.Fatalf("%d sample bytes for %dx%dx%d", len(raw), m.Width, m.Height, m.Channels)
 	}
-	return px
+	px := make([]float32, len(raw)/2)
+	for i := range px {
+		px[i] = float32(binary.LittleEndian.Uint16(raw[i*2:])) / 65535
+	}
+	return m, px
 }
 
-func TestGeneratePreviewRawNeutralisesSkyCast(t *testing.T) {
+func TestEncodeRawPreviewNeutralisesSkyCast(t *testing.T) {
 	path := writeBayerSky(t, 512, 384)
-	d, err := GeneratePreviewRaw(path, 2048)
+	b, err := EncodeRawPreview(path, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
+	d, px := decodeRaw(t, b)
 	if d.Channels != 3 || d.Width != 256 || d.Height != 192 {
 		t.Fatalf("got %d channels %d×%d, want 3 channels 256×192", d.Channels, d.Width, d.Height)
 	}
@@ -88,10 +100,12 @@ func TestGeneratePreviewRawNeutralisesSkyCast(t *testing.T) {
 		}
 	}
 
-	px := decodeRawPixels(t, d)
+	if d.Header == nil || d.Header.Width != 512 || d.Header.Height != 384 {
+		t.Errorf("header = %+v, want the file's 512×384", d.Header)
+	}
 	p := linkedStretch(d.Stats, d.Balance, 2)
 	pixel := func(x, y int) [3]float64 {
-		i := (y*d.Width + x) * 4
+		i := (y*d.Width + x) * 3
 		return [3]float64{
 			p.apply(0, float64(px[i])),
 			p.apply(1, float64(px[i+1])),
@@ -140,10 +154,11 @@ func TestRenderPreviewMatchesRawSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := GeneratePreviewRaw(path, 20)
+	b, err := EncodeRawPreview(path, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
+	raw, _ := decodeRaw(t, b)
 	// Annotations are positioned from these sizes in both preview paths.
 	if p.Width != raw.Width || p.Height != raw.Height {
 		t.Errorf("RenderPreview size %dx%d, raw preview %dx%d", p.Width, p.Height, raw.Width, raw.Height)

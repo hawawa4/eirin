@@ -45,23 +45,6 @@ type ChannelStats struct {
 	Sigma  float64 `json:"sigma"`
 }
 
-// RawPreviewData is returned by GeneratePreviewRawSized. The pixel data is a
-// base64-encoded little-endian float32 array in RGBA interleaved order
-// (R,G,B,1.0 per pixel, row-major, top-left origin). All channels share one
-// [0,1] normalisation (black at 0), so the camera's raw colour is kept; the
-// frontend multiplies by Balance and applies the linked stretch from Stats
-// (see stretch.go and frontend/src/lib/stretchPreview.ts).
-type RawPreviewData struct {
-	Data     string         `json:"data"`
-	Width    int            `json:"width"`
-	Height   int            `json:"height"`
-	Channels int            `json:"channels"` // 1 = mono, 3 = colour
-	Stats    []ChannelStats `json:"stats"`
-	// Balance holds per-channel gains that neutralise the sky background
-	// (all 1 for mono). Applied only when stretching.
-	Balance []float64 `json:"balance"`
-}
-
 // ── Implementation ────────────────────────────────────────────────────────────
 
 // ReadFITSHeader reads the primary header only; the pixel data is never read.
@@ -70,6 +53,11 @@ func ReadFITSHeader(path string) (*FITSHeader, error) {
 	if err != nil {
 		return nil, err
 	}
+	return headerOf(ph), nil
+}
+
+// headerOf builds the FITSHeader of a parsed primary header.
+func headerOf(ph *primaryHeader) *FITSHeader {
 	hdr := ph.hdr
 	axes := ph.axes
 
@@ -139,7 +127,7 @@ func ReadFITSHeader(path string) (*FITSHeader, error) {
 		PixelScale: pixelScale,
 		Rotation:   rotation,
 		Extra:      extra,
-	}, nil
+	}
 }
 
 // ── Header card helpers ───────────────────────────────────────────────────────
@@ -235,14 +223,6 @@ func extractWCS(hdr *fitsio.Header) (pixelScale, rotation float64) {
 }
 
 // ── Misc helpers ──────────────────────────────────────────────────────────────
-
-func packF32(dst []byte, offset int, v float32) {
-	bits := math.Float32bits(v)
-	dst[offset+0] = byte(bits)
-	dst[offset+1] = byte(bits >> 8)
-	dst[offset+2] = byte(bits >> 16)
-	dst[offset+3] = byte(bits >> 24)
-}
 
 func toU8(v float64) uint8 {
 	if v <= 0 {

@@ -68,6 +68,7 @@ type Service struct {
 	metas map[string]meta
 
 	userJobs atomic.Int32 // renders started by requests, not by Warm
+	running  sync.WaitGroup // jobs, which outlive the request that started them
 }
 
 // New returns a Service caching on disk under dir (maxBytes total), or only
@@ -269,6 +270,7 @@ func (s *Service) startJob(key string, r Request, user bool) *job {
 	if user {
 		s.userJobs.Add(1)
 	}
+	s.running.Add(1)
 	go s.run(key, r, j, user)
 	return j
 }
@@ -329,8 +331,9 @@ func (s *Service) run(key string, r Request, j *job, user bool) {
 		}
 		if s.disk != nil {
 			s.disk.unpin(key)
-			go s.disk.prune()
+			s.disk.prune()
 		}
+		s.running.Done()
 	}()
 
 	s.sem <- struct{}{}

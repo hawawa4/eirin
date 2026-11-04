@@ -6,35 +6,6 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * ChannelStats holds per-channel statistics of the normalised preview data,
- * used to compute the autostretch (here and in the frontend).
- */
-export class ChannelStats {
-    "median": number;
-    "sigma": number;
-
-    /** Creates a new ChannelStats instance. */
-    constructor($$source: Partial<ChannelStats> = {}) {
-        if (!("median" in $$source)) {
-            this["median"] = 0;
-        }
-        if (!("sigma" in $$source)) {
-            this["sigma"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ChannelStats instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ChannelStats {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ChannelStats($$parsedSource as Partial<ChannelStats>);
-    }
-}
-
-/**
  * FITSHeader holds FITS metadata relevant to astrophotography.
  * Multiple keyword aliases are tried for each field (e.g. EXPTIME vs EXPOSURE)
  * to cover different camera conventions.
@@ -161,74 +132,5 @@ export class FITSHeader {
     }
 }
 
-/**
- * RawPreviewData is returned by GeneratePreviewRawSized. The pixel data is a
- * base64-encoded little-endian float32 array in RGBA interleaved order
- * (R,G,B,1.0 per pixel, row-major, top-left origin). All channels share one
- * [0,1] normalisation (black at 0), so the camera's raw colour is kept; the
- * frontend multiplies by Balance and applies the linked stretch from Stats
- * (see stretch.go and frontend/src/lib/stretchPreview.ts).
- */
-export class RawPreviewData {
-    "data": string;
-    "width": number;
-    "height": number;
-
-    /**
-     * 1 = mono, 3 = colour
-     */
-    "channels": number;
-    "stats": ChannelStats[];
-
-    /**
-     * Balance holds per-channel gains that neutralise the sky background
-     * (all 1 for mono). Applied only when stretching.
-     */
-    "balance": number[];
-
-    /** Creates a new RawPreviewData instance. */
-    constructor($$source: Partial<RawPreviewData> = {}) {
-        if (!("data" in $$source)) {
-            this["data"] = "";
-        }
-        if (!("width" in $$source)) {
-            this["width"] = 0;
-        }
-        if (!("height" in $$source)) {
-            this["height"] = 0;
-        }
-        if (!("channels" in $$source)) {
-            this["channels"] = 0;
-        }
-        if (!("stats" in $$source)) {
-            this["stats"] = [];
-        }
-        if (!("balance" in $$source)) {
-            this["balance"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new RawPreviewData instance from a string or object.
-     */
-    static createFrom($$source: any = {}): RawPreviewData {
-        const $$createField4_0 = $$createType2;
-        const $$createField5_0 = $$createType3;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("stats" in $$parsedSource) {
-            $$parsedSource["stats"] = $$createField4_0($$parsedSource["stats"]);
-        }
-        if ("balance" in $$parsedSource) {
-            $$parsedSource["balance"] = $$createField5_0($$parsedSource["balance"]);
-        }
-        return new RawPreviewData($$parsedSource as Partial<RawPreviewData>);
-    }
-}
-
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = ChannelStats.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $Create.Array($Create.Any);

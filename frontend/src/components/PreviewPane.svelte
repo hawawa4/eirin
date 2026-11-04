@@ -5,7 +5,7 @@
   import type * as catalog from "$models/catalog";
   import { GetAnnotations, ReadFITSHeader } from "$app";
   import { basicRows, advancedRows, formatRA, formatDec, isRasterFile } from "../lib/utils";
-  import { computeStretch } from "../lib/stretchPreview";
+  import { computeStretch, type ChannelStats } from "../lib/stretchPreview";
   import { previewPrefs as pp } from "../lib/previewPrefs.svelte";
   import {
     loadPreview,
@@ -213,7 +213,7 @@
     width: number;
     height: number;
     channels: number;
-    stats: fits.ChannelStats[];
+    stats: ChannelStats[];
     balance: number[];
   } | null>(null);
   /** Size the annotation labels are positioned against. */
@@ -313,7 +313,7 @@ void main() {
   // ── Offscreen WebGL render ────────────────────────────────────────────────
 
   function renderGL(
-    stats?: fits.ChannelStats[],
+    stats?: ChannelStats[],
     enabled?: boolean,
     level?: number,
     chMode?: 0 | 1 | 2 | 3,
@@ -692,7 +692,7 @@ void main() {
   function drawHistogram(
     ctx2: CanvasRenderingContext2D,
     hb: HistBins,
-    stats: fits.ChannelStats[],
+    stats: ChannelStats[],
     balance: number[],
     enabled: boolean,
     level: number,
