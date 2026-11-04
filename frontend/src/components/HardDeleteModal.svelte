@@ -1,22 +1,38 @@
 <script lang="ts">
   import Modal from "./Modal.svelte";
+  import { formatBytes } from "../lib/utils";
 
   interface Props {
-    target: { name: string };
+    /** `count` > 1 words it for several files; `bytes` adds the space freed. */
+    target: { name: string; count?: number; bytes?: number };
     onconfirm: () => void;
     oncancel: () => void;
   }
 
   let { target, onconfirm, oncancel }: Props = $props();
+
+  let count = $derived(target.count ?? 1);
+  let many = $derived(count > 1);
 </script>
 
-<Modal title="Delete file permanently?" onclose={oncancel} danger width="min(400px, 92vw)">
+<Modal
+  title={many ? `Delete ${count.toLocaleString()} files permanently?` : "Delete file permanently?"}
+  onclose={oncancel}
+  danger
+  width="min(420px, 92vw)"
+>
   <p class="hd-filename">{target.name}</p>
-  <p class="hd-sub">This cannot be undone. The file will be removed from disk.</p>
+  <p class="hd-sub">
+    This cannot be undone. {many ? "The files" : "The file"} will be removed from disk{target.bytes
+      ? `, freeing ${formatBytes(target.bytes)}`
+      : ""}.
+  </p>
 
   {#snippet actions()}
     <button class="btn-ghost" data-autofocus onclick={oncancel}>Cancel</button>
-    <button class="btn-danger" onclick={onconfirm}>Delete Forever</button>
+    <button class="btn-danger" onclick={onconfirm}
+      >{many ? `Delete ${count.toLocaleString()} files` : "Delete forever"}</button
+    >
   {/snippet}
 </Modal>
 

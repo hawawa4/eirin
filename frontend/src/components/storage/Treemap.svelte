@@ -1,18 +1,20 @@
 <script lang="ts">
-  import type * as app from "$models/app";
+  import type { StorageGroup } from "../../lib/storage/tree";
   import { squarify } from "../../lib/storage/treemap";
   import { fitLabel, fmtFrames } from "../../lib/storage/format";
   import { formatBytes } from "../../lib/utils";
 
   interface Props {
-    nodes: app.StorageNode[];
+    nodes: StorageGroup[];
     /** Label of the hovered node (shared with the list below the map). */
     hovered: string | null;
     onhover: (label: string | null) => void;
     /** Called for nodes that have children. */
-    ondrill: (node: app.StorageNode) => void;
+    ondrill: (node: StorageGroup) => void;
+    /** Right-click / context-menu key on a tile. */
+    onmenu: (node: StorageGroup, x: number, y: number) => void;
   }
-  let { nodes, hovered, onhover, ondrill }: Props = $props();
+  let { nodes, hovered, onhover, ondrill, onmenu }: Props = $props();
 
   let container: HTMLDivElement;
   let width = $state(0);
@@ -72,6 +74,7 @@
         subH,
         fill: `color-mix(in srgb, var(--accent-dim) ${Math.round(40 + 60 * strength)}%, var(--bg-panel))`,
         drillable: !!n.children?.length,
+        rejectedFrac: n.totalBytes > 0 ? n.rejectedBytes / n.totalBytes : 0,
       };
     });
   });
@@ -112,7 +115,17 @@
           onfocus={() => onhover(c.node.label)}
           onblur={() => onhover(null)}
           onclick={() => c.drillable && ondrill(c.node)}
+          oncontextmenu={(e) => {
+            e.preventDefault();
+            onmenu(c.node, e.clientX, e.clientY);
+          }}
           onkeydown={(e) => {
+            if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+              e.preventDefault();
+              const r = (e.currentTarget as SVGGElement).getBoundingClientRect();
+              onmenu(c.node, r.left + r.width / 2, r.top + r.height / 2);
+              return;
+            }
             if (c.drillable && (e.key === "Enter" || e.key === " ")) {
               e.preventDefault();
               ondrill(c.node);
@@ -127,6 +140,17 @@
             rx="4"
             style:fill={c.fill}
           />
+          {#if c.rejectedFrac > 0 && c.w > 12 && c.h > 12}
+            <!-- Share of the tile taken by rejected frames (space you can free). -->
+            <rect
+              class="tm-rejected"
+              x={c.x + 3}
+              y={c.y + c.h - 6}
+              width={Math.max(2, (c.w - 6) * c.rejectedFrac)}
+              height="3"
+              rx="1.5"
+            />
+          {/if}
           {#if c.label}
             <text x={c.x + c.w / 2} y={c.top + c.lineH / 2} class="tm-label">{c.label}</text>
           {/if}
@@ -151,9 +175,14 @@
     >
       <strong>{hoveredNode.label}</strong>
       <span>{formatBytes(hoveredNode.totalBytes)} · {fmtFrames(hoveredNode.frameCount)}</span>
-      {#if hoveredNode.children?.length}
-        <span class="tooltip-hint">Click to drill down</span>
+      {#if hoveredNode.rejectedBytes > 0}
+        <span class="tooltip-rejected"
+          >{formatBytes(hoveredNode.rejectedBytes)} in {fmtFrames(hoveredNode.rejectedPaths.length)} rejected</span
+        >
       {/if}
+      <span class="tooltip-hint"
+        >{hoveredNode.children?.length ? "Click to open · " : ""}Right-click for actions</span
+      >
     </div>
   {/if}
 </div>
@@ -217,6 +246,15 @@
     z-index: 10;
     color: var(--text-primary);
     word-break: break-word;
+  }
+  .tm-rejected {
+    fill: var(--danger);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .tooltip-rejected {
+    font-size: var(--fs-xs);
+    color: var(--danger);
   }
   .tooltip-hint {
     font-size: var(--fs-xs);

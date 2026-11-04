@@ -14,12 +14,15 @@
     [["Shift", "Click"], "Select range"],
     [["Space"], "Toggle checkbox of current frame"],
     [["Ctrl", "A"], "Select all frames in view"],
+    [["/"], "Search"],
     [["x"], "Reject current / selected, then advance"],
     [["u"], "Restore current / selected"],
     [["Delete"], "Delete from disk (asks first)"],
     [["b"], "Blink checked frames, or the previewed frame's object"],
     [["Esc"], "Close preview, then clear selection"],
     [["?"], "Show / hide this help"],
+    [["Right-click"], "Actions for a frame, a selection or a group"],
+    [["Ctrl", "1…7"], "Switch tabs"],
   ];
 
   let el: HTMLDivElement;

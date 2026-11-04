@@ -7,6 +7,12 @@
     colspan: number;
     expanded: boolean;
     ontoggle: () => void;
+    /** How many of the group's frames are checked. */
+    checkState: "none" | "some" | "all";
+    /** Checks every frame of the group, or unchecks them when all are checked. */
+    oncheck: () => void;
+    /** Opens the group's action menu at (x, y). */
+    onmenu: (x: number, y: number) => void;
     sirilAvailable: boolean;
     /** This group is being analyzed right now. */
     analyzing: boolean;
@@ -22,6 +28,9 @@
     colspan,
     expanded,
     ontoggle,
+    checkState,
+    oncheck,
+    onmenu,
     sirilAvailable,
     analyzing,
     analysisBusy,
@@ -29,11 +38,34 @@
     onanalyze,
     oncancelanalysis,
   }: Props = $props();
+
+  let analyzedCount = $derived(group.frames.length - group.unanalyzedCount);
 </script>
 
-<tr class="group-header-row" onclick={ontoggle}>
+<tr
+  class="group-header-row"
+  onclick={ontoggle}
+  oncontextmenu={(e) => {
+    e.preventDefault();
+    onmenu(e.clientX, e.clientY);
+  }}
+>
   <td {colspan}>
     <div class="group-hdr-inner">
+      <input
+        type="checkbox"
+        class="group-check"
+        checked={checkState === "all"}
+        {@attach (el: HTMLInputElement) => {
+          el.indeterminate = checkState === "some";
+        }}
+        aria-label="Select all {group.frames.length} frames in {group.label}"
+        title={checkState === "all" ? "Unselect this group" : "Select every frame in this group"}
+        onclick={(e) => {
+          e.stopPropagation();
+          oncheck();
+        }}
+      />
       <button
         class="group-toggle"
         aria-expanded={expanded}
@@ -42,61 +74,74 @@
           ontoggle();
         }}
       >
-        <span class="group-chevron" aria-hidden="true">{expanded ? "▼" : "▶"}</span>
+        <span class="group-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
         <span class="group-label">{group.label}</span>
       </button>
       <span class="group-count"
-        >{group.frames.length} frame{group.frames.length !== 1 ? "s" : ""}</span
+        >{group.frames.length.toLocaleString()} frame{group.frames.length !== 1 ? "s" : ""}</span
       >
       <span class="group-type-breakdown">
         {#each group.breakdown as { type, count, meta } (type)}
-          <span class="group-type-badge" style="color:{meta.color};background:{meta.bg}">
+          <span
+            class="group-type-badge"
+            style="color:{meta.color};background:{meta.bg}"
+            title="{count} {meta.label.toLowerCase()} frame{count !== 1 ? 's' : ''}"
+          >
             {meta.short}
             {count}
           </span>
         {/each}
       </span>
       {#if group.hasQuality}
-        <span class="quality-dot" title="Quality data available">✦</span>
+        <span
+          class="quality-mark"
+          class:partial={group.unanalyzedCount > 0}
+          title={group.unanalyzedCount > 0
+            ? `${analyzedCount} of ${group.frames.length} frames analyzed (FWHM, stars, plate solve)`
+            : "Every frame analyzed (FWHM, stars, plate solve)"}
+          aria-label={group.unanalyzedCount > 0 ? "Partly analyzed" : "Analyzed"}
+          >{group.unanalyzedCount > 0 ? "◐" : "✓"}</span
+        >
       {/if}
       <span class="group-spacer"></span>
-      {#if sirilAvailable && group.frames.length > 0}
-        {#if analyzing}
-          <span class="analysis-status">
-            ⟳ {analysisProgress?.done ?? 0}/{analysisProgress?.total ?? group.unanalyzedCount}
-            {#if analysisProgress?.current}· {analysisProgress.current}{/if}
-          </span>
-          <button
-            class="btn-cancel-analysis"
-            onclick={(e) => {
-              e.stopPropagation();
-              oncancelanalysis();
-            }}
-            title="Cancel analysis">Cancel</button
-          >
-        {:else}
-          {#if group.unanalyzedCount > 0}
+      {#if analyzing}
+        <span class="analysis-status">
+          Analyzing {analysisProgress?.done ?? 0}/{analysisProgress?.total ?? group.unanalyzedCount}
+          {#if analysisProgress?.current}· {analysisProgress.current}{/if}
+        </span>
+        <button
+          class="hdr-btn cancel"
+          onclick={(e) => {
+            e.stopPropagation();
+            oncancelanalysis();
+          }}
+          title="Cancel analysis">Cancel</button
+        >
+      {:else}
+        <span class="hover-actions">
+          {#if sirilAvailable && group.unanalyzedCount > 0}
             <button
-              class="btn-analyze"
+              class="hdr-btn accent"
               onclick={(e) => {
                 e.stopPropagation();
                 onanalyze(false);
               }}
               disabled={analysisBusy}
-              title="Analyze unanalyzed frames with Siril (findstar + platesolve)">✦ Analyze</button
+              title="Measure FWHM, stars and background and plate-solve the {group.unanalyzedCount} unanalyzed frames with Siril"
+              >Analyze {group.unanalyzedCount.toLocaleString()}</button
             >
           {/if}
           <button
-            class="btn-analyze btn-reanalyze"
+            class="hdr-btn icon"
+            aria-label="Actions for {group.label}"
+            title="Actions for this group (or right-click)"
             onclick={(e) => {
               e.stopPropagation();
-              onanalyze(true);
-            }}
-            disabled={analysisBusy}
-            title="Re-run analysis on all frames, including already-analyzed ones"
-            >↺ Reanalyze</button
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              onmenu(r.right - 200, r.bottom + 2);
+            }}>⋯</button
           >
-        {/if}
+        </span>
       {/if}
     </div>
   </td>
@@ -115,7 +160,7 @@
   .group-header-row td {
     background: color-mix(in srgb, var(--bg-panel) 85%, var(--accent) 15%);
     border-bottom: 1px solid var(--border-accent);
-    padding: 4px 10px 4px 4px;
+    padding: 4px 10px 4px 0;
   }
 
   .group-hdr-inner {
@@ -127,6 +172,15 @@
     gap: 8px;
     width: 100%;
     min-width: 0;
+  }
+
+  /* Centred in the 28px checkbox column, like the frame rows' boxes. */
+  .group-check {
+    width: 28px;
+    flex-shrink: 0;
+    margin: 0 -6px 0 0;
+    accent-color: var(--accent);
+    cursor: pointer;
   }
 
   .group-toggle {
@@ -143,7 +197,7 @@
   }
 
   .group-chevron {
-    font-size: var(--fs-xs);
+    font-size: var(--fs-sm);
     color: var(--text-secondary);
     display: inline-block;
     width: 12px;
@@ -188,45 +242,63 @@
     flex: 1;
   }
 
-  .quality-dot {
+  .quality-mark {
     font-size: var(--fs-xs);
-    color: var(--accent);
+    color: var(--success);
+    cursor: help;
+  }
+  .quality-mark.partial {
+    color: var(--text-secondary);
   }
 
-  .btn-analyze {
+  /* Group actions appear on hover / keyboard focus instead of repeating on every row. */
+  .hover-actions {
+    display: inline-flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .group-header-row:hover .hover-actions,
+  .hover-actions:focus-within {
+    opacity: 1;
+  }
+
+  .hdr-btn {
     font-size: var(--fs-xs);
     padding: 2px 8px;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    border-radius: 3px;
+    background: var(--bg-base);
+    border: 1px solid var(--border-accent);
+    color: var(--text-secondary);
+    border-radius: 4px;
     cursor: pointer;
-    transition:
-      background 0.12s,
-      color 0.12s;
     white-space: nowrap;
     flex-shrink: 0;
   }
-
-  .btn-analyze:hover:not(:disabled) {
-    background: var(--accent);
-    color: var(--accent-contrast);
+  .hdr-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--accent);
   }
-
-  .btn-analyze:disabled {
-    border-color: var(--border);
+  .hdr-btn:disabled {
     color: var(--text-dim);
     cursor: default;
   }
-
-  .btn-reanalyze {
-    border-color: var(--border-accent);
-    color: var(--text-secondary);
-  }
-  .btn-reanalyze:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 20%, transparent);
-    color: var(--text-primary);
+  .hdr-btn.accent {
     border-color: var(--accent);
+    color: var(--accent);
+  }
+  .hdr-btn.accent:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--accent-contrast);
+  }
+  .hdr-btn.icon {
+    width: 26px;
+    padding: 2px 0;
+    font-size: var(--fs-sm);
+    line-height: 1;
+  }
+  .hdr-btn.cancel:hover {
+    border-color: var(--danger);
+    color: var(--danger);
   }
 
   .analysis-status {
@@ -237,21 +309,5 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .btn-cancel-analysis {
-    font-size: var(--fs-xs);
-    padding: 2px 8px;
-    background: transparent;
-    border: 1px solid var(--text-secondary);
-    color: var(--text-secondary);
-    border-radius: 3px;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .btn-cancel-analysis:hover {
-    border-color: var(--danger);
-    color: var(--danger);
   }
 </style>

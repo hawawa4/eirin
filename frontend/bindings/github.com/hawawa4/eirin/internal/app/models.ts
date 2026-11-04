@@ -1146,43 +1146,6 @@ export class SnapshotStatus {
 }
 
 /**
- * StorageNode is one node in the storage treemap hierarchy.
- */
-export class StorageNode {
-    "label": string;
-    "totalBytes": number;
-    "frameCount": number;
-    "children"?: StorageNode[];
-
-    /** Creates a new StorageNode instance. */
-    constructor($$source: Partial<StorageNode> = {}) {
-        if (!("label" in $$source)) {
-            this["label"] = "";
-        }
-        if (!("totalBytes" in $$source)) {
-            this["totalBytes"] = 0;
-        }
-        if (!("frameCount" in $$source)) {
-            this["frameCount"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new StorageNode instance from a string or object.
-     */
-    static createFrom($$source: any = {}): StorageNode {
-        const $$createField3_0 = $$createType15;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("children" in $$parsedSource) {
-            $$parsedSource["children"] = $$createField3_0($$parsedSource["children"]);
-        }
-        return new StorageNode($$parsedSource as Partial<StorageNode>);
-    }
-}
-
-/**
  * SuggestResult is a frame flagged as a statistical outlier within its group.
  */
 export class SuggestResult {
@@ -1312,5 +1275,3 @@ const $$createType10 = ProcessedFootprint.createFrom;
 const $$createType11 = $Create.Array($$createType10);
 const $$createType12 = LibraryFrame.createFrom;
 const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = StorageNode.createFrom;
-const $$createType15 = $Create.Array($$createType14);

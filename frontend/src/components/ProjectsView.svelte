@@ -247,6 +247,8 @@
     onselect={(p) => void selectProject(p)}
     oncreate={() => (showCreate = true)}
     onretry={() => void loadProjects()}
+    {sirilAvailable}
+    onremove={(p) => (removeTarget = p)}
   />
 
   <main class="project-detail">
@@ -288,6 +290,7 @@
           loaded={outputsLoaded}
           error={outputsError}
           onsave={() => (showSave = true)}
+          {sirilAvailable}
         />
       </div>
     {/if}

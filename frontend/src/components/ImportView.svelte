@@ -64,11 +64,11 @@
   {#if session.screen === "pick"}
     <div class="center-panel">
       <div class="import-icon" aria-hidden="true">⇪</div>
-      <p class="panel-title">Import Files</p>
+      <p class="panel-title">Import new data</p>
       {#if rootFolder}
         <p class="panel-sub">
-          Select a source folder (e.g. your Seestar) to find files that aren't in your library yet
-          and copy them to <code>{rootFolder}</code>.
+          Choose a source folder (e.g. your Seestar mounted over USB or the network) to find files
+          that aren't in your library yet and copy them to <code>{rootFolder}</code>.
         </p>
       {:else}
         <p class="panel-sub">No library folder is set. Choose one in Settings before importing.</p>
@@ -78,7 +78,7 @@
         class="btn-primary btn-large"
         disabled={selectedFormats.size === 0 || !rootFolder}
         title={selectedFormats.size === 0 ? "Select at least one file format" : undefined}
-        onclick={chooseSource}>Select Source Folder</button
+        onclick={chooseSource}>Choose source folder…</button
       >
       {#if session.scanError}
         <p class="error-msg" role="alert">Couldn't scan the folder: {session.scanError}</p>

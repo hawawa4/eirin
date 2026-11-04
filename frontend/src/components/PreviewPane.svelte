@@ -15,6 +15,8 @@
     type HistBins,
   } from "../lib/library/previewCache";
   import { loadViewerPreview, prefetchViewerPreview } from "../lib/viewer/previews";
+  import { copyPath } from "../lib/clipboard";
+  import ActionMenu, { type ActionMenuItem } from "./ActionMenu.svelte";
 
   interface Props {
     entry: app.EnrichedFileEntry;
@@ -58,6 +60,30 @@
   }: Props = $props();
 
   let isRejected = $derived(qualityFrame?.isRejected ?? entry.isRejected);
+
+  const STRETCH_OPTIONS = [
+    { level: 0, label: "Off", title: "Linear: the raw pixel values, no stretch" },
+    { level: 1, label: "Gentle", title: "Gentle autostretch" },
+    { level: 2, label: "Normal", title: "Normal autostretch" },
+    { level: 3, label: "Strong", title: "Strong autostretch, for faint detail" },
+  ];
+
+  // ── "More" menu ──────────────────────────────────────────────────────────
+  let moreMenu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function openMoreMenu(x: number, y: number) {
+    const items: ActionMenuItem[] = [];
+    if (onshowonatlas) items.push({ label: "Show on Sky Atlas", run: onshowonatlas });
+    if (onreveal) items.push({ label: "Show in folder", run: onreveal });
+    items.push({ label: "Copy path", run: () => copyPath(entry.path) });
+    if (ondelete) {
+      items.push(
+        { separator: true },
+        { label: "Delete from disk…", hint: "Del", danger: true, run: ondelete },
+      );
+    }
+    moreMenu = { x, y, items };
+  }
 
   // Primitive derived: a new entry object for the same file must not retrigger loading.
   let entryPath = $derived(entry.path);
@@ -748,30 +774,26 @@ void main() {
       {#if isRejected && onrestore}
         <button class="pv-btn" onclick={onrestore} title="Restore this frame (u)">Restore</button>
       {:else if !isRejected && onreject}
-        <button class="pv-btn pv-reject" onclick={onreject} title="Reject this frame (x)"
+        <button
+          class="pv-btn pv-reject"
+          onclick={onreject}
+          title="Reject this frame and move to the next (x). It stays on disk until you delete it."
           >Reject</button
         >
       {/if}
-      {#if ondelete}
-        <button
-          class="pv-btn pv-danger"
-          onclick={ondelete}
-          title="Delete this file from disk (Delete)">Delete…</button
-        >
-      {/if}
       {#if onblink}
-        <button class="pv-btn" onclick={onblink} title={blinkTitle}>▶ Blink</button>
+        <button class="pv-btn" onclick={onblink} title={blinkTitle}>Blink</button>
       {/if}
-      {#if onreveal}
-        <button class="pv-btn" onclick={onreveal} title="Show in the system file manager"
-          >Show in folder</button
-        >
-      {/if}
-      {#if onshowonatlas}
-        <button class="pv-btn" onclick={onshowonatlas} title="Show this image on the Sky Atlas"
-          >✦ Sky Atlas</button
-        >
-      {/if}
+      <button
+        class="pv-btn pv-icon"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        title="More: show in folder, copy path, delete…"
+        onclick={(e) => {
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          openMoreMenu(r.right - 200, r.bottom + 2);
+        }}>⋯</button
+      >
     </div>
     <button
       class="pv-close"
@@ -783,8 +805,10 @@ void main() {
 
   <div class="preview-toolbar">
     <div class="pv-group">
-      <button class="tool-btn" onclick={resetView} title="Fit to window (double-click image)"
-        >Fit</button
+      <button
+        class="tool-btn"
+        onclick={resetView}
+        title="Fit to window (or double-click the image). Scroll to zoom, drag to pan.">Fit</button
       >
       <span class="zoom-label">{Math.round(zoom * 100)}%</span>
     </div>
@@ -792,32 +816,29 @@ void main() {
     <div class="pv-group pv-view">
       {#if !isProcessed && !isRaster}
         <div class="seg-group" role="group" aria-label="Autostretch">
-          <button
-            class="tool-btn"
-            class:active={pp.stretchEnabled}
-            onclick={() => {
-              pp.stretchEnabled = !pp.stretchEnabled;
-              applyStretch();
-            }}
-            title="Toggle autostretch">Stretch</button
-          >
-          {#if pp.stretchEnabled}
+          <span class="seg-label">Stretch</span>
+          {#each STRETCH_OPTIONS as opt (opt.level)}
+            {@const on =
+              opt.level === 0
+                ? !pp.stretchEnabled
+                : pp.stretchEnabled && pp.stretchLevel === opt.level}
             <button
               class="tool-btn preset"
-              class:active={pp.stretchLevel === 1}
-              onclick={() => setStretch(1)}>Gentle</button
+              class:active={on}
+              aria-pressed={on}
+              onclick={() => {
+                if (opt.level === 0) {
+                  if (!pp.stretchEnabled) return;
+                  pp.stretchEnabled = false;
+                  applyStretch();
+                } else {
+                  if (!pp.stretchEnabled) pp.stretchEnabled = true;
+                  setStretch(opt.level);
+                }
+              }}
+              title={opt.title}>{opt.label}</button
             >
-            <button
-              class="tool-btn preset"
-              class:active={pp.stretchLevel === 2}
-              onclick={() => setStretch(2)}>Normal</button
-            >
-            <button
-              class="tool-btn preset"
-              class:active={pp.stretchLevel === 3}
-              onclick={() => setStretch(3)}>Strong</button
-            >
-          {/if}
+          {/each}
         </div>
       {/if}
 
@@ -826,21 +847,29 @@ void main() {
           <button
             class="tool-btn ch-btn"
             class:active={channelMode === 0}
+            aria-pressed={channelMode === 0}
+            title="All channels"
             onclick={() => setChannelMode(0)}>RGB</button
           >
           <button
             class="tool-btn ch-btn ch-r"
             class:active={channelMode === 1}
+            aria-pressed={channelMode === 1}
+            title="Red channel only"
             onclick={() => setChannelMode(1)}>R</button
           >
           <button
             class="tool-btn ch-btn ch-g"
             class:active={channelMode === 2}
+            aria-pressed={channelMode === 2}
+            title="Green channel only"
             onclick={() => setChannelMode(2)}>G</button
           >
           <button
             class="tool-btn ch-btn ch-b"
             class:active={channelMode === 3}
+            aria-pressed={channelMode === 3}
+            title="Blue channel only"
             onclick={() => setChannelMode(3)}>B</button
           >
         </div>
@@ -850,8 +879,9 @@ void main() {
         <button
           class="tool-btn"
           class:active={showHistogram}
+          aria-pressed={showHistogram}
           onclick={() => (showHistogram = !showHistogram)}
-          title="Histogram overlay">Hist</button
+          title="Show the histogram over the image">Histogram</button
         >
       {/if}
 
@@ -859,10 +889,11 @@ void main() {
         <button
           class="tool-btn"
           class:active={showAnnotations}
+          aria-pressed={showAnnotations}
           onclick={() => (showAnnotations = !showAnnotations)}
           title={annotationsApprox
             ? "Star / DSO labels — approximate: this frame isn't plate-solved, so positions come from the FITS header's pointing"
-            : "Star / DSO labels (plate-solved)"}>✦ Labels{annotationsApprox ? " ≈" : ""}</button
+            : "Star / DSO labels (plate-solved)"}>Labels{annotationsApprox ? " ≈" : ""}</button
         >
       {/if}
     </div>
@@ -1138,6 +1169,15 @@ void main() {
   {/if}
 </div>
 
+{#if moreMenu}
+  <ActionMenu
+    x={moreMenu.x}
+    y={moreMenu.y}
+    items={moreMenu.items}
+    onclose={() => (moreMenu = null)}
+  />
+{/if}
+
 <style>
   .preview-pane {
     flex: 1;
@@ -1213,8 +1253,7 @@ void main() {
     width: 28px;
     padding: 0;
   }
-  .pv-reject:hover:not(:disabled),
-  .pv-danger:hover:not(:disabled) {
+  .pv-reject:hover:not(:disabled) {
     color: var(--danger);
     border-color: var(--danger);
   }
@@ -1272,6 +1311,11 @@ void main() {
     display: flex;
     align-items: center;
     gap: 2px;
+  }
+  .seg-label {
+    font-size: var(--fs-xs);
+    color: var(--text-dim);
+    margin-right: 4px;
   }
 
   .ch-btn {

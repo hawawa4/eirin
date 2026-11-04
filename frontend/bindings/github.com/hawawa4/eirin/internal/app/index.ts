@@ -30,7 +30,6 @@ export {
     SirilInfo,
     SkyPoint,
     SnapshotStatus,
-    StorageNode,
     SuggestResult,
     UpdateInfo
 } from "./models.js";

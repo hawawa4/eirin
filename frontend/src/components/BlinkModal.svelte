@@ -226,6 +226,7 @@
         e.preventDefault();
         step(e.key === "ArrowRight" ? 1 : -1);
         return;
+      case "x": // same key as the Library
       case "r":
         e.preventDefault();
         doReject();
@@ -267,13 +268,8 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-<div
-  class="blink-backdrop"
-  onmousedown={(e) => {
-    if (e.target === e.currentTarget) onclose();
-  }}
-  role="presentation"
->
+<!-- No close on backdrop click: a stray click shouldn't end a long culling session (✕ / Esc). -->
+<div class="blink-backdrop" role="presentation">
   <div
     bind:this={dialogEl}
     class="blink-modal"
@@ -329,7 +325,7 @@
 
     <div class="blink-controls">
       <button class="blink-btn" onclick={() => step(-1)} title="Previous (←)" aria-label="Previous"
-        >◀</button
+        >⏮</button
       >
       <button
         class="blink-btn blink-play"
@@ -340,7 +336,7 @@
       >
         {playing ? "⏸" : "▶"}
       </button>
-      <button class="blink-btn" onclick={() => step(1)} title="Next (→)" aria-label="Next">▶</button
+      <button class="blink-btn" onclick={() => step(1)} title="Next (→)" aria-label="Next">⏭</button
       >
 
       {#if onreject || onrestore || onharddelete}
@@ -354,7 +350,7 @@
               class="blink-action-btn reject-btn"
               disabled={current?.isRejected}
               onclick={doReject}
-              title={current?.isRejected ? "Already rejected" : "Reject this frame (r)"}
+              title={current?.isRejected ? "Already rejected" : "Reject this frame (x)"}
             >
               ✕ Reject
             </button>
@@ -443,7 +439,7 @@
       <span><kbd>Space</kbd> play/pause</span>
       <span><kbd>s</kbd> stretch on/off</span>
       <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> gentle/normal/strong</span>
-      {#if onreject}<span><kbd>r</kbd> reject</span>{/if}
+      {#if onreject}<span><kbd>x</kbd> reject</span>{/if}
       {#if onrestore}<span><kbd>u</kbd> restore</span>{/if}
       {#if onharddelete}<span><kbd>Del</kbd> delete</span>{/if}
       <span><kbd>Esc</kbd> close</span>

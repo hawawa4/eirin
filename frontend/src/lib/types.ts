@@ -8,13 +8,6 @@ export interface ColumnDef {
   order: number;
 }
 
-export interface FileGroup {
-  key: string;
-  object: string;
-  date: string;
-  files: app.EnrichedFileEntry[];
-}
-
 export interface IndexProgress {
   phase: "scanning" | "indexing" | "done" | "cancelled";
   total: number;
@@ -54,18 +47,8 @@ export interface AnalysisProgress {
   errors: number;
 }
 
-export type ViewMode = "files" | "rejected";
-
 export type AppMode =
-  | "browser"
-  | "library"
-  | "atlas"
-  | "slideshow"
-  | "coverage"
-  | "import"
-  | "projects"
-  | "storage"
-  | "settings";
+  "library" | "atlas" | "slideshow" | "coverage" | "import" | "projects" | "storage" | "settings";
 
 export type Theme = "blue" | "red" | "grey";
 
@@ -167,16 +150,4 @@ export const DEFAULT_LIBRARY_COLUMNS: ColumnDef[] = [
   { id: "noise", label: "Noise", visible: false, width: 65, order: 14 },
   { id: "snr", label: "SNR", visible: false, width: 65, order: 15 },
   { id: "moonPhase", label: "Moon", visible: false, width: 65, order: 16 },
-];
-
-export const DEFAULT_COLUMNS: ColumnDef[] = [
-  { id: "name", label: "Name", visible: true, width: 160, order: 0 },
-  { id: "object", label: "Object", visible: true, width: 110, order: 1 },
-  { id: "filter", label: "Filter", visible: true, width: 70, order: 2 },
-  { id: "dateObs", label: "Date", visible: true, width: 130, order: 3 },
-  { id: "expTime", label: "Exp", visible: true, width: 65, order: 4 },
-  { id: "modTime", label: "Modified", visible: false, width: 140, order: 5 },
-  { id: "size", label: "Size", visible: false, width: 70, order: 6 },
-  { id: "gain", label: "Gain", visible: false, width: 60, order: 7 },
-  { id: "ccdTemp", label: "Temp", visible: false, width: 75, order: 8 },
 ];

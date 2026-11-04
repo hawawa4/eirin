@@ -1,5 +1,8 @@
 <script lang="ts">
   // Full-canvas status overlays: loading, load error, nothing indexed, everything filtered out.
+  import { GetLibraryFrames } from "$app";
+  import { isProjectFrameType } from "../../lib/projects/frames";
+
   interface Props {
     rootPath: string;
     loading: boolean;
@@ -14,6 +17,9 @@
     onscan?: () => void;
     /** Read-only server viewer: nothing to scan, the desktop app publishes the library. */
     readOnly?: boolean;
+    scanning?: boolean;
+    scanProgress?: { done: number; total: number } | null;
+    onnavigate?: (mode: "import" | "library" | "projects" | "coverage") => void;
   }
 
   let {
@@ -28,7 +34,37 @@
     onswitchformat,
     onscan,
     readOnly = false,
+    scanning = false,
+    scanProgress = null,
+    onnavigate,
   }: Props = $props();
+
+  // With nothing to show, look at the library to say why (desktop only).
+  let lib = $state<{ total: number; lights: number; finals: number } | null>(null);
+  $effect(() => {
+    lib = null;
+    if (readOnly || loading || error || !rootPath || indexed > 0 || scanning) return;
+    const root = rootPath;
+    let stale = false;
+    GetLibraryFrames(root)
+      .then((frames) => {
+        if (stale) return;
+        let lights = 0;
+        let finals = 0;
+        for (const f of frames ?? []) {
+          if (f.isRejected) continue;
+          if (f.frameType === "light") lights++;
+          else if (!isProjectFrameType(f.frameType)) finals++;
+        }
+        lib = { total: frames?.length ?? 0, lights, finals };
+      })
+      .catch(() => {
+        /* fall back to the generic card */
+      });
+    return () => {
+      stale = true;
+    };
+  });
 </script>
 
 {#if loading}
@@ -58,27 +94,82 @@
       </p>
     </div>
   </div>
+{:else if indexed === 0 && scanning}
+  <div class="atlas-status">
+    <div class="status-card" role="status">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="title">Scanning your library…</p>
+      <p class="detail">
+        {#if scanProgress && scanProgress.total > 0}
+          {scanProgress.done.toLocaleString()} of {scanProgress.total.toLocaleString()} files read.
+        {/if}
+        Plate-solved images appear here when the scan finishes.
+      </p>
+    </div>
+  </div>
 {:else if indexed === 0}
   <div class="atlas-status">
     <div class="status-card">
       <div class="icon" aria-hidden="true">◎</div>
-      <p class="title">No final images with sky coordinates yet</p>
       {#if readOnly}
+        <p class="title">No final images with sky coordinates yet</p>
         <p class="detail">
           The atlas shows the plate-solved final images from the library the desktop app publishes.
           Once it has published a snapshot with some, they'll appear here.
         </p>
+      {:else if lib && lib.total === 0}
+        <p class="title">Welcome to Eirin</p>
+        <p class="detail">
+          This is the Sky Atlas: your stacked and processed images, placed where they are on the
+          sky. Your library is empty so far — import from your Seestar, or scan the library folder
+          if it already holds data.
+        </p>
+        <div class="actions">
+          {#if onnavigate}<button class="btn primary" onclick={() => onnavigate("import")}
+              >Import from Seestar</button
+            >{/if}
+          {#if onscan}<button class="btn" onclick={onscan}>Scan library folder</button>{/if}
+        </div>
+      {:else if lib && lib.finals === 0}
+        <p class="title">No stacked or processed images yet</p>
+        <p class="detail">
+          You have {lib.lights.toLocaleString()} light frame{lib.lights === 1 ? "" : "s"}. The atlas
+          shows final images, so stack some in a project first. Coverage already shows where your
+          lights point.
+        </p>
+        <div class="actions">
+          {#if onnavigate}
+            <button class="btn primary" onclick={() => onnavigate("library")}>Open Library</button>
+            <button class="btn" onclick={() => onnavigate("coverage")}>See Coverage</button>
+          {/if}
+        </div>
+      {:else if lib}
+        <p class="title">Your final images aren't plate-solved</p>
+        <p class="detail">
+          {lib.finals.toLocaleString()} stacked or processed image{lib.finals === 1
+            ? " has"
+            : "s have"}
+          no sky coordinates. In the Library, pick the <strong>Stacked</strong> type, then
+          right-click a group and choose <strong>Analyze</strong> to plate-solve with Siril.
+        </p>
+        <div class="actions">
+          {#if onnavigate}<button class="btn primary" onclick={() => onnavigate("library")}
+              >Open Library</button
+            >{/if}
+          {#if onscan}<button class="btn" onclick={onscan}>Rescan</button>{/if}
+        </div>
       {:else}
+        <p class="title">No final images with sky coordinates yet</p>
         <p class="detail">
           The atlas shows your processed images that have WCS (plate-solve) coordinates. Scan your
           library to pick them up — images without coordinates can be plate-solved with
           <strong>Analyze</strong> in the Library.
         </p>
-      {/if}
-      {#if onscan}
-        <div class="actions">
-          <button class="btn primary" onclick={onscan}>Scan library</button>
-        </div>
+        {#if onscan}
+          <div class="actions">
+            <button class="btn primary" onclick={onscan}>Scan library</button>
+          </div>
+        {/if}
       {/if}
     </div>
   </div>

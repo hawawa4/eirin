@@ -1,11 +1,20 @@
 <script lang="ts" module>
-  // Minimal right-click menu for folders in Browse: the file ContextMenu always
-  // offers reject/delete/Siril, which make no sense for a directory.
-
-  export interface FolderMenuItem {
-    label: string;
-    run: () => void;
-  }
+  // Generic right-click menu for things that aren't a single file (library groups,
+  // storage tiles, projects, folders). File rows use ContextMenu.svelte instead.
+  export type ActionMenuItem =
+    | {
+        label: string;
+        run: () => void;
+        /** Keyboard shortcut shown on the right, e.g. "x". */
+        hint?: string;
+        danger?: boolean;
+        /** Accent-coloured (the primary thing to do here). */
+        primary?: boolean;
+        /** Disabled with this explanation as the tooltip. */
+        disabledReason?: string;
+      }
+    | { separator: true }
+    | { heading: string };
 </script>
 
 <script lang="ts">
@@ -14,7 +23,7 @@
   interface Props {
     x: number;
     y: number;
-    items: FolderMenuItem[];
+    items: ActionMenuItem[];
     onclose: () => void;
   }
 
@@ -25,9 +34,11 @@
   let menuEl: HTMLDivElement;
   let left = $state(0);
   let top = $state(0);
+
   const restoreFocusTo =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
+  // Clamp into the viewport, flipping up/left on overflow.
   $effect(() => {
     const { width, height } = menuEl.getBoundingClientRect();
     left = x + width > window.innerWidth - EDGE ? Math.max(EDGE, x - width) : x;
@@ -35,7 +46,7 @@
   });
 
   function buttons(): HTMLButtonElement[] {
-    return Array.from(menuEl.querySelectorAll<HTMLButtonElement>("button.ctx-item"));
+    return Array.from(menuEl.querySelectorAll<HTMLButtonElement>("button.ctx-item:not(:disabled)"));
   }
 
   onMount(() => {
@@ -108,17 +119,28 @@
   onkeydown={onMenuKeydown}
   oncontextmenu={(e) => e.preventDefault()}
 >
-  {#each items as item (item.label)}
-    <button
-      class="ctx-item"
-      role="menuitem"
-      onclick={() => {
-        item.run();
-        onclose();
-      }}
-    >
-      {item.label}
-    </button>
+  {#each items as item, i (i)}
+    {#if "separator" in item}
+      <div class="ctx-sep" role="separator"></div>
+    {:else if "heading" in item}
+      <span class="ctx-heading">{item.heading}</span>
+    {:else}
+      <button
+        class="ctx-item"
+        class:danger={item.danger}
+        class:primary={item.primary}
+        role="menuitem"
+        disabled={!!item.disabledReason}
+        title={item.disabledReason}
+        onclick={() => {
+          onclose();
+          item.run();
+        }}
+      >
+        <span class="ctx-text">{item.label}</span>
+        {#if item.hint}<kbd class="ctx-hint">{item.hint}</kbd>{/if}
+      </button>
+    {/if}
   {/each}
 </div>
 
@@ -130,15 +152,30 @@
     border-radius: 5px;
     padding: 3px 0;
     z-index: 1000;
-    min-width: 160px;
+    min-width: 200px;
+    max-width: 360px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   }
   .ctx-menu:focus {
     outline: none;
   }
 
-  .ctx-item {
+  .ctx-heading {
     display: block;
+    padding: 5px 14px 3px;
+    font-size: var(--fs-xs);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
     width: 100%;
     text-align: left;
     background: transparent;
@@ -148,7 +185,14 @@
     font-size: var(--fs-sm);
     cursor: pointer;
   }
-  .ctx-item:hover,
+  .ctx-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ctx-item:hover:not(:disabled),
   .ctx-item:focus-visible {
     background: var(--bg-row-hover);
     color: var(--text-primary);
@@ -156,5 +200,39 @@
   .ctx-item:focus-visible {
     outline: none;
     box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .ctx-item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .ctx-item.primary,
+  .ctx-item.primary:hover:not(:disabled) {
+    color: var(--accent);
+  }
+  .ctx-item.danger,
+  .ctx-item.danger:hover:not(:disabled),
+  .ctx-item.danger:focus-visible {
+    color: var(--danger);
+  }
+  .ctx-item.danger:hover:not(:disabled),
+  .ctx-item.danger:focus-visible {
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+  }
+
+  .ctx-hint {
+    flex-shrink: 0;
+    font-family: inherit;
+    font-size: var(--fs-xs);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 5px;
+  }
+
+  .ctx-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 0;
   }
 </style>

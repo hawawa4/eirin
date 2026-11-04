@@ -2,7 +2,6 @@
   import { onMount, tick, untrack } from "svelte";
   import { SelectRootFolder, GetAppInfo, CheckSiril, GetProjectsFolder } from "$app";
   import {
-    DEFAULT_COLUMNS,
     DEFAULT_LIBRARY_COLUMNS,
     type AppInfo,
     type AppMode,
@@ -22,7 +21,6 @@
   import SkyAtlas from "./components/SkyAtlas.svelte";
   import SlideshowView from "./components/SlideshowView.svelte";
   import CoverageView from "./components/CoverageView.svelte";
-  import BrowseView from "./components/browse/BrowseView.svelte";
   import Toaster from "./components/Toaster.svelte";
   import { loadUiState } from "./lib/uiState.svelte";
   import { installUiScaleShortcuts } from "./lib/uiScale.svelte";
@@ -30,11 +28,12 @@
   import { toast } from "./lib/toast.svelte";
   import { loadPrefs, savePref, usePrefsLocally } from "./lib/prefs";
   import { indexer, type IndexOutcome, type StartOptions } from "./lib/shell/indexing.svelte";
-  import { DEFAULT_MODE, MODES, visibleModes } from "./lib/shell/modes";
+  import { DEFAULT_MODE, MODES, modeForDigit, visibleModes } from "./lib/shell/modes";
+  import { isModalOpen } from "./lib/keys";
+  import type { LibraryFocusFilter } from "./lib/library/filters";
   import { exitImmersive, immersive } from "./lib/shell/immersive.svelte";
 
   const PREF_ROOT_FOLDER = "root_folder";
-  const PREF_COLUMN_CONFIG = "column_config";
   const PREF_LIBRARY_COLUMN_CONFIG = "library_column_config";
   const PREF_THEME = "theme";
 
@@ -52,9 +51,8 @@
   // ── Theme ─────────────────────────────────────────────────────────────────
   let theme = $state<Theme>("blue");
 
-  // ── Root folder / column configs ──────────────────────────────────────────
+  // ── Root folder / column config ───────────────────────────────────────────
   let rootFolder = $state("");
-  let columns = $state<ColumnDef[]>(DEFAULT_COLUMNS.map((c) => ({ ...c })));
   let libraryColumns = $state<ColumnDef[]>(DEFAULT_LIBRARY_COLUMNS.map((c) => ({ ...c })));
 
   // ── App info (DB path, server URL) ────────────────────────────────────────
@@ -85,9 +83,9 @@
     reload: () => void;
     focusFile: (nasPath: string) => void;
     selectFiles?: (paths: string[]) => void;
+    showFiltered?: (f: LibraryFocusFilter) => void;
   } | null>(null);
   let projectsView = $state<{ selectProjectById: (id: number) => void } | null>(null);
-  let browseView = $state<{ reload: () => void } | null>(null);
   let skyAtlas = $state<{ focusFrame: (nasPath: string) => void } | null>(null);
 
   // ── Read-only viewer guard — only the viewer's tabs ───────────────────────
@@ -103,6 +101,15 @@
 
   onMount(() => installUiScaleShortcuts());
 
+  // Ctrl+1…9 switch tabs, numbered in header order.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || isModalOpen()) return;
+    if (!/^[1-9]$/.test(e.key) || immersive.on) return;
+    const m = modeForDigit(readOnly, Number(e.key));
+    if (!m || (m.requiresRoot && !rootFolder)) return;
+    e.preventDefault();
+    setMode(m.value);
+  }
   // Imports index each copied file themselves (and emit library:updated), so
   // they don't trigger a scan here.
   onMount(() => indexer.listen(onIndexFinished));
@@ -127,7 +134,6 @@
     loadPreviewPrefs(p);
     if (p.theme === "red" || p.theme === "grey") theme = p.theme;
     loadUiState(p.uiState);
-    columns = mergeColumns(DEFAULT_COLUMNS, p.columnConfig);
     libraryColumns = mergeColumns(DEFAULT_LIBRARY_COLUMNS, p.libraryColumnConfig);
     if (p.rootFolder) rootFolder = p.rootFolder;
     prefsLoaded = true;
@@ -157,10 +163,6 @@
     return defaults.map((c) => ({ ...c }));
   }
 
-  function saveColumnConfig() {
-    if (prefsLoaded) savePref(PREF_COLUMN_CONFIG, JSON.stringify(columns));
-  }
-
   function saveLibraryColumnConfig() {
     if (prefsLoaded) savePref(PREF_LIBRARY_COLUMN_CONFIG, JSON.stringify(libraryColumns));
   }
@@ -186,7 +188,6 @@
     }
     if (o.kind !== "error" || o.progress) {
       setTimeout(() => {
-        browseView?.reload();
         libraryView?.reload();
       }, 400);
     }
@@ -221,6 +222,12 @@
     libraryView?.selectFiles?.(paths);
   }
 
+  async function showFilteredInLibrary(f: LibraryFocusFilter) {
+    setMode("library");
+    await tick();
+    libraryView?.showFiltered?.(f);
+  }
+
   async function showOnAtlas(nasPath: string) {
     setMode("atlas");
     await tick();
@@ -233,6 +240,8 @@
     projectsView?.selectProjectById(project.id);
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div class="layout">
   {#if !immersive.on}
@@ -257,10 +266,14 @@
     {#if !rootFolder && modeRequiresRoot}
       <div class="empty-state">
         <div class="empty-icon" aria-hidden="true">◎</div>
-        <p class="empty-title">No folder selected</p>
+        <p class="empty-title">No library folder yet</p>
         {#if desktopMode}
-          <p class="empty-sub">Choose your astrophotography NAS folder to get started</p>
-          <button class="btn-primary btn-large" onclick={selectFolder}>Select Root Folder</button>
+          <p class="empty-sub">
+            Choose the folder (usually on your NAS) that holds or will hold your astrophotography
+            data. Eirin catalogs it in place and never moves your files.
+          </p>
+          <button class="btn-primary btn-large" onclick={selectFolder}>Choose library folder</button
+          >
         {:else}
           <p class="empty-sub">
             No library folder is configured on this server. Set <code>EIRIN_ROOT</code> to where the library
@@ -293,6 +306,7 @@
                 onscan={() => startScan()}
                 onsavecolumns={saveLibraryColumnConfig}
                 oncreateproject={openProject}
+                onshowonatlas={showOnAtlas}
               />
             {/if}
           </div>
@@ -333,6 +347,9 @@
               onscan={readOnly ? undefined : () => startScan()}
               onframeopen={openInLibrary}
               {desktopMode}
+              scanning={indexer.running}
+              scanProgress={indexer.progress}
+              onnavigate={readOnly ? undefined : setMode}
             />
           </div>
         {/if}
@@ -362,31 +379,17 @@
               rootPath={rootFolder}
               active={appMode === "storage"}
               onscan={() => startScan()}
-            />
-          </div>
-        {/if}
-
-        {#if !readOnly && visited.browser}
-          <div class="view" class:hidden={appMode !== "browser"}>
-            <BrowseView
-              bind:this={browseView}
-              {rootFolder}
-              {columns}
-              {sirilAvailable}
-              {desktopMode}
-              active={appMode === "browser"}
-              indexRunning={indexer.running}
-              indexProgress={indexer.progress}
-              onsavecolumns={saveColumnConfig}
-              onscan={() => startScan()}
+              onshowinlibrary={showFilteredInLibrary}
+              onselectinlibrary={selectInLibrary}
             />
           </div>
         {/if}
       {/key}
     {/if}
 
-    {#if appMode === "settings"}
-      <div class="view">
+    <!-- Kept mounted once visited so an update download or backup survives a tab switch. -->
+    {#if visited.settings}
+      <div class="view" class:hidden={appMode !== "settings"}>
         <SettingsView
           {rootFolder}
           {projectsFolder}

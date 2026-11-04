@@ -30,44 +30,52 @@
 </script>
 
 <div class="selection-bar" role="toolbar" aria-label="Selection actions">
-  <span class="sel-count">{count} selected</span>
+  <span class="sel-count">{count.toLocaleString()} selected</span>
+  {#if oncreateproject && !showRejected}
+    <button
+      class="sel-btn sel-primary"
+      onclick={oncreateproject}
+      disabled={busy}
+      title="New Siril project from the selected light, dark, flat and bias frames"
+      >＋ New project…</button
+    >
+  {/if}
+  <button
+    class="sel-btn"
+    onclick={onblink}
+    disabled={busy || !blinkLabel}
+    title={blinkLabel
+      ? `Blink ${blinkLabel}`
+      : "No other frames of this object and type in the current view"}
+  >
+    Blink <kbd>b</kbd>
+  </button>
   {#if showRejected}
-    <button class="sel-btn" onclick={onrestore} disabled={busy} title="Restore checked frames (u)">
-      Restore {count}
+    <button class="sel-btn" onclick={onrestore} disabled={busy} title="Restore the selected frames">
+      Restore <kbd>u</kbd>
     </button>
   {:else}
     <button
       class="sel-btn sel-reject"
       onclick={onreject}
       disabled={busy}
-      title="Reject checked frames (x)"
+      title="Reject the selected frames — they move to the Rejected tab and stay on disk"
     >
-      Reject {count}
+      Reject <kbd>x</kbd>
     </button>
   {/if}
+  <span class="sel-spacer"></span>
   <button
     class="sel-btn sel-danger"
     onclick={ondelete}
     disabled={busy}
-    title="Delete checked files from disk (Delete)"
+    title="Delete the selected files from disk (asks first)"
   >
-    Delete {count}…
+    Delete from disk… <kbd>Del</kbd>
   </button>
-  <button
-    class="sel-btn"
-    onclick={onblink}
-    disabled={busy || !blinkLabel}
-    title={blinkLabel
-      ? `Blink ${blinkLabel} (b)`
-      : "No other frames of this object and type in the current view"}
-  >
-    ▶ Blink
+  <button class="sel-btn sel-clear" onclick={onclear} title="Clear the selection">
+    Clear <kbd>Esc</kbd>
   </button>
-  {#if oncreateproject}
-    <button class="sel-btn" onclick={oncreateproject} disabled={busy}>Create project…</button>
-  {/if}
-  <span class="sel-spacer"></span>
-  <button class="sel-btn sel-clear" onclick={onclear} title="Clear selection (Esc)">Clear</button>
 </div>
 
 <style>
@@ -126,5 +134,24 @@
 
   .sel-clear {
     background: transparent;
+  }
+
+  .sel-primary {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .sel-primary:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--accent-contrast);
+  }
+
+  kbd {
+    margin-left: 4px;
+    font-family: inherit;
+    font-size: 0.6875rem;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
   }
 </style>

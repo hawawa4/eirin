@@ -1,8 +1,10 @@
 <script lang="ts">
   import type * as app from "$models/app";
-  import { RevealPath } from "$app";
-  import { attempt } from "../../lib/toast.svelte";
+  import { RevealPath, OpenWithSiril } from "$app";
+  import { attempt, toast } from "../../lib/toast.svelte";
   import { formatBytes } from "../../lib/utils";
+  import { copyPath } from "../../lib/clipboard";
+  import ActionMenu, { type ActionMenuItem } from "../ActionMenu.svelte";
 
   interface Props {
     folder: string;
@@ -11,8 +13,38 @@
     loaded: boolean;
     error: string;
     onsave: () => void;
+    sirilAvailable?: boolean;
   }
-  let { folder, files, loaded, error, onsave }: Props = $props();
+  let { folder, files, loaded, error, onsave, sirilAvailable = false }: Props = $props();
+
+  let menu = $state<{ x: number; y: number; items: ActionMenuItem[] } | null>(null);
+
+  function reveal(path: string) {
+    void attempt(() => RevealPath(path), "Couldn't show the file");
+  }
+
+  function openMenu(f: app.ProjectOutputFile, x: number, y: number) {
+    menu = {
+      x,
+      y,
+      items: [
+        { heading: f.name },
+        {
+          label: "Open with Siril",
+          primary: true,
+          disabledReason: sirilAvailable ? undefined : "Siril not found — configure it in Settings",
+          run: () => {
+            toast.info("Opening in Siril…");
+            void attempt(() => OpenWithSiril(f.path), "Couldn't open the file in Siril");
+          },
+        },
+        { label: "Show in folder", run: () => reveal(f.path) },
+        { label: "Copy path", run: () => void copyPath(f.path) },
+        { separator: true },
+        { label: "Save outputs to library…", run: onsave },
+      ],
+    };
+  }
 </script>
 
 <section class="outputs">
@@ -53,13 +85,17 @@
         </thead>
         <tbody>
           {#each files as f (f.path)}
-            <tr>
+            <tr
+              oncontextmenu={(e) => {
+                e.preventDefault();
+                openMenu(f, e.clientX, e.clientY);
+              }}
+            >
               <td class="mono-cell">
                 <button
                   class="file-link"
-                  title="Show in file manager"
-                  onclick={() => attempt(() => RevealPath(f.path), "Couldn't show the file")}
-                  >{f.name}</button
+                  title="Show in folder · right-click for more"
+                  onclick={() => reveal(f.path)}>{f.name}</button
                 >
               </td>
               <td class="col-size dim-cell">{formatBytes(f.size)}</td>
@@ -71,6 +107,10 @@
     {/if}
   </div>
 </section>
+
+{#if menu}
+  <ActionMenu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
 
 <style>
   .outputs-hdr {

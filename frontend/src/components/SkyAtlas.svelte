@@ -31,6 +31,7 @@
   import AtlasPanel from "./atlas/AtlasPanel.svelte";
   import AtlasTooltip from "./atlas/AtlasTooltip.svelte";
   import AtlasStatus from "./atlas/AtlasStatus.svelte";
+  import { ui } from "../lib/uiState.svelte";
   import HelpPopover from "./atlas/HelpPopover.svelte";
   import ReelControls from "./ReelControls.svelte";
 
@@ -47,6 +48,11 @@
     readOnly?: boolean;
     /** Desktop app: fullscreen is the native window rather than the browser's. */
     desktopMode?: boolean;
+    /** A library scan is running (the empty state says so instead of offering one). */
+    scanning?: boolean;
+    scanProgress?: { done: number; total: number } | null;
+    /** Switch to another tab (empty-state shortcuts). */
+    onnavigate?: (mode: "import" | "library" | "projects" | "coverage") => void;
   }
 
   let {
@@ -57,6 +63,9 @@
     theme = "blue",
     readOnly = false,
     desktopMode = false,
+    scanning = false,
+    scanProgress = null,
+    onnavigate,
   }: Props = $props();
 
   let palette = $derived(atlasPalette(theme));
@@ -80,6 +89,8 @@
   type ImageFormat = "fits" | "png";
   let formatChoice = $state<ImageFormat | null>(null);
   let finals = $derived(index.filter(isFinalImage));
+  /** Nothing to draw: the controls are hidden and the status card explains why. */
+  let hasFinals = $derived(!loading && !loadError && finals.length > 0);
   let fitsCount = $derived(finals.filter(isFitsImage).length);
   let pngCount = $derived(finals.length - fitsCount);
   let format = $derived<ImageFormat>(
@@ -477,6 +488,9 @@
       case "T":
         startTour();
         break;
+      case "?":
+        helpOpen = !helpOpen;
+        break;
       case "/":
         if (!browser) return;
         browser.focusSearch();
@@ -620,10 +634,13 @@
     }}
     {onscan}
     {readOnly}
+    {scanning}
+    {scanProgress}
+    {onnavigate}
   />
 
   <!-- HUD -->
-  {#if !touring}
+  {#if !touring && hasFinals}
     <div class="atlas-hud">
       <span title="{cam.ra.toFixed(4)}°">RA {formatRA(cam.ra)}</span>
       <span title="{cam.dec.toFixed(4)}°">Dec {formatDec(cam.dec)}</span>
@@ -647,7 +664,7 @@
   {/if}
 
   <!-- Top-right control cluster: frame filter, show everything, tour, labels, help -->
-  {#if !touring}
+  {#if !touring && hasFinals}
     <div class="atlas-controls">
       <div class="seg" role="group" aria-label="Final images, by format">
         <span class="seg-label">Final images</span>
@@ -694,7 +711,7 @@
   {/if}
 
   <!-- Zoom controls -->
-  {#if !touring}
+  {#if !touring && hasFinals}
     <div class="atlas-zoom" role="group" aria-label="Zoom">
       <button
         class="zoom-btn"
@@ -713,6 +730,21 @@
         title="Fit all frames (0)"
         aria-label="Fit all frames"
         onclick={fitAll}>⤢</button
+      >
+    </div>
+  {/if}
+
+  {#if !touring && hasFinals && !ui.atlasHintDismissed && sizesBusy === 0 && previewsBusy === 0 && !panelShown}
+    <div class="atlas-hint" role="note">
+      <span
+        >Drag to pan · scroll to zoom · click an image to preview it · Shift-click to compare</span
+      >
+      <span><kbd>T</kbd> tour · <kbd>/</kbd> find an object · <kbd>?</kbd> help</span>
+      <button
+        class="hint-close"
+        aria-label="Dismiss hint"
+        title="Don't show this again"
+        onclick={() => (ui.atlasHintDismissed = true)}>✕</button
       >
     </div>
   {/if}
@@ -930,6 +962,48 @@
   }
 
   /* Background-loading indicator, bottom-centre */
+  .atlas-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 14px;
+    max-width: min(760px, calc(100% - 120px));
+    padding: 6px 8px 6px 14px;
+    background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+  }
+  .atlas-hint kbd {
+    font-family: inherit;
+    font-size: var(--fs-xs);
+    color: var(--text-primary);
+    border: 1px solid var(--border-accent);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .hint-close {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .hint-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-row-hover);
+  }
+
   .atlas-busy {
     position: absolute;
     bottom: 16px;

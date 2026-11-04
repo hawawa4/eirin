@@ -205,7 +205,7 @@
     {/if}
     {#if oneditmeta}
       <button class="ctx-item" role="menuitem" onclick={() => run(() => oneditmeta?.(menu.entry))}>
-        Edit Metadata…
+        Edit metadata…
       </button>
     {/if}
   {/if}
@@ -247,7 +247,9 @@
   {/if}
   <div class="ctx-sep" role="separator"></div>
   <button class="ctx-item ctx-danger" role="menuitem" onclick={() => onharddelete(menu.entry)}>
-    {menu.selectionCount > 1 ? `Hard Delete ${menu.selectionCount} frames…` : "Hard Delete…"}
+    {menu.selectionCount > 1
+      ? `Delete ${menu.selectionCount} frames from disk…`
+      : "Delete from disk…"}
   </button>
 </div>
 

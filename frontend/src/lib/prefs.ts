@@ -19,7 +19,6 @@ const LOCAL_KEYS: Record<string, (p: store.Prefs, v: string) => void> = {
   },
   basic_collapsed: (p, v) => (p.basicCollapsed = v === "true"),
   advanced_collapsed: (p, v) => (p.advancedCollapsed = v === "true"),
-  column_config: (p, v) => (p.columnConfig = v),
   library_column_config: (p, v) => (p.libraryColumnConfig = v),
 };
 

@@ -27,6 +27,14 @@
     onpickvalues: (colId: string, rect: DOMRect) => void;
     /** Column whose value list is open. */
     pickerCol: string | null;
+    /** Show the per-column filter row. */
+    showFilters: boolean;
+    /** Header checkbox: how many of the shown frames are checked. */
+    checkState: "none" | "some" | "all";
+    /** Checks every shown frame, or clears the selection when all are checked. */
+    oncheckall: () => void;
+    /** Frames shown (for the checkbox label). */
+    visibleCount: number;
   }
 
   let {
@@ -43,6 +51,10 @@
     ontypefilter,
     onpickvalues,
     pickerCol,
+    showFilters,
+    checkState,
+    oncheckall,
+    visibleCount,
   }: Props = $props();
 
   const textTimers: Record<string, ReturnType<typeof setTimeout>> = {};
@@ -67,7 +79,25 @@
 
 <thead>
   <tr>
-    <th class="cb-th"><span class="visually-hidden">Selected</span></th>
+    <th class="cb-th">
+      <input
+        type="checkbox"
+        class="all-check"
+        checked={checkState === "all"}
+        {@attach (el: HTMLInputElement) => {
+          el.indeterminate = checkState === "some";
+        }}
+        disabled={visibleCount === 0}
+        aria-label="Select all {visibleCount} shown frames"
+        title={checkState === "all"
+          ? "Clear the selection (Esc)"
+          : `Select all ${visibleCount.toLocaleString()} shown frames (Ctrl+A)`}
+        onclick={(e) => {
+          e.stopPropagation();
+          oncheckall();
+        }}
+      />
+    </th>
     {#each columns as col, i (col.id)}
       <th
         class:drag-over={dragOverIndex === i}
@@ -107,81 +137,84 @@
       </th>
     {/each}
   </tr>
-  <tr class="filter-row">
-    <th class="cb-th filter-th"></th>
-    {#each columns as col (col.id)}
-      <th class="filter-th">
-        {#if col.id === "frameType"}
-          <button
-            class="filter-type-btn"
-            data-type-filter-toggle
-            class:filter-active={typeCount > 0}
-            aria-label="Filter by frame type"
-            onclick={(e) => ontypefilter((e.currentTarget as HTMLElement).getBoundingClientRect())}
-          >
-            {typeCount > 0 ? `${typeCount} ✓` : "All ▽"}
-          </button>
-        {:else if TEXT_FILTER_COLS.has(col.id)}
-          <div class="filter-text-wrap">
-            <input
-              class="filter-text"
-              class:filter-active={isColFilterActive(colFilters, col.id)}
-              class:has-picker={VALUE_PICK_COLS.has(col.id)}
-              type="text"
-              placeholder="Filter…"
-              aria-label="Filter {col.label}"
-              spellcheck="false"
-              value={colFilters[col.id]?.text ?? ""}
-              oninput={(e) => onTextInput(col.id, (e.target as HTMLInputElement).value)}
-              onkeydown={(e) => {
-                if (e.key === "ArrowDown" && e.altKey && VALUE_PICK_COLS.has(col.id)) {
-                  e.preventDefault();
-                  const th = (e.currentTarget as HTMLElement).closest("th");
-                  if (th) onpickvalues(col.id, th.getBoundingClientRect());
-                }
-              }}
-            />
-            {#if VALUE_PICK_COLS.has(col.id)}
-              <button
-                class="filter-pick-btn"
-                class:open={pickerCol === col.id}
-                data-value-picker-toggle
-                aria-label="Choose {col.label.toLowerCase()} from the library"
-                aria-expanded={pickerCol === col.id}
-                title="Choose from the {col.label.toLowerCase()} values in the library (Alt+↓)"
-                onclick={(e) => {
-                  const th = (e.currentTarget as HTMLElement).closest("th");
-                  if (th) onpickvalues(col.id, th.getBoundingClientRect());
-                }}>▾</button
-              >
-            {/if}
-          </div>
-        {:else if NUMERIC_FILTER_COLS.has(col.id)}
-          <div class="filter-num">
+  {#if showFilters}
+    <tr class="filter-row">
+      <th class="cb-th filter-th"></th>
+      {#each columns as col (col.id)}
+        <th class="filter-th">
+          {#if col.id === "frameType"}
             <button
-              class="filter-num-op"
-              onclick={() => ontogglenumop(col.id)}
-              aria-label="Toggle less than / greater than"
-              title="Toggle < / >">{colFilters[col.id]?.numOp ?? "<"}</button
+              class="filter-type-btn"
+              data-type-filter-toggle
+              class:filter-active={typeCount > 0}
+              aria-label="Filter by frame type"
+              onclick={(e) =>
+                ontypefilter((e.currentTarget as HTMLElement).getBoundingClientRect())}
             >
-            <input
-              class="filter-num-val"
-              class:filter-active={isColFilterActive(colFilters, col.id)}
-              type="number"
-              step="any"
-              placeholder="—"
-              aria-label="Filter {col.label}"
-              value={colFilters[col.id]?.numVal ?? ""}
-              oninput={(e) => {
-                const v = parseFloat((e.target as HTMLInputElement).value);
-                onnumfilter(col.id, isNaN(v) ? null : v);
-              }}
-            />
-          </div>
-        {/if}
-      </th>
-    {/each}
-  </tr>
+              {typeCount > 0 ? `${typeCount} ✓` : "All ▽"}
+            </button>
+          {:else if TEXT_FILTER_COLS.has(col.id)}
+            <div class="filter-text-wrap">
+              <input
+                class="filter-text"
+                class:filter-active={isColFilterActive(colFilters, col.id)}
+                class:has-picker={VALUE_PICK_COLS.has(col.id)}
+                type="text"
+                placeholder="Filter…"
+                aria-label="Filter {col.label}"
+                spellcheck="false"
+                value={colFilters[col.id]?.text ?? ""}
+                oninput={(e) => onTextInput(col.id, (e.target as HTMLInputElement).value)}
+                onkeydown={(e) => {
+                  if (e.key === "ArrowDown" && e.altKey && VALUE_PICK_COLS.has(col.id)) {
+                    e.preventDefault();
+                    const th = (e.currentTarget as HTMLElement).closest("th");
+                    if (th) onpickvalues(col.id, th.getBoundingClientRect());
+                  }
+                }}
+              />
+              {#if VALUE_PICK_COLS.has(col.id)}
+                <button
+                  class="filter-pick-btn"
+                  class:open={pickerCol === col.id}
+                  data-value-picker-toggle
+                  aria-label="Choose {col.label.toLowerCase()} from the library"
+                  aria-expanded={pickerCol === col.id}
+                  title="Choose from the {col.label.toLowerCase()} values in the library (Alt+↓)"
+                  onclick={(e) => {
+                    const th = (e.currentTarget as HTMLElement).closest("th");
+                    if (th) onpickvalues(col.id, th.getBoundingClientRect());
+                  }}>▾</button
+                >
+              {/if}
+            </div>
+          {:else if NUMERIC_FILTER_COLS.has(col.id)}
+            <div class="filter-num">
+              <button
+                class="filter-num-op"
+                onclick={() => ontogglenumop(col.id)}
+                aria-label="Toggle less than / greater than"
+                title="Toggle < / >">{colFilters[col.id]?.numOp ?? "<"}</button
+              >
+              <input
+                class="filter-num-val"
+                class:filter-active={isColFilterActive(colFilters, col.id)}
+                type="number"
+                step="any"
+                placeholder="—"
+                aria-label="Filter {col.label}"
+                value={colFilters[col.id]?.numVal ?? ""}
+                oninput={(e) => {
+                  const v = parseFloat((e.target as HTMLInputElement).value);
+                  onnumfilter(col.id, isNaN(v) ? null : v);
+                }}
+              />
+            </div>
+          {/if}
+        </th>
+      {/each}
+    </tr>
+  {/if}
 </thead>
 
 <style>
@@ -222,12 +255,11 @@
     cursor: default;
   }
 
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
+  .all-check {
+    display: block;
+    margin: 0 auto;
+    accent-color: var(--accent);
+    cursor: pointer;
   }
 
   .th-inner {
