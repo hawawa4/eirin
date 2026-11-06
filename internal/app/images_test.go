@@ -44,7 +44,14 @@ func newPreviewApp(t *testing.T) (*App, string) {
 	return a, path
 }
 
-func previewURL(path string, params string) string {
+// previewURL is the preview request for a library file, addressed the way the
+// build's frontend does (the server's visitors only know opaque ids).
+func previewURL(a *App, path string, params string) string {
+	return rawPreviewURL(publicPath(a, path), params)
+}
+
+// rawPreviewURL is the request for exactly `path`, as a client could send it.
+func rawPreviewURL(path, params string) string {
 	return PreviewRoute + "?path=" + url.QueryEscape(path) + params
 }
 
@@ -53,7 +60,7 @@ func TestServePreview(t *testing.T) {
 	h := AssetMiddleware(a)(http.NotFoundHandler())
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", previewURL(path, "&size=500"), nil))
+	h.ServeHTTP(rec, httptest.NewRequest("GET", previewURL(a, path, "&size=500"), nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
@@ -73,7 +80,7 @@ func TestServePreview(t *testing.T) {
 	if tag == "" {
 		t.Fatal("no ETag")
 	}
-	req := httptest.NewRequest("GET", previewURL(path, "&size=500"), nil)
+	req := httptest.NewRequest("GET", previewURL(a, path, "&size=500"), nil)
 	req.Header.Set("If-None-Match", tag)
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -86,11 +93,11 @@ func TestServePreviewRejects(t *testing.T) {
 	a, path := newPreviewApp(t)
 	h := AssetMiddleware(a)(http.NotFoundHandler())
 	cases := map[string]int{
-		previewURL(path, "&size=-1"):                              http.StatusBadRequest,
-		previewURL(path, "&size=big"):                             http.StatusBadRequest,
-		previewURL("relative/final.png", ""):                      http.StatusBadRequest,
-		previewURL(filepath.Join(t.TempDir(), "notes.txt"), ""):   http.StatusBadRequest,
-		previewURL(filepath.Join(t.TempDir(), "missing.fit"), ""): http.StatusNotFound,
+		previewURL(a, path, "&size=-1"):                              http.StatusBadRequest,
+		previewURL(a, path, "&size=big"):                             http.StatusBadRequest,
+		rawPreviewURL("relative/final.png", ""):                      http.StatusBadRequest,
+		rawPreviewURL(filepath.Join(t.TempDir(), "notes.txt"), ""):   http.StatusBadRequest,
+		rawPreviewURL(filepath.Join(t.TempDir(), "missing.fit"), ""): http.StatusNotFound,
 	}
 	for u, want := range cases {
 		rec := httptest.NewRecorder()
@@ -100,7 +107,7 @@ func TestServePreviewRejects(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("POST", previewURL(path, ""), nil))
+	h.ServeHTTP(rec, httptest.NewRequest("POST", previewURL(a, path, ""), nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST: status %d, want 405", rec.Code)
 	}
@@ -120,7 +127,7 @@ func TestServePreviewServerRefusesOutsideLibrary(t *testing.T) {
 	other := filepath.Join(t.TempDir(), "other.png")
 	must(t, os.WriteFile(other, []byte("x"), 0o644))
 	rec := httptest.NewRecorder()
-	AssetMiddleware(a)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", previewURL(other, ""), nil))
+	AssetMiddleware(a)(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", rawPreviewURL(other, ""), nil))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status %d, want 404 for a file outside the library", rec.Code)
 	}
@@ -158,6 +165,7 @@ func rawURL(path, params string) string {
 }
 
 func TestServeRawPreview(t *testing.T) {
+	skipInServer(t) // the server has no raw route: see TestServerHasNoRawRoute
 	a := newTestApp(t)
 	path := writeTestFITS(t, a, 300, 200)
 	h := AssetMiddleware(a)(http.NotFoundHandler())
@@ -203,6 +211,7 @@ func TestServeRawPreview(t *testing.T) {
 }
 
 func TestServeRawPreviewDropsAbandonedRequests(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
 	path := writeTestFITS(t, a, 64, 64)
 	// Every slot busy: a request whose client has gone must not wait for one.

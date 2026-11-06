@@ -1,7 +1,7 @@
 // ── Preference persistence ──────────────────────────────────────────────────
-// The desktop app stores preferences in its database (SetPref). The read-only
-// server viewer can't write, and is shared by everyone who opens it, so there
-// each browser keeps its own preferences in localStorage instead.
+// The desktop app stores preferences in its database (SetPref). The public
+// gallery (the server build) can't write, and is shared by everyone who opens
+// it, so there each browser keeps its own preferences in localStorage instead.
 
 import { LoadPrefs, SetPref } from "$app";
 import type * as store from "$models/store";
@@ -24,7 +24,7 @@ const LOCAL_KEYS: Record<string, (p: store.Prefs, v: string) => void> = {
 
 let local = false;
 
-/** Switches persistence to this browser's localStorage (read-only server viewer). */
+/** Switches persistence to this browser's localStorage (the public gallery). */
 export function usePrefsLocally(on: boolean): void {
   local = on;
 }

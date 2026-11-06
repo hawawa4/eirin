@@ -1,27 +1,21 @@
 <script lang="ts">
   import type { AppMode } from "../lib/types";
-  import {
-    visibleModes,
-    modeUnavailableReason,
-    type ModeDef,
-    type ModeGroup,
-  } from "../lib/shell/modes";
+  import { MODES, modeUnavailableReason, type ModeDef, type ModeGroup } from "../lib/shell/modes";
 
   interface Props {
     mode: AppMode;
     rootFolder: string;
-    readOnly: boolean;
     onmodechange: (mode: AppMode) => void;
   }
 
-  let { mode, rootFolder, readOnly, onmodechange }: Props = $props();
+  let { mode, rootFolder, onmodechange }: Props = $props();
 
   const GROUPS: { id: Exclude<ModeGroup, "settings">; label: string }[] = [
     { id: "visualize", label: "Visualize" },
     { id: "manage", label: "Manage" },
   ];
 
-  let tabs = $derived(visibleModes(readOnly).filter((m) => m.group !== "settings"));
+  let tabs = $derived(MODES.filter((m) => m.group !== "settings"));
 
   /** Tooltip: what the tab is for, plus its Ctrl+digit shortcut. */
   function tooltip(m: ModeDef, reason: string | null): string {

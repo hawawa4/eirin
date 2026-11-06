@@ -48,10 +48,10 @@
     onscan?: () => void;
     /** App theme; the sky is drawn in a matching palette. */
     theme?: Theme;
-    /** Read-only server viewer: empty states point at the desktop's snapshot, not a scan. */
-    readOnly?: boolean;
     /** Desktop app: fullscreen is the native window rather than the browser's. */
     desktopMode?: boolean;
+    /** The public gallery: no file names or format switch, and nothing points at the library. */
+    gallery?: boolean;
     /** A library scan is running (the empty state says so instead of offering one). */
     scanning?: boolean;
     scanProgress?: { done: number; total: number } | null;
@@ -69,8 +69,8 @@
     active = true,
     onscan,
     theme = "blue",
-    readOnly = false,
     desktopMode = false,
+    gallery = false,
     scanning = false,
     scanProgress = null,
     onnavigate,
@@ -555,7 +555,7 @@
       { separator: true },
       ...fileMenuItems({
         path: e.nasPath,
-        desktop: desktopMode && !readOnly,
+        desktop: desktopMode && !gallery,
         onopeninlibrary: onframeopen ? () => onframeopen(e.nasPath) : undefined,
       }),
     );
@@ -812,7 +812,7 @@
       requestFit();
     }}
     {onscan}
-    {readOnly}
+    {gallery}
     {scanning}
     {scanProgress}
     {onnavigate}
@@ -846,25 +846,27 @@
   <!-- Top-right control cluster: frame filter, show everything, tour, labels, help -->
   {#if !touring && hasFinals}
     <div class="atlas-controls">
-      <div class="seg" role="group" aria-label="Final images, by format">
-        <span class="seg-label">Final images</span>
-        <button
-          class="seg-btn"
-          class:active={format === "fits"}
-          aria-pressed={format === "fits"}
-          title="Processed FITS images"
-          onclick={() => (formatChoice = "fits")}
-          >FITS <span class="seg-count">{fitsCount}</span></button
-        >
-        <button
-          class="seg-btn"
-          class:active={format === "png"}
-          aria-pressed={format === "png"}
-          title="Exported PNG, JPEG and TIFF images"
-          onclick={() => (formatChoice = "png")}
-          >PNG <span class="seg-count">{pngCount}</span></button
-        >
-      </div>
+      {#if !gallery}
+        <div class="seg" role="group" aria-label="Final images, by format">
+          <span class="seg-label">Final images</span>
+          <button
+            class="seg-btn"
+            class:active={format === "fits"}
+            aria-pressed={format === "fits"}
+            title="Processed FITS images"
+            onclick={() => (formatChoice = "fits")}
+            >FITS <span class="seg-count">{fitsCount}</span></button
+          >
+          <button
+            class="seg-btn"
+            class:active={format === "png"}
+            aria-pressed={format === "png"}
+            title="Exported PNG, JPEG and TIFF images"
+            onclick={() => (formatChoice = "png")}
+            >PNG <span class="seg-count">{pngCount}</span></button
+          >
+        </div>
+      {/if}
       <button
         class="ctl-btn"
         class:active={everythingShown}
@@ -968,6 +970,7 @@
       onfixchange={(fix) => panelEntry && setFix(panelEntry.nasPath, fix)}
       onopen={onframeopen}
       onmenu={openFrameMenu}
+      {gallery}
     />
   {/if}
 

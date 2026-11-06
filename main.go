@@ -1,15 +1,12 @@
 package main
 
 import (
-	"embed"
+	_ "embed"
 	"log"
 
 	"github.com/hawawa4/eirin/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
-
-//go:embed all:frontend/dist
-var assets embed.FS
 
 //go:embed build/appicon.png
 var appIcon []byte
@@ -26,11 +23,9 @@ func main() {
 			// eirin.desktop for the taskbar icon (window icons are ignored there).
 			ProgramName: "eirin",
 		},
-		Services: []application.Service{
-			application.NewService(a),
-		},
+		Services: services(a),
 		Assets: application.AssetOptions{
-			Handler:    application.BundledAssetFileServer(assets),
+			Handler:    application.BundledAssetFileServer(assets()),
 			Middleware: app.AssetMiddleware(a),
 		},
 	})

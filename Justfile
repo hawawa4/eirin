@@ -17,6 +17,10 @@ dev:
 build-frontend:
     cd frontend && npm run build
 
+# Build the public gallery's frontend (embedded by the server build) into frontend/dist-gallery/
+build-gallery:
+    cd frontend && npm run build:gallery
+
 # Build only the Backend
 build-backend:
     go build ./
@@ -52,20 +56,20 @@ build-windows:
 build-macos-arm:
     wails3 build -platform darwin/arm64
 
-# Build headless server binary (no GUI, for Docker)
+# Build headless server binary (no GUI, for Docker); run `just build-gallery` first, it embeds frontend/dist-gallery
 build-server:
     go build -tags server -ldflags="-s -w" -o eirin-server .
 
 # Reads the snapshot the desktop app publishes to <root>/.eirin/. Built like
-# the Docker image (no cgo). REST API on 7071 so it can run next to the
-# desktop app (7070); its own database lives in .dev-server/.
+# the Docker image (no cgo); its own database lives in .dev-server/. Set
+# EIRIN_GALLERY_* variables (see the README) to try a title, theme, etc.
 #   just server-dev /media/superfast/Photos/Astro [port]
-# Run the headless server viewer locally for QA (http://127.0.0.1:8090)
-server-dev root port="8090": build-frontend
+# Run the public gallery locally for QA (http://127.0.0.1:8090)
+server-dev root port="8090": build-gallery
     CGO_ENABLED=0 go build -tags server -o eirin-server .
-    @echo "Eirin server viewer: http://127.0.0.1:{{port}}  (library: {{root}})"
+    @echo "Eirin gallery: http://127.0.0.1:{{port}}  (library: {{root}})"
     EIRIN_ROOT="{{root}}" EIRIN_DB_PATH="{{justfile_directory()}}/.dev-server/library.db" \
-        WAILS_SERVER_HOST=127.0.0.1 WAILS_SERVER_PORT={{port}} EIRIN_PORT=7071 ./eirin-server
+        WAILS_SERVER_HOST=127.0.0.1 WAILS_SERVER_PORT={{port}} ./eirin-server
 
 # Regenerate the TypeScript Wails bindings into frontend/bindings/
 bindings:
@@ -127,4 +131,4 @@ install-backend:
 
 # Remove all build artifacts
 clean:
-    rm -rf frontend/dist build/bin dist eirin-server landingpage/dist
+    rm -rf frontend/dist frontend/dist-gallery build/bin dist eirin-server landingpage/dist

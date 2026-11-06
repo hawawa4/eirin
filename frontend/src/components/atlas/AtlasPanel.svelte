@@ -21,6 +21,8 @@
     onopen?: (nasPath: string) => void;
     /** Right-click on the panel or an overlay row: the atlas's frame menu. */
     onmenu?: (nasPath: string, x: number, y: number) => void;
+    /** The public gallery: no file names or frame type. */
+    gallery?: boolean;
   }
 
   let {
@@ -36,6 +38,7 @@
     onfixchange,
     onopen,
     onmenu,
+    gallery = false,
   }: Props = $props();
 
   function ctx(e: MouseEvent, path: string) {
@@ -80,8 +83,13 @@
         <dt>Telescope</dt>
         <dd>{telescope}</dd>
       {/if}
-      <dt>Type</dt>
-      <dd>{entry.frameType}{previewLoading ? " · loading preview…" : ""}</dd>
+      {#if !gallery}
+        <dt>Type</dt>
+        <dd>{entry.frameType}{previewLoading ? " · loading preview…" : ""}</dd>
+      {:else if previewLoading}
+        <dt>Preview</dt>
+        <dd>loading…</dd>
+      {/if}
       <dt>RA</dt>
       <dd title="{entry.ra.toFixed(5)}°">{formatRA(entry.ra)}</dd>
       <dt>Dec</dt>
@@ -96,8 +104,10 @@
         <dt>Field</dt>
         <dd>{fov(size.width)} × {fov(size.height)}</dd>
       {/if}
-      <dt>File</dt>
-      <dd class="ap-file" title={entry.nasPath}>{entry.name}</dd>
+      {#if !gallery}
+        <dt>File</dt>
+        <dd class="ap-file" title={entry.nasPath}>{entry.name}</dd>
+      {/if}
     </dl>
 
     {#if onopen}
@@ -119,7 +129,7 @@
                 title={i === 0 ? `${f.name} (on top)` : `Bring ${f.name} to front`}
               >
                 {f.object || f.name}
-                <span class="ap-ov-file">{f.name}</span>
+                {#if !gallery}<span class="ap-ov-file">{f.name}</span>{/if}
               </button>
               <button
                 class="ap-ov-remove"

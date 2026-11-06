@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/hawawa4/eirin/internal/indexer"
-	"github.com/hawawa4/eirin/internal/previews"
 	"github.com/hawawa4/eirin/internal/snapshot"
 	"github.com/hawawa4/eirin/internal/store"
 )
@@ -27,6 +25,8 @@ type snapshotSide struct {
 	// stopWarm cancels the preview warm-up of the previous snapshot.
 	warmMu   sync.Mutex
 	stopWarm context.CancelFunc
+	// gallery is what visitors see, built from the loaded snapshot.
+	gallery gallerySide
 }
 
 // startup opens the local viewer database and starts watching for snapshots.
@@ -38,8 +38,13 @@ func (a *App) startup() error {
 		return err
 	}
 	local := viewerDBPath()
+	if err := a.loadGalleryConfig(local); err != nil {
+		slog.Error("server: bad gallery configuration", "err", err)
+		return err
+	}
 	l := snapshot.NewLoader(root, local, func(st *store.Store) *store.Store {
 		old := a.db.Swap(st)
+		a.refreshGallery(st)
 		a.emitEvent("library:updated", nil) // open viewers reload
 		a.warmPreviews()
 		return old
@@ -50,11 +55,12 @@ func (a *App) startup() error {
 		return err
 	}
 	a.db.Store(st)
+	a.refreshGallery(st)
 	a.startPreviews(filepath.Join(filepath.Dir(local), "previews"))
 	a.warmPreviews()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	a.snapshots = snapshotSide{loader: l, cancel: cancel}
+	a.snapshots.loader, a.snapshots.cancel = l, cancel
 	go l.Run(ctx)
 	slog.Info("server: read-only viewer", "root", root, "snapshot", snapshot.Path(root), "db", local)
 	return nil
@@ -71,31 +77,14 @@ func (a *App) shutdown() {
 	a.snapshots.warmMu.Unlock()
 }
 
-// warmPreviews renders, in the background, every level of the final images
-// (what the Slideshow and the Sky Atlas show) that isn't cached yet, so
-// viewers rarely wait for a render. Stacks, seen one at a time in the
-// Library, render on demand. Set EIRIN_PREVIEW_WARM=0 to render only on
-// demand.
+// warmPreviews renders, in the background, every level of the gallery's
+// pictures that isn't cached yet, so visitors rarely wait for a render. Set
+// EIRIN_PREVIEW_WARM=0 to render only on demand.
 func (a *App) warmPreviews() {
-	svc, st := a.images.Load(), a.store()
+	svc, st := a.images.Load(), a.snapshots.gallery.state.Load()
 	if svc == nil || st == nil || os.Getenv("EIRIN_PREVIEW_WARM") == "0" {
 		return
 	}
-	frames, err := st.GetAllFramesUnder(st.Load().RootFolder)
-	if err != nil {
-		slog.Warn("previews: warm-up", "err", err)
-		return
-	}
-	var reqs []previews.Request
-	for _, f := range frames {
-		if f.FrameType != store.FrameTypeProcessed && f.FrameType != store.FrameTypeImage {
-			continue
-		}
-		// Finished pictures are shown as they are: stretch 0, as in
-		// stretchFor (frontend/src/lib/images.ts).
-		reqs = append(reqs, previews.Request{Path: f.NasPath, Raster: indexer.IsRasterFile(f.NasPath)})
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	a.snapshots.warmMu.Lock()
 	if a.snapshots.stopWarm != nil {
@@ -103,7 +92,7 @@ func (a *App) warmPreviews() {
 	}
 	a.snapshots.stopWarm = cancel
 	a.snapshots.warmMu.Unlock()
-	go svc.Warm(ctx, reqs)
+	go svc.Warm(ctx, st.warm)
 }
 
 // viewerDBPath is where the server keeps its local copy of the snapshot:

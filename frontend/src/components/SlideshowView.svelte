@@ -10,7 +10,7 @@
   import { Reel } from "../lib/reel.svelte";
   import { immersive, exitImmersive, toggleImmersive } from "../lib/shell/immersive.svelte";
   import { levelFor, levelRank, loadImage, previewUrl } from "../lib/images";
-  import { describeFrame } from "../lib/slideshow/frameInfo";
+  import { describeFrame, type FrameInfo } from "../lib/slideshow/frameInfo";
   import ReelControls from "./ReelControls.svelte";
   import FrameInfoCard from "./slideshow/FrameInfoCard.svelte";
   import ActionMenu from "./ActionMenu.svelte";
@@ -26,6 +26,10 @@
     onscan?: () => void;
     onopeninlibrary?: (nasPath: string) => void;
     onshowonatlas?: (nasPath: string) => void;
+    /** The public gallery: its own captions, no FITS / PNG switch, no library wording. */
+    gallery?: boolean;
+    /** Caption of a picture (the default reads it from the file name). */
+    describe?: (frame: app.LibraryFrame) => FrameInfo;
   }
 
   let {
@@ -35,6 +39,8 @@
     onscan,
     onopeninlibrary,
     onshowonatlas,
+    gallery = false,
+    describe = describeFrame,
   }: Props = $props();
 
   // ── Right-click menu ──────────────────────────────────────────────────────
@@ -55,12 +61,16 @@
       },
       { label: "Next", hint: "→", run: () => reel.next() },
       { label: "Previous", hint: "←", run: () => reel.prev() },
-      {
-        label: `Show ${other} images`,
-        hint: "P",
-        disabledReason: otherCount === 0 ? `No ${other} images` : undefined,
-        run: () => setFormat(format === "fits" ? "png" : "fits"),
-      },
+      ...(gallery
+        ? []
+        : [
+            {
+              label: `Show ${other} images`,
+              hint: "P",
+              disabledReason: otherCount === 0 ? `No ${other} images` : undefined,
+              run: () => setFormat(format === "fits" ? "png" : "fits"),
+            },
+          ]),
       {
         label: immersive.on ? "Leave fullscreen" : "Fullscreen",
         hint: "F",
@@ -330,7 +340,7 @@
         out:fade={{ duration: 0, delay: FADE_MS }}
       />
       <div class="info" in:fade={{ duration: FADE_MS }} out:fade={{ duration: FADE_MS / 2 }}>
-        <FrameInfoCard info={describeFrame(shown.frame)} />
+        <FrameInfoCard info={describe(shown.frame)} />
       </div>
     {/key}
   {/if}
@@ -338,7 +348,9 @@
   {#if loading}
     <p class="note" role="status">Loading images…</p>
   {:else if loadError}
-    <p class="note error" role="alert">Couldn't load the library: {loadError}</p>
+    <p class="note error" role="alert">
+      Couldn't load the {gallery ? "gallery" : "library"}: {loadError}
+    </p>
   {:else if frames.length === 0 && otherCount > 0}
     <div class="note">
       <p class="note-title">No {format === "fits" ? "FITS" : "PNG"} images</p>
@@ -351,6 +363,11 @@
       <button class="note-btn" onclick={() => setFormat(format === "fits" ? "png" : "fits")}
         >Show {format === "fits" ? "PNG" : "FITS"}</button
       >
+    </div>
+  {:else if frames.length === 0 && gallery}
+    <div class="note">
+      <p class="note-title">No pictures yet</p>
+      <p>There is nothing to show here at the moment.</p>
     </div>
   {:else if frames.length === 0}
     <div class="note">
@@ -371,12 +388,14 @@
 
   {#if frames.length > 0}
     <ReelControls
-      format={{
-        value: format,
-        fitsCount: fitsFrames.length,
-        pngCount: pngFrames.length,
-        onchange: setFormat,
-      }}
+      format={gallery
+        ? undefined
+        : {
+            value: format,
+            fitsCount: fitsFrames.length,
+            pngCount: pngFrames.length,
+            onchange: setFormat,
+          }}
       {reel}
       fullscreen={immersive.on}
       onfullscreen={() => toggleImmersive(desktopMode)}

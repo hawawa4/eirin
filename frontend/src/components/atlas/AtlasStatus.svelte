@@ -15,8 +15,8 @@
     onretry: () => void;
     onswitchformat: () => void;
     onscan?: () => void;
-    /** Read-only server viewer: nothing to scan, the desktop app publishes the library. */
-    readOnly?: boolean;
+    /** The public gallery: says nothing about libraries, scans or desktop apps. */
+    gallery?: boolean;
     scanning?: boolean;
     scanProgress?: { done: number; total: number } | null;
     onnavigate?: (mode: "import" | "library" | "projects" | "coverage") => void;
@@ -33,7 +33,7 @@
     onretry,
     onswitchformat,
     onscan,
-    readOnly = false,
+    gallery = false,
     scanning = false,
     scanProgress = null,
     onnavigate,
@@ -43,7 +43,7 @@
   let lib = $state<{ total: number; lights: number; finals: number } | null>(null);
   $effect(() => {
     lib = null;
-    if (readOnly || loading || error || !rootPath || indexed > 0 || scanning) return;
+    if (gallery || loading || error || !rootPath || indexed > 0 || scanning) return;
     const root = rootPath;
     let stale = false;
     GetLibraryFrames(root)
@@ -111,11 +111,11 @@
   <div class="atlas-status">
     <div class="status-card">
       <div class="icon" aria-hidden="true">◎</div>
-      {#if readOnly}
-        <p class="title">No final images with sky coordinates yet</p>
+      {#if gallery}
+        <p class="title">Nothing to place on the sky yet</p>
         <p class="detail">
-          The atlas shows the plate-solved final images from the library the desktop app publishes.
-          Once it has published a snapshot with some, they'll appear here.
+          None of these pictures has sky coordinates (they aren't plate-solved), so they can't be
+          shown on the map.
         </p>
       {:else if lib && lib.total === 0}
         <p class="title">Welcome to Eirin</p>

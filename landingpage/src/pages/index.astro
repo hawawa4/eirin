@@ -14,6 +14,9 @@ const repo = "https://github.com/hawawa4/eirin";
 const releases = `${repo}/releases`;
 const catalogueViewer = "https://github.com/thebioguy/Astro-Catalogue-Viewer";
 const sslm = "https://github.com/AstroNoob-Tools/SSLM";
+// The owner's photo gallery (an eirin-server instance). Set GALLERY_URL when building to
+// show a link to it; without it the page has no gallery link.
+const gallery = process.env.GALLERY_URL || "";
 
 const title = "Eirin";
 const description =
@@ -60,14 +63,14 @@ const showcase = [
 const features = [
   "FITS preview with four stretch levels from linear to strong, debayering of the Seestar's one-shot-colour frames, zoom and pan, and the main header fields at a glance.",
   "A red theme, for using it at the scope without ruining your night vision.",
-  "Headless mode: a Docker image for browsing the library from a browser. Read-only, so no import, no projects and no Siril.",
+  "Headless mode: a Docker image that serves your finished images as a public photo gallery, with the Sky Atlas and a slideshow. It never exposes the library itself.",
 ];
 
 const limits = [
   "It's a personal project, built around Seestar data because that's what I have. Other cameras may work but haven't had much testing.",
   "It doesn't stack or process anything itself. Siril is the only processing backend for now, and PixInsight support might come later.",
   "Only Linux builds are published so far. The app builds on Windows and macOS, but there are no packages.",
-  "The headless image needs a prefs.db that the desktop app has already set up.",
+  "The headless image reads the library snapshot the desktop app publishes, so it needs the desktop app to set it up first.",
 ];
 ---
 
@@ -91,6 +94,11 @@ const limits = [
         <a class="btn" href={repo}>
           Source
         </a>
+        {gallery && (
+          <a class="btn" href={gallery}>
+            Photo gallery
+          </a>
+        )}
       </p>
       <p class="fine">Linux: .deb, AppImage and .zip on the releases page.</p>
     </div>
@@ -226,13 +234,16 @@ sudo mount -t cifs \
 
           <h3>Headless (Docker)</h3>
           <p>
-            The server image needs a <code>prefs.db</code> that the desktop app has already set up,
-            since that's where the root folder is configured.
+            The server image is a photo gallery of your finished images. It reads a snapshot the
+            desktop app publishes into the library folder (turn on Settings → Server viewer), and
+            the title and texts come from environment variables. See the
+            <a href={`${repo}#headless-server`}>README</a> for the options.
           </p>
           <pre><code
               >docker run -p 8080:8080 \
-  -v /path/to/nas:/mnt/nas \
-  -v /path/to/prefs.db:/root/.config/eirin/prefs.db \
+  -v /path/to/nas:/library:ro \
+  -v ./eirin-data:/data \
+  -e EIRIN_GALLERY_TITLE="My night sky" \
   ghcr.io/hawawa4/eirin-server:latest</code
             ></pre>
         </div>

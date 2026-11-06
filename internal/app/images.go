@@ -124,8 +124,14 @@ func (a *App) servePreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	// The server viewer serves only its library's final images. The desktop's
-	// asset server is reachable from its own webview only.
+	// The server serves only the gallery's pictures, by their opaque ids. The
+	// desktop's asset server is reachable from its own webview only.
+	real, ok := a.publicToReal(req.Path)
+	if !ok {
+		http.Error(w, "not in the library", http.StatusNotFound)
+		return
+	}
+	req.Path = real
 	if err := a.checkServable(req.Path); err != nil {
 		http.Error(w, "not in the library", http.StatusNotFound)
 		return
@@ -158,6 +164,10 @@ func (a *App) servePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) serveRawPreview(w http.ResponseWriter, r *http.Request) {
+	if !desktopModeEnabled { // raw pixels are for the desktop Library only
+		http.NotFound(w, r)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

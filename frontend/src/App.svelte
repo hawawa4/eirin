@@ -13,7 +13,6 @@
   import AppHeader from "./components/AppHeader.svelte";
   import IndexProgressBar from "./components/IndexProgressBar.svelte";
   import LibraryView from "./components/LibraryView.svelte";
-  import ViewerLibrary from "./components/viewer/ViewerLibrary.svelte";
   import ImportView from "./components/ImportView.svelte";
   import ProjectsView from "./components/ProjectsView.svelte";
   import SettingsView from "./components/SettingsView.svelte";
@@ -26,9 +25,9 @@
   import { installUiScaleShortcuts } from "./lib/uiScale.svelte";
   import { loadPreviewPrefs } from "./lib/previewPrefs.svelte";
   import { toast } from "./lib/toast.svelte";
-  import { loadPrefs, savePref, usePrefsLocally } from "./lib/prefs";
+  import { loadPrefs, savePref } from "./lib/prefs";
   import { indexer, type IndexOutcome, type StartOptions } from "./lib/shell/indexing.svelte";
-  import { DEFAULT_MODE, MODES, modeForDigit, visibleModes } from "./lib/shell/modes";
+  import { DEFAULT_MODE, MODES, modeForDigit } from "./lib/shell/modes";
   import { isModalOpen } from "./lib/keys";
   import type { LibraryFocusFilter } from "./lib/library/filters";
   import { exitImmersive, immersive } from "./lib/shell/immersive.svelte";
@@ -83,17 +82,15 @@
   let libraryColumns = $state<ColumnDef[]>(DEFAULT_LIBRARY_COLUMNS.map((c) => ({ ...c })));
 
   // ── App info (DB path, server URL) ────────────────────────────────────────
-  // Starts out read-only so a server visitor never sees desktop controls
-  // before GetAppInfo answers; views only mount once the prefs have loaded.
+  // Views only mount once the prefs have loaded.
   let appInfo = $state<AppInfo>({
     dbPath: "",
     serverPort: 7070,
     serverUrl: "",
     portSource: "",
-    capabilities: { desktopMode: false, readOnly: true },
+    capabilities: { desktopMode: true, readOnly: false },
   });
   let desktopMode = $derived(appInfo.capabilities.desktopMode);
-  let readOnly = $derived(appInfo.capabilities.readOnly);
 
   // ── Siril ─────────────────────────────────────────────────────────────────
   let sirilInfo = $state<SirilInfo>({ executable: "siril", version: "…", available: false });
@@ -115,11 +112,6 @@
   let projectsView = $state<{ selectProjectById: (id: number) => void } | null>(null);
   let skyAtlas = $state<{ focusFrame: (nasPath: string) => void } | null>(null);
 
-  // ── Read-only viewer guard — only the viewer's tabs ───────────────────────
-  $effect(() => {
-    if (readOnly && !visibleModes(true).some((m) => m.value === appMode)) setMode("library");
-  });
-
   // Fullscreen belongs to the view that asked for it (slideshow / atlas tour).
   $effect(() => {
     void appMode;
@@ -132,7 +124,7 @@
   function onWindowKeydown(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || isModalOpen()) return;
     if (!/^[1-9]$/.test(e.key) || immersive.on) return;
-    const m = modeForDigit(readOnly, Number(e.key));
+    const m = modeForDigit(Number(e.key));
     if (!m || (m.requiresRoot && !rootFolder)) return;
     e.preventDefault();
     setMode(m.value);
@@ -146,7 +138,6 @@
     try {
       const info = await GetAppInfo();
       appInfo = info;
-      usePrefsLocally(info.capabilities.readOnly);
       p = await loadPrefs();
     } catch (e) {
       toast.error(`Couldn't load settings: ${String(e)}`);
@@ -276,7 +267,6 @@
       {rootFolder}
       {appMode}
       {theme}
-      {readOnly}
       onmodechange={setMode}
       onthemechange={(t) => {
         theme = t;
@@ -315,28 +305,19 @@
       {#key rootFolder}
         {#if visited.library}
           <div class="view" class:hidden={appMode !== "library"}>
-            {#if readOnly}
-              <ViewerLibrary
-                bind:this={libraryView}
-                {rootFolder}
-                active={appMode === "library"}
-                onshowonatlas={showOnAtlas}
-              />
-            {:else}
-              <LibraryView
-                bind:this={libraryView}
-                {rootFolder}
-                columns={libraryColumns}
-                {sirilAvailable}
-                active={appMode === "library"}
-                indexRunning={indexer.running}
-                onscan={() => startScan()}
-                onsavecolumns={saveLibraryColumnConfig}
-                oncreateproject={openProject}
-                onshowonatlas={showOnAtlas}
-                onloaded={preloadCoverage}
-              />
-            {/if}
+            <LibraryView
+              bind:this={libraryView}
+              {rootFolder}
+              columns={libraryColumns}
+              {sirilAvailable}
+              active={appMode === "library"}
+              indexRunning={indexer.running}
+              onscan={() => startScan()}
+              onsavecolumns={saveLibraryColumnConfig}
+              oncreateproject={openProject}
+              onshowonatlas={showOnAtlas}
+              onloaded={preloadCoverage}
+            />
           </div>
         {/if}
 
@@ -371,14 +352,13 @@
               rootPath={rootFolder}
               active={appMode === "atlas"}
               {theme}
-              {readOnly}
-              onscan={readOnly ? undefined : () => startScan()}
+              onscan={() => startScan()}
               onframeopen={openInLibrary}
               {desktopMode}
               scanning={indexer.running}
               scanProgress={indexer.progress}
-              onnavigate={readOnly ? undefined : setMode}
-              onshowobject={readOnly ? undefined : (object) => showFilteredInLibrary({ object })}
+              onnavigate={setMode}
+              onshowobject={(object) => showFilteredInLibrary({ object })}
               onready={preloadLibrary}
             />
           </div>
@@ -390,7 +370,7 @@
               rootPath={rootFolder}
               active={appMode === "slideshow"}
               {desktopMode}
-              onscan={readOnly ? undefined : () => startScan()}
+              onscan={() => startScan()}
               onopeninlibrary={openInLibrary}
               onshowonatlas={showOnAtlas}
             />
@@ -410,7 +390,7 @@
           </div>
         {/if}
 
-        {#if !readOnly && visited.storage}
+        {#if visited.storage}
           <div class="view" class:hidden={appMode !== "storage"}>
             <StorageView
               rootPath={rootFolder}

@@ -8,7 +8,6 @@
   import DatabaseSection from "./settings/DatabaseSection.svelte";
   import ApiServerSection from "./settings/ApiServerSection.svelte";
   import SnapshotPublishSection from "./settings/SnapshotPublishSection.svelte";
-  import SnapshotStatusSection from "./settings/SnapshotStatusSection.svelte";
   import UpdatesSection from "./settings/UpdatesSection.svelte";
 
   interface Props {
@@ -38,24 +37,19 @@
   }: Props = $props();
 
   let desktopMode = $derived(appInfo.capabilities.desktopMode);
-  let readOnly = $derived(appInfo.capabilities.readOnly);
 </script>
 
 <div class="settings-view">
   <div class="settings-body">
-    {#if readOnly}
-      <SnapshotStatusSection />
-    {:else}
-      <RootFolderSection
-        {rootFolder}
-        {desktopMode}
-        {indexRunning}
-        {onselectfolder}
-        onscan={() => onbuildindex()}
-        onrescanall={() => onrebuildindex()}
-        onreveal={desktopMode ? (p) => openFolder(p) : undefined}
-      />
-    {/if}
+    <RootFolderSection
+      {rootFolder}
+      {desktopMode}
+      {indexRunning}
+      {onselectfolder}
+      onscan={() => onbuildindex()}
+      onrescanall={() => onrebuildindex()}
+      onreveal={desktopMode ? (p) => openFolder(p) : undefined}
+    />
 
     {#if desktopMode}
       <ProjectsFolderSection {projectsFolder} {onprojectsfolderset} />
@@ -68,9 +62,7 @@
     {/if}
 
     <AppearanceSection />
-    {#if !readOnly}
-      <DatabaseSection dbPath={appInfo.dbPath} {desktopMode} />
-    {/if}
+    <DatabaseSection dbPath={appInfo.dbPath} {desktopMode} />
     <ApiServerSection {appInfo} />
   </div>
 </div>

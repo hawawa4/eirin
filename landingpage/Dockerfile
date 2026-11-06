@@ -15,7 +15,9 @@ COPY landingpage/ ./
 # Public URL baked into canonical links, the og:image and the sitemap.
 ARG SITE_URL=https://eirin.hawawa.org
 ARG BASE_PATH=/
-RUN SITE_URL="$SITE_URL" BASE_PATH="$BASE_PATH" npm run build
+# Optional: adds a "Photo gallery" link (the owner's eirin-server instance) to the page.
+ARG GALLERY_URL=
+RUN SITE_URL="$SITE_URL" BASE_PATH="$BASE_PATH" GALLERY_URL="$GALLERY_URL" npm run build
 
 FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY landingpage/nginx.conf /etc/nginx/conf.d/default.conf

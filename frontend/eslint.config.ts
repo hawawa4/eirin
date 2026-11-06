@@ -11,7 +11,7 @@ const gitignorePath = fileURLToPath(new URL("./.gitignore", import.meta.url));
 
 export default ts.config(
   includeIgnoreFile(gitignorePath),
-  { ignores: ["bindings/", "wailsjs/", "dist/"] },
+  { ignores: ["bindings/", "wailsjs/", "dist/", "dist-gallery/"] },
   js.configs.recommended,
   ...ts.configs.recommended,
   ...svelte.configs.recommended,

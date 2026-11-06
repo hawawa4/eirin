@@ -13,6 +13,10 @@ import (
 )
 
 func (a *App) startServer() {
+	// The public gallery has no side API: it would list the library.
+	if !desktopModeEnabled {
+		return
+	}
 	port := server.Port()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/status", a.handleStatus)

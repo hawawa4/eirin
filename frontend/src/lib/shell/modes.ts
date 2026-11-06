@@ -19,8 +19,6 @@ export interface ModeDef {
   hint: string;
   /** Needs a root folder to be useful (App shows the "no folder" empty state otherwise). */
   requiresRoot: boolean;
-  /** Shown in the read-only server viewer (which only has these tabs). */
-  inViewer?: boolean;
 }
 
 export const MODES: readonly ModeDef[] = [
@@ -31,7 +29,6 @@ export const MODES: readonly ModeDef[] = [
     group: "visualize",
     hint: "Your images placed on the sky",
     requiresRoot: true,
-    inViewer: true,
   },
   {
     value: "slideshow",
@@ -40,7 +37,6 @@ export const MODES: readonly ModeDef[] = [
     group: "visualize",
     hint: "Full-screen show of your stacked and processed images",
     requiresRoot: true,
-    inViewer: true,
   },
   {
     value: "import",
@@ -57,7 +53,6 @@ export const MODES: readonly ModeDef[] = [
     group: "manage",
     hint: "Every frame in the library: filter, cull, blink, build projects",
     requiresRoot: true,
-    inViewer: true,
   },
   {
     value: "projects",
@@ -90,14 +85,8 @@ export const MODES: readonly ModeDef[] = [
     group: "settings",
     hint: "Library folder, Siril, appearance and updates",
     requiresRoot: false,
-    inViewer: true,
   },
 ];
-
-/** The tabs to show: all of them, or just the viewer's in read-only mode. */
-export function visibleModes(readOnly: boolean): readonly ModeDef[] {
-  return readOnly ? MODES.filter((m) => m.inViewer) : MODES;
-}
 
 /** The app opens on the Sky Atlas. */
 export const DEFAULT_MODE: AppMode = "atlas";
@@ -109,10 +98,10 @@ export function modeUnavailableReason(m: ModeDef, rootFolder: string): string | 
 }
 
 /**
- * The tab a Ctrl+digit shortcut switches to: digits count the visible tabs in
- * header order (settings excluded), so the numbers match what's on screen.
+ * The tab a Ctrl+digit shortcut switches to: digits count the tabs in header
+ * order (settings excluded), so the numbers match what's on screen.
  */
-export function modeForDigit(readOnly: boolean, digit: number): ModeDef | null {
-  const tabs = visibleModes(readOnly).filter((m) => m.group !== "settings");
+export function modeForDigit(digit: number): ModeDef | null {
+  const tabs = MODES.filter((m) => m.group !== "settings");
   return tabs[digit - 1] ?? null;
 }

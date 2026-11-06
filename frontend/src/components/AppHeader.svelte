@@ -7,12 +7,11 @@
     rootFolder: string;
     appMode: AppMode;
     theme: Theme;
-    readOnly: boolean;
     onmodechange: (mode: AppMode) => void;
     onthemechange: (theme: Theme) => void;
   }
 
-  let { rootFolder, appMode, theme, readOnly, onmodechange, onthemechange }: Props = $props();
+  let { rootFolder, appMode, theme, onmodechange, onthemechange }: Props = $props();
 
   // Swatch colours are each theme's own accent, so they can't come from the
   // (current-theme) CSS tokens.
@@ -29,7 +28,7 @@
   <span class="logo"><img src="/eirin-logo.png" alt="" />Eirin</span>
 
   <div class="mode-area">
-    <ModeSelector mode={appMode} {onmodechange} {rootFolder} {readOnly} />
+    <ModeSelector mode={appMode} {onmodechange} {rootFolder} />
   </div>
 
   <div class="header-right">
