@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { GalleryInfo, GalleryView } from "./types";
+  import type { GalleryFormat, GalleryInfo, GalleryView } from "./types";
 
   interface Props {
     info: GalleryInfo;
@@ -7,9 +7,18 @@
     /** Some pictures have sky coordinates, so the atlas has something to show. */
     hasSky: boolean;
     onnavigate: (view: GalleryView) => void;
+    /** The format being shown, how many pictures each has, and the switch. */
+    format: GalleryFormat;
+    counts: Record<GalleryFormat, number>;
+    onformat: (format: GalleryFormat) => void;
   }
 
-  let { info, view, hasSky, onnavigate }: Props = $props();
+  let { info, view, hasSky, onnavigate, format, counts, onformat }: Props = $props();
+
+  const FORMATS: { id: GalleryFormat; label: string; hint: string }[] = [
+    { id: "fits", label: "FITS", hint: "The processed FITS files" },
+    { id: "raster", label: "PNG / JPEG", hint: "The PNG / JPEG / TIFF exports" },
+  ];
 
   let tabs = $derived<{ id: GalleryView; label: string; disabled?: boolean }[]>([
     { id: "grid", label: "Gallery" },
@@ -35,6 +44,20 @@
       >
     {/each}
   </nav>
+
+  {#if counts.fits > 0 && counts.raster > 0}
+    <div class="seg" role="group" aria-label="Show pictures as">
+      {#each FORMATS as f (f.id)}
+        <button
+          class="seg-btn"
+          class:active={format === f.id}
+          aria-pressed={format === f.id}
+          title="{f.hint} ({counts[f.id]})"
+          onclick={() => onformat(f.id)}>{f.label}</button
+        >
+      {/each}
+    </div>
+  {/if}
 
   {#if info.homeUrl}
     <a class="home" href={info.homeUrl}>{info.homeLabel}</a>
@@ -99,6 +122,36 @@
   .tab:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+  .seg {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .seg-btn {
+    font: inherit;
+    font-size: var(--fs-sm);
+    padding: 5px 10px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .seg-btn + .seg-btn {
+    border-left: 1px solid var(--border);
+  }
+  .seg-btn:hover:not(.active) {
+    color: var(--text-primary);
+    background: var(--bg-row-hover);
+  }
+  .seg-btn.active {
+    background: var(--accent);
+    color: var(--accent-contrast);
+  }
+  .seg-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
   .tab:focus-visible,
   .title:focus-visible,

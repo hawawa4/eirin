@@ -1,20 +1,22 @@
 <script lang="ts">
   import { levelFor, previewUrl } from "../lib/images";
   import { summaryLine } from "./describe";
-  import type { GalleryInfo } from "./types";
+  import type { GalleryImage, GalleryInfo } from "./types";
 
   interface Props {
     info: GalleryInfo;
+    /** The pictures to show: the format the visitor picked. */
+    images: GalleryImage[];
     onopen: (path: string) => void;
   }
 
-  let { info, onopen }: Props = $props();
+  let { info, images, onopen }: Props = $props();
 
   /** Cards are about 300 px wide; the preview level that is sharp at that size. */
   const THUMB_LEVEL = levelFor(320);
 
   let paragraphs = $derived(info.about.split(/\n\s*\n/).filter((p) => p.trim()));
-  let objects = $derived(new Set(info.images.map((i) => i.title)).size);
+  let objects = $derived(new Set(images.map((i) => i.title)).size);
 </script>
 
 <div class="page">
@@ -26,19 +28,19 @@
         {#each paragraphs as p, i (i)}<p>{p}</p>{/each}
       </div>
     {/if}
-    {#if info.images.length > 0}
+    {#if images.length > 0}
       <p class="count">
-        {info.images.length} picture{info.images.length === 1 ? "" : "s"}
+        {images.length} picture{images.length === 1 ? "" : "s"}
         {#if objects > 1}· {objects} objects{/if}
       </p>
     {/if}
   </section>
 
-  {#if info.images.length === 0}
+  {#if images.length === 0}
     <p class="empty">No pictures yet.</p>
   {:else}
     <ul class="grid">
-      {#each info.images as img (img.path)}
+      {#each images as img (img.path)}
         {@const line = summaryLine(img)}
         <li>
           <button class="card" onclick={() => onopen(img.path)} aria-label="Open {img.title}">

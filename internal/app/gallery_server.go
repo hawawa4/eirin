@@ -52,11 +52,16 @@ type GalleryInfo struct {
 	gallery.Config
 	// Loaded is false until a library snapshot has been read.
 	Loaded bool `json:"loaded"`
-	// Images are the pictures of the Grid and the Slideshow.
+	// DefaultFormat is the format ("fits" or "raster") the page opens on: the
+	// configured one, or with "auto" the exports when there are any.
+	DefaultFormat string `json:"defaultFormat"`
+	// Images are the pictures of the Grid and the Slideshow, in both formats
+	// (the library often holds a picture twice: processed FITS and an export).
+	// The page shows one format at a time and lets the visitor switch.
 	Images []GalleryImage `json:"images"`
-	// Sky are the plate-solved pictures of the Sky Atlas: the Images that
-	// have a solution, or — when none of them do (PNG/JPEG exports carry no
-	// WCS) — the plate-solved FITS files.
+	// Sky are the Images that are plate-solved, of both formats, for the Sky
+	// Atlas. PNG/JPEG exports carry no WCS of their own, so most of them are
+	// missing here and the Atlas is mostly FITS.
 	Sky []GalleryImage `json:"sky"`
 }
 
@@ -116,17 +121,8 @@ func buildGallery(cfg gallery.Config, frames []store.Frame) *galleryState {
 			fits = append(fits, f)
 		}
 	}
-	format := gallery.ChooseFormat(cfg.Format, len(fits), len(raster))
-	shown, other := fits, raster
-	if format == gallery.FormatRaster {
-		shown, other = raster, fits
-	}
-
-	images := toGalleryImages(shown)
+	images := toGalleryImages(append(slices.Clone(fits), raster...))
 	sky := solved(images)
-	if len(sky) == 0 {
-		sky = solved(toGalleryImages(other))
-	}
 
 	// Every file a visitor can reach is in the index (and nothing else is).
 	var reals []string
@@ -146,7 +142,13 @@ func buildGallery(cfg gallery.Config, frames []store.Frame) *galleryState {
 	}
 
 	return &galleryState{
-		info:  GalleryInfo{Config: cfg, Loaded: true, Images: images, Sky: sky},
+		info: GalleryInfo{
+			Config:        cfg,
+			Loaded:        true,
+			DefaultFormat: gallery.ChooseFormat(cfg.Format, len(fits), len(raster)),
+			Images:        images,
+			Sky:           sky,
+		},
 		index: gallery.NewIndex(reals),
 		warm:  warm,
 	}

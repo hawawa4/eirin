@@ -37,10 +37,12 @@ export interface GalleryInfo {
   format: string;
   homeUrl: string;
   homeLabel: string;
+  /** The format the page opens on: the configured one, or the exports when "auto". */
+  defaultFormat: GalleryFormat;
   /** False until the server has read a library snapshot. */
   loaded: boolean;
-  /** The pictures of the grid and the slideshow. */
+  /** The pictures of the grid and the slideshow, in both formats. */
   images: GalleryImage[];
-  /** The plate-solved pictures of the sky atlas. */
+  /** The plate-solved pictures of the sky atlas, in both formats. */
   sky: GalleryImage[];
 }

@@ -39,10 +39,10 @@ const (
 	ViewSlideshow = "slideshow"
 )
 
-// Which rendering of a picture the gallery shows. The library often holds
+// Which rendering of a picture the gallery opens on (visitors can switch). The library often holds
 // every final image twice: the processed FITS and its PNG/JPEG/TIFF export.
 const (
-	// FormatAuto shows the exports when there are any, else the FITS files.
+	// FormatAuto opens on the exports when there are any, else the FITS files.
 	FormatAuto   = "auto"
 	FormatRaster = "raster"
 	FormatFITS   = "fits"

@@ -40,9 +40,12 @@ func TestBuildGalleryShowsOnlyFinals(t *testing.T) {
 		frame("/lib/stack.fit", store.FrameTypeStacked, "M 42"),
 		frame("/lib/final.fit", store.FrameTypeProcessed, "M 42"),
 	})
-	// Auto format: the export wins over the FITS of the same picture.
-	if len(st.info.Images) != 1 || st.info.Images[0].Title != "M 42" || st.info.Images[0].Format != "raster" {
-		t.Fatalf("images = %+v, want just the M 42 export", st.info.Images)
+	// Both renderings of the picture are offered; the page picks one at a time.
+	if len(st.info.Images) != 2 || st.info.Images[0].Title != "M 42" || st.info.Images[1].Title != "M 42" {
+		t.Fatalf("images = %+v, want the M 42 FITS and its export", st.info.Images)
+	}
+	if st.info.DefaultFormat != gallery.FormatRaster {
+		t.Errorf("default format = %q, want the export (auto)", st.info.DefaultFormat)
 	}
 	if _, ok := st.index.Real(gallery.PublicPath("/lib/light.fit")); ok {
 		t.Error("a light frame must not be reachable")
@@ -73,19 +76,38 @@ func TestBuildGalleryNeverLeaksPaths(t *testing.T) {
 	}
 }
 
-func TestBuildGallerySkyFallsBackToSolvedFITS(t *testing.T) {
+func TestBuildGallerySkyHasSolvedPicturesOfBothFormats(t *testing.T) {
 	ra, scale := 10.0, 1.2
 	solvedFits := frame("/lib/a.fit", store.FrameTypeProcessed, "M 31")
 	solvedFits.RA, solvedFits.PixelScale = &ra, &scale
-	st := buildGallery(gallery.Default(), []store.Frame{frame("/lib/a.jpg", store.FrameTypeImage, "M 31"), solvedFits})
-	if len(st.info.Images) != 1 || st.info.Images[0].Format != "raster" {
-		t.Fatalf("images = %+v, want the export", st.info.Images)
+	solvedPNG := frame("/lib/b.png", store.FrameTypeImage, "M 33")
+	solvedPNG.RA, solvedPNG.PixelScale = &ra, &scale
+	st := buildGallery(gallery.Default(), []store.Frame{
+		frame("/lib/a.jpg", store.FrameTypeImage, "M 31"), solvedFits, solvedPNG,
+	})
+	if len(st.info.Images) != 3 {
+		t.Fatalf("images = %+v, want all three", st.info.Images)
 	}
-	if len(st.info.Sky) != 1 || st.info.Sky[0].Format != "fits" {
-		t.Fatalf("sky = %+v, want the plate-solved FITS", st.info.Sky)
+	if len(st.info.Sky) != 2 {
+		t.Fatalf("sky = %+v, want the two plate-solved pictures", st.info.Sky)
 	}
-	if _, ok := st.index.Real(st.info.Sky[0].Path); !ok {
-		t.Error("a sky picture must be reachable")
+	for _, img := range st.info.Sky {
+		if _, ok := st.index.Real(img.Path); !ok {
+			t.Errorf("sky picture %s must be reachable", img.Path)
+		}
+	}
+}
+
+func TestBuildGalleryDefaultFormat(t *testing.T) {
+	fits := frame("/lib/a.fit", store.FrameTypeProcessed, "M 31")
+	png := frame("/lib/a.png", store.FrameTypeImage, "M 31")
+	cfg := gallery.Default()
+	if got := buildGallery(cfg, []store.Frame{fits, png}).info.DefaultFormat; got != gallery.FormatRaster {
+		t.Errorf("auto with exports: %q", got)
+	}
+	cfg.Format = gallery.FormatFITS
+	if got := buildGallery(cfg, []store.Frame{fits, png}).info.DefaultFormat; got != gallery.FormatFITS {
+		t.Errorf("forced fits: %q", got)
 	}
 }
 

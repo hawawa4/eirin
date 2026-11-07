@@ -132,7 +132,7 @@ The gallery is configured by environment variables, by a JSON file, or both (the
 | `EIRIN_GALLERY_ABOUT` | `about` | none | A few sentences on the front page; blank lines separate paragraphs |
 | `EIRIN_GALLERY_THEME` | `theme` | `blue` | `blue`, `red` or `grey` |
 | `EIRIN_GALLERY_VIEW` | `view` | `grid` | Page it opens on: `grid`, `atlas` or `slideshow` |
-| `EIRIN_GALLERY_FORMAT` | `format` | `auto` | Which rendering to show. The library often holds a final image twice, as processed FITS and as a PNG/JPEG/TIFF export. `auto` shows the exports when there are any, `raster` or `fits` force one |
+| `EIRIN_GALLERY_FORMAT` | `format` | `auto` | Which rendering the gallery opens on. The library often holds a final image twice, as processed FITS and as a PNG/JPEG/TIFF export; visitors can switch between them in the header. `auto` opens on the exports when there are any, `raster` or `fits` force one |
 | `EIRIN_GALLERY_HOME_URL` | `homeUrl` | none | Adds a link in the header (an `http(s)` URL or a path on the same site), e.g. back to your landing page |
 | `EIRIN_GALLERY_HOME_LABEL` | `homeLabel` | `About this project` | Text of that link |
 
