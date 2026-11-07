@@ -267,6 +267,32 @@ func (s *Store) GetAllFramesUnder(rootPath string) ([]Frame, error) {
 	return s.framesUnder(rootPath, nil)
 }
 
+// GetAllPathsUnder returns the path of every frame record under rootPath,
+// including rows that were never indexed (cached_at = 0).
+func (s *Store) GetAllPathsUnder(rootPath string) ([]string, error) {
+	prefix := rootPath
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
+		prefix += "/"
+	}
+	rows, err := s.db.Query(`SELECT nas_path FROM frames WHERE nas_path LIKE ?`, prefix+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		// LIKE treats '_' and '%' in the prefix as wildcards; filter exactly.
+		if strings.HasPrefix(p, prefix) {
+			paths = append(paths, p)
+		}
+	}
+	return paths, rows.Err()
+}
+
 // GetFramesUnderByType returns cached frames of one frame type under rootPath,
 // ordered by object then date.
 func (s *Store) GetFramesUnderByType(rootPath, frameType string) ([]Frame, error) {

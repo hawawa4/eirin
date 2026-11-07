@@ -23,7 +23,7 @@ type AnalysisProgress struct {
 	Errors  int    `json:"errors"`
 }
 
-// AnalyzeSingleFrame runs findstar + platesolve for one frame.
+// AnalyzeSingleFrame runs findstar + stat + platesolve for one frame.
 // hintRA/hintDec are decimal-degree center coordinates passed to platesolve as a search hint.
 // Pass hintRA=0 and hintDec=0 for a blind solve (works for FITS with embedded WCS keywords;
 // may fail for raster files that have no embedded coordinates).
@@ -34,7 +34,9 @@ func AnalyzeSingleFrame(ctx context.Context, exe, nasPath string, hintRA, hintDe
 	if hintRA != 0 || hintDec != 0 {
 		platesolveCmd = fmt.Sprintf("platesolve %.6f %.6f", hintRA, hintDec)
 	}
-	script := "requires 1.0.0\nload \"" + escaped + "\"\nfindstar\n" + platesolveCmd + "\nstatistics\n"
+	// stat runs before platesolve: a failed solve (too few stars, no catalog)
+	// aborts the script, and the quality metrics must survive that.
+	script := "requires 1.0.0\nload \"" + escaped + "\"\nfindstar\nstat\n" + platesolveCmd + "\n"
 
 	tmp, err := os.CreateTemp("", "eirin-siril-*.ssf")
 	if err != nil {
@@ -72,7 +74,7 @@ var (
 	reStarCount = regexp.MustCompile(`(?i)\bFound\s+(\d+)\s+\w+\s+\w+\s+stars?`)
 	reFWHM      = regexp.MustCompile(`(?i)\bFWHM\s+([0-9]+(?:[.,][0-9]+)?)`)
 
-	// statistics: "  median:        1234.5" / "  bgnoise:        25.3" / "  sigma:          30.0"
+	// stat: "B&W layer: Mean: 4041.4, Median: 4063.0, Sigma: 515.5, Min: 0.0, Max: 65535.0, bgnoise: 446.1"
 	reMedian = regexp.MustCompile(`(?i)\bmedian\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
 	reBgNoise = regexp.MustCompile(`(?i)\bbgnoise\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
 	reSigma   = regexp.MustCompile(`(?i)\bsigma\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
@@ -86,7 +88,7 @@ var (
 	rePlateRotation = regexp.MustCompile(`(?i)\bup\s+is\s+([+-]?[0-9]+(?:[.,][0-9]+)?)\s*deg`)
 )
 
-// ParseSirilOutput parses combined findstar + statistics output.
+// ParseSirilOutput parses combined findstar + stat output.
 // SNR is derived as background/noise when both are available.
 func ParseSirilOutput(output string) (store.FrameQuality, error) {
 	var q store.FrameQuality

@@ -465,3 +465,19 @@ func TestHasFrameAndFrameCount(t *testing.T) {
 		t.Errorf("FrameCount() = %d, %v, want 2", n, err)
 	}
 }
+
+func TestGetAllPathsUnder(t *testing.T) {
+	s := newTestStore(t)
+	for _, p := range []string{"/nas/a/1.fits", "/nas/a/2.fits", "/nas/ab/3.fits", "/other/4.fits"} {
+		if err := s.RejectFrame(p, "x"); err != nil { // creates un-indexed rows (cached_at = 0)
+			t.Fatal(err)
+		}
+	}
+	got, err := s.GetAllPathsUnder("/nas/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Errorf("got %v, want the two frames under /nas/a/ only", got)
+	}
+}

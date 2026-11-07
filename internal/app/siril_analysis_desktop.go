@@ -26,7 +26,7 @@ var (
 	analysisCancel context.CancelFunc
 )
 
-// AnalyzeFrames runs Siril headless analysis (findstar + platesolve + statistics) on each
+// AnalyzeFrames runs Siril headless analysis (findstar + stat + platesolve) on each
 // NAS path sequentially. Raw output is written to $TMPDIR/eirin-siril-debug.txt.
 // A frame that gets a WCS solve and has no telescope yet is also best-effort
 // tagged from its field of view (see tagTelescopeByFOV).

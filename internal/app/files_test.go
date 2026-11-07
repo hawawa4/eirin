@@ -75,9 +75,37 @@ func TestHardDeleteFileAlsoRemovesDBRecord(t *testing.T) {
 	}
 }
 
-func TestHardDeleteFileNonExistentErrors(t *testing.T) {
+// A file that vanished from disk must still be removable from the library.
+func TestHardDeleteFileMissingOnDiskRemovesDBRecord(t *testing.T) {
+	skipInServer(t)
 	a := newTestApp(t)
-	if err := a.HardDeleteFile("/nonexistent/eirin-test.fits"); err == nil {
-		t.Error("expected error when deleting non-existent file")
+	path := filepath.Join(t.TempDir(), "gone.fits") // never created
+	a.store().RejectFrame(path, "test")             // creates a row
+
+	if err := a.HardDeleteFile(path); err != nil {
+		t.Fatalf("HardDeleteFile on a missing file: %v", err)
+	}
+	frames, _ := a.store().GetFrames([]string{path})
+	if _, ok := frames[path]; ok {
+		t.Error("stale DB record should be removed")
+	}
+}
+
+func TestBatchHardDeleteFilesMissingOnDiskRemovesDBRecords(t *testing.T) {
+	skipInServer(t)
+	a := newTestApp(t)
+	dir := t.TempDir()
+	gone := filepath.Join(dir, "gone.fits")
+	there := filepath.Join(dir, "there.fits")
+	os.WriteFile(there, []byte("x"), 0644)
+	a.store().RejectFrame(gone, "test")
+	a.store().RejectFrame(there, "test")
+
+	if err := a.BatchHardDeleteFiles([]string{gone, there}); err != nil {
+		t.Fatalf("BatchHardDeleteFiles: %v", err)
+	}
+	frames, _ := a.store().GetFrames([]string{gone, there})
+	if len(frames) != 0 {
+		t.Errorf("expected both records removed, got %d", len(frames))
 	}
 }

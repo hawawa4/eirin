@@ -104,14 +104,16 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 		// even if the walk goroutine itself is left stuck and leaked.
 		type scanResult struct {
 			fitsPaths, rasterPaths []string
+			complete               bool // false if any directory could not be read
 		}
 		scanDone := make(chan scanResult, 1)
 		go func() {
-			var res scanResult
+			res := scanResult{complete: true}
 			scanned := 0
 			lastScanEmit := time.Now()
 			_ = filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
 				if err != nil || ctx.Err() != nil {
+					res.complete = false
 					return nil
 				}
 				if d.IsDir() {
@@ -138,9 +140,11 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 		}()
 
 		var fitsPaths, rasterPaths []string
+		scanComplete := false
 		select {
 		case res := <-scanDone:
 			fitsPaths, rasterPaths = res.fitsPaths, res.rasterPaths
+			scanComplete = res.complete
 		case <-ctx.Done():
 			emitIndexProgress(indexProgressEvent{Phase: "cancelled"})
 			return
@@ -329,6 +333,12 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			}
 		}
 
+		// ── Phase 5: drop records whose files have vanished from disk ────────
+		pruned := 0
+		if ctx.Err() == nil && scanComplete {
+			pruned = a.pruneMissingFrames(ctx, rootPath, allPaths)
+		}
+
 		phase := "done"
 		if ctx.Err() != nil {
 			phase = "cancelled"
@@ -340,7 +350,7 @@ func (a *App) BuildIndex(rootPath string, force bool) {
 			Indexed: newlyIndexed,
 			Errors:  errs,
 		})
-		if phase == "done" && newlyIndexed > 0 {
+		if phase == "done" && (newlyIndexed > 0 || pruned > 0) {
 			a.emitEvent("library:updated", nil)
 		}
 	}()

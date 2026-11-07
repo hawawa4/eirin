@@ -48,7 +48,7 @@ export function AddFramesToProjectDetailed(projectFolder: string, nasPaths: stri
 }
 
 /**
- * AnalyzeFrames runs Siril headless analysis (findstar + platesolve + statistics) on each
+ * AnalyzeFrames runs Siril headless analysis (findstar + stat + platesolve) on each
  * NAS path sequentially. Raw output is written to $TMPDIR/eirin-siril-debug.txt.
  * A frame that gets a WCS solve and has no telescope yet is also best-effort
  * tagged from its field of view (see tagTelescopeByFOV).
@@ -68,6 +68,7 @@ export function BackupDatabase(): $CancellablePromise<string> {
 
 /**
  * BatchHardDeleteFiles permanently removes multiple files from disk and their frame records.
+ * Files already gone from disk count as deleted (their stale records are removed).
  */
 export function BatchHardDeleteFiles(paths: string[]): $CancellablePromise<void> {
     return $Call.ByID(1207142859, paths);
@@ -349,6 +350,8 @@ export function GetSnapshotStatus(): $CancellablePromise<$models.SnapshotStatus>
 
 /**
  * HardDeleteFile permanently removes a file from disk and cleans up its frame record.
+ * A file that is already gone from disk is not an error: its stale record is
+ * still removed, which is the only way to clear such an entry from the library.
  */
 export function HardDeleteFile(path: string): $CancellablePromise<void> {
     return $Call.ByID(1578145470, path);

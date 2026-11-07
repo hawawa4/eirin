@@ -1,7 +1,9 @@
 package app
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -32,11 +34,13 @@ func (a *App) UnrejectFile(path string) error {
 }
 
 // HardDeleteFile permanently removes a file from disk and cleans up its frame record.
+// A file that is already gone from disk is not an error: its stale record is
+// still removed, which is the only way to clear such an entry from the library.
 func (a *App) HardDeleteFile(path string) error {
 	if err := a.requireWritable(); err != nil {
 		return err
 	}
-	if err := os.Remove(path); err != nil {
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	if a.store() != nil {
@@ -99,13 +103,14 @@ func (a *App) UpdateFrameMeta(path string, meta store.FrameMeta) error {
 }
 
 // BatchHardDeleteFiles permanently removes multiple files from disk and their frame records.
+// Files already gone from disk count as deleted (their stale records are removed).
 func (a *App) BatchHardDeleteFiles(paths []string) error {
 	if err := a.requireWritable(); err != nil {
 		return err
 	}
 	var failed []string
 	for _, p := range paths {
-		if err := os.Remove(p); err != nil {
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			failed = append(failed, p)
 		}
 	}

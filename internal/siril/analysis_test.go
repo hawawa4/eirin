@@ -173,3 +173,24 @@ func TestParsePlateSolveOutputEmpty(t *testing.T) {
 		t.Error("expected plate solve to fail on empty output")
 	}
 }
+
+// Real `stat` output of Siril 1.4 (note: `statistics` is not a Siril command).
+func TestParseSirilOutputRealStatLine(t *testing.T) {
+	output := `log: Found 169 Gaussian profile stars in image, channel #0 (FWHM 3.855439)
+log: Running command: stat
+log: B&W layer: Mean: 4041.412414, Median: 4063.0, Sigma: 515.469854, Min: 0.0, Max: 65535.0, bgnoise: 446.124206
+`
+	q, err := ParseSirilOutput(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Background != 4063.0 {
+		t.Errorf("Background = %f, want 4063", q.Background)
+	}
+	if math.Abs(q.Noise-446.124206) > 1e-6 {
+		t.Errorf("Noise = %f, want bgnoise 446.124206", q.Noise)
+	}
+	if q.SNR == 0 {
+		t.Error("SNR should be derived from median/bgnoise")
+	}
+}
