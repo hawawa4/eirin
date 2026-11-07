@@ -61,6 +61,9 @@ type Frame struct {
 	SNR             *float64
 	StarCount       *int64
 	QualityAnalyzed bool
+	// AnalysisError is why Siril definitively could not analyze this frame
+	// (e.g. a damaged file); such frames are skipped until re-analysis is forced.
+	AnalysisError string
 
 	// App metadata
 	Approved        *bool
@@ -328,7 +331,7 @@ func (s *Store) framesUnder(rootPath string, extra sq.Sqlizer) ([]Frame, error) 
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
-			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed", "analysis_error",
 			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
@@ -508,13 +511,21 @@ type FrameQuality struct {
 	StarCount  int64
 }
 
+// SetAnalysisFailed records that Siril definitively cannot analyze a frame, so
+// it is no longer offered for analysis. A frame that already has quality
+// metrics keeps them and is left untouched.
+func (s *Store) SetAnalysisFailed(nasPath, reason string) error {
+	_, err := s.db.Exec(`UPDATE frames SET analysis_error=? WHERE nas_path=? AND quality_analyzed=0`, reason, nasPath)
+	return err
+}
+
 // UpdateFrameQuality persists Siril quality metrics for a frame.
 // The row must already exist (frames are created by the indexer).
 func (s *Store) UpdateFrameQuality(nasPath string, q FrameQuality) error {
 	_, err := s.db.Exec(`
 		UPDATE frames SET
 			fwhm=?, fwhm_unit=?, background=?, noise=?, snr=?,
-			star_count=?, quality_analyzed=1
+			star_count=?, quality_analyzed=1, analysis_error=''
 		WHERE nas_path=?
 	`, q.FWHM, q.FWHMUnit, q.Background, q.Noise, q.SNR,
 		q.StarCount, nasPath)
@@ -721,7 +732,7 @@ func (s *Store) GetAtlasIndexFrames(rootPath string) ([]Frame, error) {
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
-			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed", "analysis_error",
 			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
@@ -863,7 +874,7 @@ func (s *Store) GetLightFramesPaged(rootPath string, objects []string, offset in
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
-			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed", "analysis_error",
 			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
@@ -905,7 +916,7 @@ func (s *Store) getFramesChunk(paths []string, out map[string]Frame) error {
 			"object", "filter", "exptime", "gain", "ccd_temp", "date_obs", "telescope", "instrument",
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
-			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
+			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed", "analysis_error",
 			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
@@ -946,6 +957,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		fwhmUnit                                sql.NullString
 		starCount                               sql.NullInt64
 		qualityAnalyzed                         int64
+		analysisError                           string
 
 		approved        sql.NullInt64
 		rejected        int64
@@ -959,7 +971,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		&object, &filter, &exptime, &gain, &ccdTemp, &dateObs, &telescope, &instrument,
 		&frameType,
 		&ra, &dec, &pixScale, &rotation, &wcsSolved,
-		&fwhm, &fwhmUnit, &roundness, &background, &noise, &snr, &starCount, &qualityAnalyzed,
+		&fwhm, &fwhmUnit, &roundness, &background, &noise, &snr, &starCount, &qualityAnalyzed, &analysisError,
 		&approved, &rejected, &rejectionReason, &tags, &notes, &public,
 	)
 	if err != nil {
@@ -980,6 +992,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		FrameType:       frameType,
 		WCSSolved:       wcsSolved != 0,
 		QualityAnalyzed: qualityAnalyzed != 0,
+		AnalysisError:   analysisError,
 		Rejected:        rejected != 0,
 		Public:          public != 0,
 	}

@@ -729,6 +729,12 @@ export class LibraryFrame {
     "qualityAnalyzed": boolean;
 
     /**
+     * AnalysisError is set when Siril definitively failed on this frame; it is
+     * then skipped by "Analyze" until the user forces a re-analysis.
+     */
+    "analysisError": string;
+
+    /**
      * Moon phase at capture time (0=new moon, 1=full moon; -1 when dateObs unavailable)
      */
     "moonPhase": number;
@@ -812,6 +818,9 @@ export class LibraryFrame {
         }
         if (!("qualityAnalyzed" in $$source)) {
             this["qualityAnalyzed"] = false;
+        }
+        if (!("analysisError" in $$source)) {
+            this["analysisError"] = "";
         }
         if (!("moonPhase" in $$source)) {
             this["moonPhase"] = 0;

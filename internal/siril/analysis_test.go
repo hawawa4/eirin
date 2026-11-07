@@ -1,7 +1,13 @@
 package siril
 
 import (
+	"context"
+	"errors"
 	"math"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -192,5 +198,77 @@ log: B&W layer: Mean: 4041.412414, Median: 4063.0, Sigma: 515.469854, Min: 0.0, 
 	}
 	if q.SNR == 0 {
 		t.Error("SNR should be derived from median/bgnoise")
+	}
+}
+
+const sirilTruncatedOutput = `log: Welcome to siril 1.4.4 for linux (x86_64) - GUI
+log: Running command: requires
+log: Running command: load
+HDU 1: type=0, EXTNAME=
+log: Fitsio error reading data, file: /media/x/Stacked.fit.
+log: FITS error: Error reading elements 1 thru 24883200 from image (ffgclui).
+log: Opening /media/x/Stacked.fit failed.
+log: Error in line 2 ('load'): file not found.
+log: Script execution failed.
+`
+
+func TestFailureReason(t *testing.T) {
+	r := FailureReason(sirilTruncatedOutput)
+	if r == "" || strings.Contains(r, "/media") {
+		t.Errorf("reason %q must be non-empty and path-free", r)
+	}
+	if !strings.Contains(r, "damaged or truncated") {
+		t.Errorf("FITS read error should be reported as damaged/truncated, got %q", r)
+	}
+	if got := FailureReason("something else"); !strings.Contains(got, "no usable output") {
+		t.Errorf("fallback reason = %q", got)
+	}
+}
+
+// AnalyzeSingleFrame against a fake "siril" script that prints canned output.
+func fakeSiril(t *testing.T, out string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake siril is a shell script")
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "siril")
+	body := "#!/bin/sh\ncat <<'EOF'\n" + out + "\nEOF\nexit 1\n"
+	if err := os.WriteFile(exe, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return exe
+}
+
+func TestAnalyzeSingleFrameDamagedFileIsUnanalyzable(t *testing.T) {
+	exe := fakeSiril(t, sirilTruncatedOutput)
+	_, _, _, _, err := AnalyzeSingleFrame(context.Background(), exe, "/x/Stacked.fit", 0, 0)
+	var bad *UnanalyzableError
+	if !errors.As(err, &bad) {
+		t.Fatalf("err = %v, want *UnanalyzableError", err)
+	}
+	if strings.Contains(bad.Reason, "/x/") {
+		t.Errorf("reason leaks a path: %q", bad.Reason)
+	}
+}
+
+// Siril failing to start (nothing about the frame) must stay retryable.
+func TestAnalyzeSingleFrameBrokenSirilIsRetryable(t *testing.T) {
+	exe := fakeSiril(t, "Failed to load module: libgvfsdbus.so\nGLIBC_2.38 not found")
+	_, _, _, _, err := AnalyzeSingleFrame(context.Background(), exe, "/x/a.fit", 0, 0)
+	var bad *UnanalyzableError
+	if err == nil || errors.As(err, &bad) {
+		t.Fatalf("err = %v, want a plain retryable error", err)
+	}
+}
+
+func TestAnalyzeSingleFrameCancelledIsRetryable(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	exe := fakeSiril(t, sirilTruncatedOutput)
+	_, _, _, _, err := AnalyzeSingleFrame(ctx, exe, "/x/a.fit", 0, 0)
+	var bad *UnanalyzableError
+	if err == nil || errors.As(err, &bad) {
+		t.Fatalf("err = %v, want a plain retryable error", err)
 	}
 }

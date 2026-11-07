@@ -1253,6 +1253,13 @@ void main() {
                   >
                 </div>
               {/if}
+            {:else if qualityFrame.analysisError}
+              <div class="meta-row stats-hint">
+                <span class="meta-val"
+                  >Analysis failed: {qualityFrame.analysisError}. It is skipped from now on; use
+                  Re-analyze on its group to retry.</span
+                >
+              </div>
             {:else}
               <div class="meta-row stats-hint">
                 <span class="meta-val"

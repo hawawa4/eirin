@@ -173,4 +173,6 @@ var migrations = []migration{
 	{11, `CREATE INDEX IF NOT EXISTS idx_frames_file_hash ON frames(file_hash)`},
 	// migration 12: images the user chose to show in the public gallery
 	{12, `ALTER TABLE frames ADD COLUMN public INTEGER NOT NULL DEFAULT 0`},
+	// migration 13: why Siril analysis definitively failed for a frame ('' = no failure)
+	{13, `ALTER TABLE frames ADD COLUMN analysis_error TEXT NOT NULL DEFAULT ''`},
 }

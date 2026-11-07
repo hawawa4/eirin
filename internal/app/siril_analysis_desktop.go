@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -111,6 +112,14 @@ func (a *App) AnalyzeFrames(nasPaths []string) error {
 		if err != nil {
 			slog.Warn("analysis", "err", err)
 			errCount++
+			// Remember a definitive failure so the frame stops being offered for
+			// analysis; transient ones (timeout, cancel, no Siril) stay retryable.
+			var bad *sirilpkg.UnanalyzableError
+			if errors.As(err, &bad) {
+				if uerr := a.store().SetAnalysisFailed(path, bad.Reason); uerr != nil {
+					slog.Warn("analysis: db failure mark", "err", uerr)
+				}
+			}
 		} else {
 			if uerr := a.store().UpdateFrameQuality(path, quality); uerr != nil {
 				slog.Warn("analysis: db quality update", "err", uerr)

@@ -39,7 +39,7 @@
     oncancelanalysis,
   }: Props = $props();
 
-  let analyzedCount = $derived(group.frames.length - group.unanalyzedCount);
+  let analyzedCount = $derived(group.frames.length - group.unanalyzedCount - group.failedCount);
 </script>
 
 <tr
@@ -96,9 +96,14 @@
         <span
           class="quality-mark"
           class:partial={group.unanalyzedCount > 0}
-          title={group.unanalyzedCount > 0
+          title={(group.unanalyzedCount > 0
             ? `${analyzedCount} of ${group.frames.length} frames analyzed (FWHM, stars, plate solve)`
-            : "Every frame analyzed (FWHM, stars, plate solve)"}
+            : group.failedCount > 0
+              ? "Every analyzable frame analyzed (FWHM, stars, plate solve)"
+              : "Every frame analyzed (FWHM, stars, plate solve)") +
+            (group.failedCount > 0
+              ? `. ${group.failedCount} could not be analyzed and are skipped (Re-analyze retries them)`
+              : "")}
           aria-label={group.unanalyzedCount > 0 ? "Partly analyzed" : "Analyzed"}
           >{group.unanalyzedCount > 0 ? "◐" : "✓"}</span
         >

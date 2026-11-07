@@ -746,9 +746,9 @@
   });
 
   async function analyzeGroup(group: LibGroup, force: boolean) {
-    const paths = (force ? group.frames : group.frames.filter((f) => !f.qualityAnalyzed)).map(
-      (f) => f.nasPath,
-    );
+    const paths = (
+      force ? group.frames : group.frames.filter((f) => !f.qualityAnalyzed && !f.analysisError)
+    ).map((f) => f.nasPath);
     if (!paths.length) return;
     analyzingGroup = group.key;
     analysisProgress = null;
@@ -760,7 +760,10 @@
     analyzingGroup = null;
     analysisProgress = null;
     if (ok) {
-      if (errors > 0) toast.error(`Analysis finished with ${plural(errors, "error")}`);
+      if (errors > 0)
+        toast.error(
+          `Analysis finished with ${plural(errors, "error")}. Frames Siril can't read are skipped from now on (Re-analyze retries them)`,
+        );
       else toast.success(`Analyzed ${plural(paths.length, "frame")} in “${group.label}”`);
     }
     reload();
@@ -1030,7 +1033,9 @@
             analyzingGroup !== null
               ? "An analysis is already running"
               : group.unanalyzedCount === 0
-                ? "Every frame is analyzed — use Re-analyze"
+                ? group.failedCount > 0
+                  ? `Nothing left to analyze (${plural(group.failedCount, "frame")} couldn't be analyzed and are skipped) — use Re-analyze to retry them`
+                  : "Every frame is analyzed — use Re-analyze"
                 : undefined,
           run: () => analyzeGroup(group, false),
         },

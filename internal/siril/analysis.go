@@ -56,15 +56,54 @@ func AnalyzeSingleFrame(ctx context.Context, exe, nasPath string, hintRA, hintDe
 	cmd := exec.CommandContext(runCtx, exe, "-s", tmp.Name())
 	output, _ := cmd.CombinedOutput() // Siril exits non-zero even on success
 
+	// A timeout or cancellation says nothing about the file: retryable.
+	if runCtx.Err() != nil {
+		return store.FrameQuality{}, store.WCSResult{}, false, output, fmt.Errorf("%s: analysis interrupted or timed out: %w", filepath.Base(nasPath), runCtx.Err())
+	}
 	if len(output) == 0 {
 		return store.FrameQuality{}, store.WCSResult{}, false, output, fmt.Errorf("no output for %s", filepath.Base(nasPath))
 	}
 	q, err := ParseSirilOutput(string(output))
 	if err != nil {
-		return store.FrameQuality{}, store.WCSResult{}, false, output, fmt.Errorf("%s: %w", filepath.Base(nasPath), err)
+		// If Siril never got as far as loading the file, it is Siril (or its
+		// environment) that is broken, not the frame: stay retryable.
+		if !strings.Contains(strings.ToLower(string(output)), "running command: load") {
+			return store.FrameQuality{}, store.WCSResult{}, false, output, fmt.Errorf("%s: %w", filepath.Base(nasPath), err)
+		}
+		// Siril loaded (or tried to load) the file and found nothing to measure:
+		// the file itself is the problem (damaged, truncated, unreadable), so
+		// retrying won't help.
+		return store.FrameQuality{}, store.WCSResult{}, false, output,
+			&UnanalyzableError{File: filepath.Base(nasPath), Reason: FailureReason(string(output)), Cause: err}
 	}
 	wcs, wcsSolved := ParsePlateSolveOutput(string(output))
 	return q, wcs, wcsSolved, output, nil
+}
+
+// UnanalyzableError means Siril ran but could not extract anything from the
+// frame, so analysing it again will fail the same way. Reason is a short,
+// fixed, path-free sentence that is safe to store and show.
+type UnanalyzableError struct {
+	File   string
+	Reason string
+	Cause  error
+}
+
+func (e *UnanalyzableError) Error() string { return fmt.Sprintf("%s: %s (%v)", e.File, e.Reason, e.Cause) }
+func (e *UnanalyzableError) Unwrap() error { return e.Cause }
+
+// FailureReason summarises why Siril produced no usable output. The result is
+// deliberately one of a few fixed strings: raw Siril output contains file paths.
+func FailureReason(output string) string {
+	l := strings.ToLower(output)
+	switch {
+	case strings.Contains(l, "fitsio error") || strings.Contains(l, "fits error"):
+		return "Siril could not read the file's pixel data (damaged or truncated)"
+	case strings.Contains(l, "file not found") || (strings.Contains(l, "opening") && strings.Contains(l, "failed")):
+		return "Siril could not open the file"
+	default:
+		return "Siril produced no usable output for this file"
+	}
 }
 
 // ── Output parsers ─────────────────────────────────────────────────────────

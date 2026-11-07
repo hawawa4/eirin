@@ -42,6 +42,9 @@ type LibraryFrame struct {
 	SNR             float64 `json:"snr"` // Background/Noise ratio
 	StarCount       int64   `json:"starCount"`
 	QualityAnalyzed bool    `json:"qualityAnalyzed"`
+	// AnalysisError is set when Siril definitively failed on this frame; it is
+	// then skipped by "Analyze" until the user forces a re-analysis.
+	AnalysisError string `json:"analysisError"`
 
 	// Moon phase at capture time (0=new moon, 1=full moon; -1 when dateObs unavailable)
 	MoonPhase float64 `json:"moonPhase"`
@@ -145,6 +148,7 @@ func toLibraryFrame(f store.Frame) LibraryFrame {
 		SNR:             derefFloat(f.SNR),
 		StarCount:       derefInt64(f.StarCount),
 		QualityAnalyzed: f.QualityAnalyzed,
+		AnalysisError:   f.AnalysisError,
 		MoonPhase:       moonPhase,
 	}
 }

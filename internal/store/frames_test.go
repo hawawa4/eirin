@@ -481,3 +481,45 @@ func TestGetAllPathsUnder(t *testing.T) {
 		t.Errorf("got %v, want the two frames under /nas/a/ only", got)
 	}
 }
+
+func TestSetAnalysisFailed(t *testing.T) {
+	s := newTestStore(t)
+	p := "/nas/a/1.fits"
+	if err := s.UpsertFrame(p, Frame{FrameType: FrameTypeLight}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAnalysisFailed(p, "damaged"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetFrames([]string{p})
+	if got[p].AnalysisError != "damaged" || got[p].QualityAnalyzed {
+		t.Fatalf("after failure: %+v", got[p])
+	}
+
+	// A forced re-index must not forget the failure.
+	if err := s.UpsertFrame(p, Frame{FrameType: FrameTypeLight}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetFrames([]string{p})
+	if got[p].AnalysisError != "damaged" {
+		t.Error("re-index cleared the failure")
+	}
+
+	// A later successful analysis clears it.
+	if err := s.UpdateFrameQuality(p, FrameQuality{FWHM: 3, FWHMUnit: "px", StarCount: 10}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetFrames([]string{p})
+	if got[p].AnalysisError != "" || !got[p].QualityAnalyzed {
+		t.Fatalf("after success: %+v", got[p])
+	}
+
+	// An analyzed frame keeps its metrics if a later run fails.
+	if err := s.SetAnalysisFailed(p, "damaged"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetFrames([]string{p})
+	if got[p].AnalysisError != "" {
+		t.Error("an already-analyzed frame must not be marked failed")
+	}
+}

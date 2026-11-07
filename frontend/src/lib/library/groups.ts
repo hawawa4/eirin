@@ -23,7 +23,10 @@ export interface LibGroup extends LibraryGroup {
   /** Per-type counts, in TYPE_ORDER (computed once per grouping pass). */
   breakdown: TypeCount[];
   hasQuality: boolean;
+  /** Frames still worth analyzing: not analyzed and not known to be unanalyzable. */
   unanalyzedCount: number;
+  /** Frames Siril definitively failed on (skipped until a forced re-analysis). */
+  failedCount: number;
 }
 
 export const GROUP_BY_OPTIONS: { value: LibraryGroupBy; label: string }[] = [
@@ -94,8 +97,10 @@ export function buildGroups(items: app.LibraryFrame[], groupBy: LibraryGroupBy):
   for (const [key, frames] of map) {
     let hasQuality = false;
     let unanalyzedCount = 0;
+    let failedCount = 0;
     for (const f of frames) {
       if (f.qualityAnalyzed) hasQuality = true;
+      else if (f.analysisError) failedCount++;
       else unanalyzedCount++;
     }
     result.push({
@@ -105,6 +110,7 @@ export function buildGroups(items: app.LibraryFrame[], groupBy: LibraryGroupBy):
       breakdown: breakdownOf(frames),
       hasQuality,
       unanalyzedCount,
+      failedCount,
     });
   }
   result.sort((a, b) => a.key.localeCompare(b.key));
