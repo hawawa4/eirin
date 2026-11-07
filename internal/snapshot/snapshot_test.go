@@ -36,7 +36,9 @@ func TestPublishOverwrites(t *testing.T) {
 	root := t.TempDir()
 	s := desktopStore(t, root)
 	must(t, Publish(s, root))
-	must(t, s.UpsertFrame(filepath.Join(root, "M42", "stack.fits"), store.Frame{FrameType: store.FrameTypeStacked}))
+	m42 := filepath.Join(root, "M42", "stack.fits")
+	must(t, s.UpsertFrame(m42, store.Frame{FrameType: store.FrameTypeStacked}))
+	must(t, s.SetFramesPublic([]string{m42}, true))
 	must(t, Publish(s, root))
 
 	c, err := store.NewStoreAt(Path(root))

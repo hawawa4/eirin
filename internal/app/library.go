@@ -25,6 +25,7 @@ type LibraryFrame struct {
 	Instrument string  `json:"instrument"`
 	FileSize   int64   `json:"fileSize"`
 	IsRejected bool    `json:"isRejected"`
+	IsPublic   bool    `json:"isPublic"` // marked for the public gallery
 
 	// Plate solve results (zero when not solved)
 	RA         float64 `json:"ra"`
@@ -131,6 +132,7 @@ func toLibraryFrame(f store.Frame) LibraryFrame {
 		Instrument:      f.Instrument,
 		FileSize:        f.FileSize,
 		IsRejected:      f.Rejected,
+		IsPublic:        f.Public,
 		RA:              derefFloat(f.RA),
 		Dec:             derefFloat(f.Dec),
 		PixelScale:      derefFloat(f.PixelScale),

@@ -27,6 +27,10 @@
     typeTotal: number;
     selectedTypes: readonly FrameType[];
     onpicktype: (type: FrameType | null, additive: boolean) => void;
+    /** "Public" chip (images marked for the public gallery); hidden when absent. */
+    publicCount?: number;
+    publicOnly?: boolean;
+    ontogglepublic?: () => void;
     /** Shown only when provided (Siril available, Frames tab). */
     onsuggest?: () => void;
     /** Shown only when provided (desktop mode). Creates a project from the filtered view. */
@@ -64,6 +68,9 @@
     typeTotal,
     selectedTypes,
     onpicktype,
+    publicCount,
+    publicOnly,
+    ontogglepublic,
     onsuggest,
     oncreateproject,
     projectFrameCount,
@@ -269,7 +276,15 @@
   </div>
 
   <div class="row row-chips">
-    <TypeChips counts={typeCounts} total={typeTotal} selected={selectedTypes} onpick={onpicktype} />
+    <TypeChips
+      counts={typeCounts}
+      total={typeTotal}
+      selected={selectedTypes}
+      onpick={onpicktype}
+      {publicCount}
+      {publicOnly}
+      {ontogglepublic}
+    />
     <span class="spacer"></span>
     <span class="showing" aria-live="polite">
       {#if visibleCount === tabCount}

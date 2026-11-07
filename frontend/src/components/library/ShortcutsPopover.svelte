@@ -17,6 +17,7 @@
     [["/"], "Search"],
     [["x"], "Reject current / selected, then advance"],
     [["u"], "Restore current / selected"],
+    [["p"], "Show current / selected image in the public gallery (toggle)"],
     [["Delete"], "Delete from disk (asks first)"],
     [["b"], "Blink checked frames, or the previewed frame's object"],
     [["Esc"], "Close preview, then clear selection"],

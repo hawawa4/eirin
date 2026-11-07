@@ -10,9 +10,21 @@
     selected: readonly FrameType[];
     /** `additive` (Ctrl/Shift-click) adds/removes one type instead of showing only it. */
     onpick: (type: FrameType | null, additive: boolean) => void;
+    /** "Public" chip: shown when `ontogglepublic` is given. */
+    publicCount?: number;
+    publicOnly?: boolean;
+    ontogglepublic?: () => void;
   }
 
-  let { counts, total, selected, onpick }: Props = $props();
+  let {
+    counts,
+    total,
+    selected,
+    onpick,
+    publicCount = 0,
+    publicOnly = false,
+    ontogglepublic,
+  }: Props = $props();
 </script>
 
 <div class="type-chips" role="group" aria-label="Show frame types">
@@ -43,9 +55,36 @@
       <span class="chip-count">{c.count.toLocaleString()}</span>
     </button>
   {/each}
+  {#if ontogglepublic}
+    <span class="chip-sep" aria-hidden="true"></span>
+    <button
+      class="chip"
+      class:active={publicOnly}
+      class:empty={publicCount === 0 && !publicOnly}
+      style:--chip-color="var(--accent)"
+      aria-pressed={publicOnly}
+      onclick={ontogglepublic}
+      title="Show only the images marked for the public gallery"
+    >
+      <span class="chip-star" aria-hidden="true">★</span>
+      <span class="chip-label">Public</span>
+      <span class="chip-count">{publicCount.toLocaleString()}</span>
+    </button>
+  {/if}
 </div>
 
 <style>
+  .chip-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+  .chip-star {
+    font-size: var(--fs-xs);
+    color: var(--chip-color);
+  }
+
   .type-chips {
     display: flex;
     align-items: center;

@@ -94,14 +94,20 @@ func (a *App) refreshGallery(st *store.Store) {
 		slog.Error("gallery: reading the snapshot", "err", err)
 		return
 	}
-	a.snapshots.gallery.state.Store(buildGallery(a.snapshots.gallery.cfg, frames))
+	state := buildGallery(a.snapshots.gallery.cfg, frames)
+	a.snapshots.gallery.state.Store(state)
+	if len(state.info.Images) == 0 {
+		slog.Warn("gallery: no pictures to show; mark processed images as public in the desktop app's Library (Public button, or the p key) and let the snapshot republish")
+		return
+	}
+	slog.Info("gallery: pictures loaded", "count", len(state.info.Images))
 }
 
 // buildGallery picks the pictures to show out of a snapshot's frames.
 func buildGallery(cfg gallery.Config, frames []store.Frame) *galleryState {
 	var fits, raster []store.Frame
 	for _, f := range frames {
-		if f.Rejected || (f.FrameType != store.FrameTypeProcessed && f.FrameType != store.FrameTypeImage) {
+		if f.Rejected || !f.Public || (f.FrameType != store.FrameTypeProcessed && f.FrameType != store.FrameTypeImage) {
 			continue
 		}
 		if indexer.IsRasterFile(f.NasPath) {

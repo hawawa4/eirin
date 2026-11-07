@@ -16,22 +16,26 @@ import (
 // publicPath is how the server's frontend names a library file in requests:
 // by its opaque id. It publishes a gallery containing that one file.
 func publicPath(a *App, real string) string {
-	frame := store.Frame{NasPath: real, FrameType: store.FrameTypeImage}
+	frame := store.Frame{NasPath: real, FrameType: store.FrameTypeImage, Public: true}
 	a.snapshots.gallery.state.Store(buildGallery(gallery.Default(), []store.Frame{frame}))
 	return gallery.PublicPath(real)
 }
 
+// frame is a library frame the user marked public.
 func frame(path, typ, object string) store.Frame {
-	return store.Frame{NasPath: path, FrameType: typ, Object: object}
+	return store.Frame{NasPath: path, FrameType: typ, Object: object, Public: true}
 }
 
 func TestBuildGalleryShowsOnlyFinals(t *testing.T) {
 	r := frame("/lib/m42.jpg", store.FrameTypeImage, "M 42")
 	rejected := frame("/lib/bad.jpg", store.FrameTypeImage, "Bad")
 	rejected.Rejected = true
+	unmarked := frame("/lib/hidden.jpg", store.FrameTypeImage, "Hidden")
+	unmarked.Public = false
 	st := buildGallery(gallery.Default(), []store.Frame{
 		r,
 		rejected,
+		unmarked,
 		frame("/lib/light.fit", store.FrameTypeLight, "M 42"),
 		frame("/lib/stack.fit", store.FrameTypeStacked, "M 42"),
 		frame("/lib/final.fit", store.FrameTypeProcessed, "M 42"),
@@ -45,6 +49,9 @@ func TestBuildGalleryShowsOnlyFinals(t *testing.T) {
 	}
 	if _, ok := st.index.Real(gallery.PublicPath("/lib/bad.jpg")); ok {
 		t.Error("a rejected image must not be reachable")
+	}
+	if _, ok := st.index.Real(gallery.PublicPath("/lib/hidden.jpg")); ok {
+		t.Error("an image the user didn't mark public must not be reachable")
 	}
 }
 

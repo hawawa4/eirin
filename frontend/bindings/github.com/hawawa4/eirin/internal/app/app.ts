@@ -543,6 +543,15 @@ export function SelectSourceFolder(): $CancellablePromise<string> {
 }
 
 /**
+ * SetFilesPublic marks (or unmarks) final images as shown in the public
+ * gallery. Only marked images ever reach the headless server: the snapshot
+ * the server loads is pruned to them.
+ */
+export function SetFilesPublic(paths: string[], $public: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4279761616, paths, $public);
+}
+
+/**
  * SetFrameType lets the user manually override the classified type for a frame
  * (e.g. to promote a stacked image to "processed").
  */

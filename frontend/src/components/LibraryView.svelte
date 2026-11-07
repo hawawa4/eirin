@@ -9,6 +9,7 @@
     HardDeleteFile,
     BatchRejectFiles,
     BatchUnrejectFiles,
+    SetFilesPublic,
     BatchHardDeleteFiles,
     OpenWithSiril,
     AnalyzeFrames,
@@ -28,6 +29,7 @@
     Project,
   } from "../lib/types";
   import { libraryFrameToEntry, plural } from "../lib/utils";
+  import { canBePublic, publishable } from "../lib/library/public";
   import { copyPaths } from "../lib/clipboard";
   import { makeColumnManager } from "../lib/columnManager";
   import { ui } from "../lib/uiState.svelte";
@@ -130,6 +132,8 @@
 
   // ── View state ───────────────────────────────────────────────────────────
   let showRejected = $state(false);
+  /** Only the images marked for the public gallery. */
+  let publicOnly = $state(false);
   let groupBy = $derived(toGroupBy(ui.libraryGroupBy));
   let sort = $derived(ui.librarySort);
 
@@ -267,7 +271,12 @@
 
   // ── Derived rows ──────────────────────────────────────────────────────────
   let rejectedCount = $derived(frames.reduce((n, f) => n + (f.isRejected ? 1 : 0), 0));
-  let tabFrames = $derived(frames.filter((f) => f.isRejected === showRejected));
+  let tabFrames = $derived(
+    frames.filter((f) => f.isRejected === showRejected && (!publicOnly || f.isPublic)),
+  );
+  let publicCount = $derived(frames.reduce((n, f) => n + (f.isPublic && !f.isRejected ? 1 : 0), 0));
+  /** The Public chip appears once there is something that could be made public. */
+  let hasFinals = $derived(frames.some((f) => canBePublic(f.frameType) && !f.isRejected));
   /** Everything but the type filter, so the type chips can show what each type would add. */
   let nonTypeFilters = $derived.by((): ColFilters => {
     const rest = { ...colFilters };
@@ -444,6 +453,7 @@
   // ── Selection & preview cursor ───────────────────────────────────────────
   /** Checked rows (multi-selection). */
   const selectedPaths = new SvelteSet<string>();
+  let selectedFinals = $derived(publishable([...selectedPaths], frameByPath));
   /** The previewed row — also the keyboard cursor. */
   let previewPath = $state<string | null>(null);
   /** Start of the next Shift-click range. */
@@ -807,6 +817,59 @@
   }
 
   /**
+   * Marks `paths` (processed/image files only) as shown in the public gallery, or
+   * removes them. Optimistic like setRejected, with an Undo toast.
+   */
+  async function setPublic(paths: string[], value: boolean, undoable = true) {
+    const list = publishable(paths, frameByPath)
+      .filter((f) => f.isPublic !== value)
+      .map((f) => f.nasPath);
+    if (list.length === 0) return true;
+    const changed = new Set(list);
+    const applyFlag = (v: boolean) => {
+      frames = frames.map((f) => (changed.has(f.nasPath) ? { ...f, isPublic: v } : f));
+    };
+    applyFlag(value);
+    const ok = await attempt(
+      async () => {
+        await SetFilesPublic(list, value);
+        return true;
+      },
+      `Could not ${value ? "publish" : "unpublish"} ${plural(list.length, "image")}`,
+    );
+    if (!ok) {
+      applyFlag(!value);
+      return false;
+    }
+    if (undoable) {
+      toast.success(
+        value
+          ? `${plural(list.length, "image")} will show in the public gallery`
+          : `Removed ${plural(list.length, "image")} from the public gallery`,
+        {
+          action: {
+            label: "Undo",
+            run: async () => {
+              await setPublic(list, !value, false);
+            },
+          },
+        },
+      );
+    }
+    return true;
+  }
+
+  /** The `p` key: publish the current/selected images, or unpublish them if all already are. */
+  function togglePublic(paths: string[]) {
+    const finals = publishable(paths, frameByPath);
+    if (finals.length === 0) {
+      toast.info("Only processed or image files can go in the public gallery");
+      return;
+    }
+    setPublic(paths, !finals.every((f) => f.isPublic));
+  }
+
+  /**
    * Rejects/restores `paths`; rows that leave the current tab are unchecked and the
    * preview cursor advances past them right away (so rapid `x` presses keep culling).
    */
@@ -913,6 +976,7 @@
         name: frame.fileName,
         isRejected: frame.isRejected,
         frameType: frame.frameType,
+        isPublic: frame.isPublic,
       },
       sirilAvailable: sirilAvailable && paths.length === 1,
       selectionCount: paths.length,
@@ -1134,6 +1198,10 @@
         e.preventDefault();
         applyReject(targetPaths(), false);
         return;
+      case "p":
+        e.preventDefault();
+        if (!showRejected) togglePublic(targetPaths());
+        return;
       case "Delete":
         e.preventDefault();
         askDelete(targetPaths());
@@ -1191,6 +1259,9 @@
     typeTotal={preTypeFiltered.length}
     {selectedTypes}
     onpicktype={pickType}
+    publicCount={hasFinals || publicOnly ? publicCount : undefined}
+    {publicOnly}
+    ontogglepublic={hasFinals || publicOnly ? () => (publicOnly = !publicOnly) : undefined}
     onsuggest={sirilAvailable ? () => (showSuggest = true) : undefined}
     oncreateproject={oncreateproject ? createProjectFromView : undefined}
     projectFrameCount={projectFrames.length}
@@ -1220,6 +1291,9 @@
       blinkLabel={blinkPlan?.label ?? null}
       oncreateproject={oncreateproject ? () => openCreateProject([...selectedPaths]) : undefined}
       onclear={clearSelection}
+      publishable={selectedFinals.length}
+      allPublic={selectedFinals.length > 0 && selectedFinals.every((f) => f.isPublic)}
+      onsetpublic={(v) => setPublic([...selectedPaths], v)}
     />
   {/if}
 
@@ -1361,6 +1435,9 @@
           onnext={nextPath ? () => setCursor(nextPath) : undefined}
           onreject={() => applyReject([path], true)}
           onrestore={() => applyReject([path], false)}
+          onsetpublic={canBePublic(previewFrame.frameType) && !previewFrame.isRejected
+            ? (v) => setPublic([path], v)
+            : undefined}
           ondelete={() => askDelete([path])}
           onreveal={() => reveal(path)}
           onblink={blinkPlan ? openBlink : undefined}
@@ -1413,6 +1490,10 @@
     onrestore={() => {
       closeCtx();
       applyReject(ctxPaths, false);
+    }}
+    onsetpublic={(_entry, v) => {
+      closeCtx();
+      setPublic(ctxPaths, v);
     }}
     onharddelete={() => {
       closeCtx();

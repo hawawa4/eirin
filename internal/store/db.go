@@ -171,4 +171,6 @@ var migrations = []migration{
 	// migration 10: add file_hash for content-based duplicate detection
 	{10, `ALTER TABLE frames ADD COLUMN file_hash TEXT`},
 	{11, `CREATE INDEX IF NOT EXISTS idx_frames_file_hash ON frames(file_hash)`},
+	// migration 12: images the user chose to show in the public gallery
+	{12, `ALTER TABLE frames ADD COLUMN public INTEGER NOT NULL DEFAULT 0`},
 }

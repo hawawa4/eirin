@@ -46,10 +46,10 @@
 <section class="card">
   <h2 class="section-title">Server viewer</h2>
   <p class="section-desc">
-    The headless server build is a public gallery of your final images, the Sky Atlas and a
-    Slideshow. It reads a copy of this library that the app writes into the library folder, so the
-    server never needs this database. The copy is updated a couple of minutes after changes, and
-    when the app closes.
+    The headless server build is a public gallery of the final images you marked as public in the
+    Library (★ Public), plus the Sky Atlas and a Slideshow. It reads a copy of this library that the
+    app writes into the library folder, so the server never needs this database. The copy is updated
+    a couple of minutes after changes, and when the app closes.
   </p>
 
   <label class="toggle-row">

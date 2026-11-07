@@ -68,6 +68,11 @@
           {/each}
         </select>
       {:else if col.id === "name"}
+        {#if frame.isPublic}
+          <span class="pub-star" title="Shown in the public gallery" role="img" aria-label="Public"
+            >★</span
+          >
+        {/if}
         <span class="file-name">{frame.fileName}</span>
       {:else}
         {getLibraryCellValue(frame, col.id)}
@@ -154,6 +159,11 @@
   .file-name {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .pub-star {
+    margin-right: 6px;
+    color: var(--accent);
+    font-size: var(--fs-xs);
   }
 
   .type-select {

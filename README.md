@@ -98,11 +98,11 @@ If `seestar.local` doesn't resolve, use the Seestar's IP address instead.
 
 ## Headless server
 
-A public photo gallery for your finished images, for running on another machine such as the one next to your NAS: a grid of pictures with a full-size viewer, the Sky Atlas and a Slideshow. It's not the app with parts removed: the server build has no Library, no Settings and no way to change anything. Visitors only ever see the final images, under opaque ids: no folder or file names, and no raw or calibration frames. There's no login or TLS, so put it behind your own reverse proxy if you expose it.
+A public photo gallery for your finished images, for running on another machine such as the one next to your NAS: a grid of pictures with a full-size viewer, the Sky Atlas and a Slideshow. It's not the app with parts removed: the server build has no Library, no Settings and no way to change anything. Visitors only ever see the final images you marked as public, under opaque ids: no folder or file names, and no raw or calibration frames. There's no login or TLS, so put it behind your own reverse proxy if you expose it.
 
 It never shares the desktop's database. The desktop app publishes a snapshot, and the server loads it:
 
-1. In the desktop app, turn on **Settings → Server viewer**. It writes a copy of the library database to `<library>/.eirin/library.db` shortly after changes and when the app closes.
+1. In the desktop app, choose what to show: in the Library, select your processed images and click **★ Public** (or press `p`, or right-click → Show in public gallery). Nothing is public until you mark it, and the **Public** chip next to the type chips filters to what is. Then turn on **Settings → Server viewer**. It writes a copy of the library database to `<library>/.eirin/library.db` shortly after changes and when the app closes.
 2. Run the server with the library mounted. Images are published to `ghcr.io/hawawa4/eirin-server` on tagged releases:
 
    ```yaml
@@ -121,7 +121,7 @@ It never shares the desktop's database. The desktop app publishes a snapshot, an
          EIRIN_GALLERY_HOME_URL: "https://eirin.example.org"
    ```
 
-3. Open `http://<server>:8080`. The server checks for a new snapshot every minute, copies it, rewrites the file paths to where the library is mounted on the server, keeps only the final images, and swaps it in. Open browser tabs refresh by themselves.
+3. Open `http://<server>:8080`. The server checks for a new snapshot every minute, copies it, rewrites the file paths to where the library is mounted on the server, keeps only the images marked public, and swaps it in. Open browser tabs refresh by themselves.
 
 The gallery is configured by environment variables, by a JSON file, or both (the variables win). The file is `/data/gallery.json`, or wherever `EIRIN_GALLERY_CONFIG` points; editing it needs a restart.
 

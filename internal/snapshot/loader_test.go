@@ -90,6 +90,7 @@ func TestLoaderPicksUpRepublish(t *testing.T) {
 	first := *cur
 
 	must(t, desk.UpsertFrame("/desktop/M42/stack.fits", store.Frame{FrameType: store.FrameTypeStacked}))
+	must(t, desk.SetFramesPublic([]string{"/desktop/M42/stack.fits"}, true))
 	must(t, Publish(desk, root))
 	// Make sure the mtime differs even on coarse-grained filesystems.
 	future := time.Now().Add(2 * time.Second)

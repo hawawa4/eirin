@@ -68,6 +68,9 @@ type Frame struct {
 	RejectionReason string
 	Tags            string // JSON array
 	Notes           string
+
+	// Public marks a final image the user wants in the public gallery.
+	Public bool
 }
 
 // processedWords mark a finished result when one appears as a word in a file
@@ -300,7 +303,7 @@ func (s *Store) framesUnder(rootPath string, extra sq.Sqlizer) ([]Frame, error) 
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
 			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
-			"approved", "rejected", "rejection_reason", "tags", "notes",
+			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
 		Where(cond).
@@ -586,6 +589,34 @@ func (s *Store) BatchUnrejectFrames(paths []string) error {
 	return tx.Commit()
 }
 
+// SetFramesPublic marks (or unmarks) frames as shown in the public gallery,
+// in a single transaction. Paths without a frame record are ignored.
+func (s *Store) SetFramesPublic(paths []string, public bool) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.Prepare(`UPDATE frames SET public=? WHERE nas_path=?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	v := 0
+	if public {
+		v = 1
+	}
+	for _, p := range paths {
+		if _, err := stmt.Exec(v, p); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // BatchDeleteFrames removes multiple frame records in a single transaction.
 func (s *Store) BatchDeleteFrames(paths []string) error {
 	if len(paths) == 0 {
@@ -665,7 +696,7 @@ func (s *Store) GetAtlasIndexFrames(rootPath string) ([]Frame, error) {
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
 			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
-			"approved", "rejected", "rejection_reason", "tags", "notes",
+			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
 		Where(sq.And{
@@ -807,7 +838,7 @@ func (s *Store) GetLightFramesPaged(rootPath string, objects []string, offset in
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
 			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
-			"approved", "rejected", "rejection_reason", "tags", "notes",
+			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
 		Where(cond).
@@ -849,7 +880,7 @@ func (s *Store) getFramesChunk(paths []string, out map[string]Frame) error {
 			"frame_type",
 			"ra", "dec", "pixel_scale", "rotation", "wcs_solved",
 			"fwhm", "fwhm_unit", "roundness", "background", "noise", "snr", "star_count", "quality_analyzed",
-			"approved", "rejected", "rejection_reason", "tags", "notes",
+			"approved", "rejected", "rejection_reason", "tags", "notes", "public",
 		).
 		From("frames").
 		Where(sq.Eq{"nas_path": paths}).
@@ -894,6 +925,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		rejected        int64
 		rejectionReason sql.NullString
 		tags, notes     sql.NullString
+		public          int64
 	)
 
 	err := rows.Scan(
@@ -902,7 +934,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		&frameType,
 		&ra, &dec, &pixScale, &rotation, &wcsSolved,
 		&fwhm, &fwhmUnit, &roundness, &background, &noise, &snr, &starCount, &qualityAnalyzed,
-		&approved, &rejected, &rejectionReason, &tags, &notes,
+		&approved, &rejected, &rejectionReason, &tags, &notes, &public,
 	)
 	if err != nil {
 		return "", Frame{}, err
@@ -923,6 +955,7 @@ func scanFrame(rows *sql.Rows) (string, Frame, error) {
 		WCSSolved:       wcsSolved != 0,
 		QualityAnalyzed: qualityAnalyzed != 0,
 		Rejected:        rejected != 0,
+		Public:          public != 0,
 	}
 	if fileSize.Valid {
 		f.FileSize = fileSize.Int64

@@ -124,12 +124,15 @@ func TestPruneToFinals(t *testing.T) {
 	}
 	for p, ft := range keep {
 		must(t, s.UpsertFrame(p, Frame{FrameType: ft}))
+		must(t, s.SetFramesPublic([]string{p}, true))
 	}
 	for p, ft := range drop {
 		must(t, s.UpsertFrame(p, Frame{FrameType: ft}))
 	}
 	must(t, s.UpsertFrame("/nas/rejected.fits", Frame{FrameType: FrameTypeStacked}))
+	must(t, s.SetFramesPublic([]string{"/nas/rejected.fits"}, true))
 	must(t, s.RejectFrame("/nas/rejected.fits", ""))
+	must(t, s.UpsertFrame("/nas/unmarked.png", Frame{FrameType: FrameTypeImage}))
 	_, err := s.CreateProject("p", "", "/projects/p")
 	must(t, err)
 	must(t, s.Set(KeyRootFolder, "/nas"))
@@ -149,6 +152,9 @@ func TestPruneToFinals(t *testing.T) {
 	}
 	if ok, _ := s.HasFrame("/nas/rejected.fits"); ok {
 		t.Error("rejected frame was kept")
+	}
+	if ok, _ := s.HasFrame("/nas/unmarked.png"); ok {
+		t.Error("a final image not marked public was kept")
 	}
 	projects, err := s.ListProjects()
 	must(t, err)

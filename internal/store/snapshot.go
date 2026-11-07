@@ -109,9 +109,11 @@ func (s *Store) RewriteRoot(oldRoot, newRoot string) error {
 	return tx.Commit()
 }
 
-// PruneToFinals reduces the database to what the read-only viewer shows:
-// non-rejected stacked, processed and raster images. Subs and calibration
-// frames, projects, and every preference except the root folder are removed.
+// PruneToFinals reduces the database to what the public gallery may show:
+// non-rejected stacked, processed and raster images that the user marked
+// public. Everything else (unmarked finals, subs, calibration frames),
+// projects, and every preference except the root folder are removed, so a
+// picture that isn't marked can't reach the server at all.
 func (s *Store) PruneToFinals() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -123,7 +125,7 @@ func (s *Store) PruneToFinals() error {
 		sql  string
 		args []any
 	}{
-		{`DELETE FROM frames WHERE frame_type NOT IN (?, ?, ?) OR rejected <> 0`,
+		{`DELETE FROM frames WHERE frame_type NOT IN (?, ?, ?) OR rejected <> 0 OR public = 0`,
 			[]any{FrameTypeStacked, FrameTypeProcessed, FrameTypeImage}},
 		{`DELETE FROM projects`, nil},
 		{`DELETE FROM preferences WHERE key <> ?`, []any{KeyRootFolder}},

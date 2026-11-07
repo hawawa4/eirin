@@ -48,7 +48,9 @@ func desktopStore(t *testing.T, root string) *store.Store {
 	t.Helper()
 	s := newTestStore(t)
 	must(t, s.Set(store.KeyRootFolder, root))
-	must(t, s.UpsertFrame(filepath.Join(root, "M31", "stack.fits"), store.Frame{Object: "M31", FrameType: store.FrameTypeStacked}))
+	stack := filepath.Join(root, "M31", "stack.fits")
+	must(t, s.UpsertFrame(stack, store.Frame{Object: "M31", FrameType: store.FrameTypeStacked}))
+	must(t, s.SetFramesPublic([]string{stack}, true))
 	must(t, s.UpsertFrame(filepath.Join(root, "M31_sub", "light.fits"), store.Frame{Object: "M31", FrameType: store.FrameTypeLight}))
 	return s
 }

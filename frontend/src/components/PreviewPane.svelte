@@ -30,6 +30,8 @@
     /** Title-bar actions — each button renders only when its handler is provided. */
     onreject?: () => void;
     onrestore?: () => void;
+    /** Show in / remove from the public gallery; the button renders only when provided. */
+    onsetpublic?: (value: boolean) => void;
     ondelete?: () => void;
     onreveal?: () => void;
     onblink?: () => void;
@@ -54,6 +56,7 @@
     onnext,
     onreject,
     onrestore,
+    onsetpublic,
     ondelete,
     onreveal,
     onblink,
@@ -65,6 +68,7 @@
   }: Props = $props();
 
   let isRejected = $derived(qualityFrame?.isRejected ?? entry.isRejected);
+  let isPublic = $derived(qualityFrame?.isPublic ?? false);
 
   const STRETCH_OPTIONS = [
     { level: 0, label: "Off", title: "Linear: the raw pixel values, no stretch (s toggles)" },
@@ -861,6 +865,18 @@ void main() {
           >Reject</button
         >
       {/if}
+      {#if onsetpublic}
+        <button
+          class="pv-btn pv-public"
+          class:on={isPublic}
+          aria-pressed={isPublic}
+          onclick={() => onsetpublic(!isPublic)}
+          title={isPublic
+            ? "Shown in the public gallery — click to remove (p)"
+            : "Show this image in the public gallery (p)"}
+          >{isPublic ? "★ Public" : "☆ Public"}</button
+        >
+      {/if}
       {#if onblink}
         <button class="pv-btn" onclick={onblink} title={blinkTitle}>Blink</button>
       {/if}
@@ -1335,6 +1351,11 @@ void main() {
     width: 28px;
     padding: 0;
   }
+  .pv-public.on {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
   .pv-reject:hover:not(:disabled) {
     color: var(--danger);
     border-color: var(--danger);

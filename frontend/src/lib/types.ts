@@ -23,6 +23,8 @@ export interface CtxEntry {
   name: string;
   isRejected: boolean;
   frameType: string;
+  /** Marked for the public gallery (library frames only). */
+  isPublic?: boolean;
 }
 
 export interface CtxMenuState {

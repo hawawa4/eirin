@@ -688,6 +688,11 @@ export class LibraryFrame {
     "isRejected": boolean;
 
     /**
+     * marked for the public gallery
+     */
+    "isPublic": boolean;
+
+    /**
      * Plate solve results (zero when not solved)
      */
     "ra": number;
@@ -768,6 +773,9 @@ export class LibraryFrame {
         }
         if (!("isRejected" in $$source)) {
             this["isRejected"] = false;
+        }
+        if (!("isPublic" in $$source)) {
+            this["isPublic"] = false;
         }
         if (!("ra" in $$source)) {
             this["ra"] = 0;

@@ -13,6 +13,11 @@
     /** Hidden when absent (e.g. server mode). */
     oncreateproject?: () => void;
     onclear: () => void;
+    /** Processed/image files in the selection; the button is hidden when 0. */
+    publishable?: number;
+    /** All of those are already public: the button removes them instead. */
+    allPublic?: boolean;
+    onsetpublic?: (value: boolean) => void;
   }
 
   let {
@@ -26,6 +31,9 @@
     blinkLabel,
     oncreateproject,
     onclear,
+    publishable = 0,
+    allPublic = false,
+    onsetpublic,
   }: Props = $props();
 </script>
 
@@ -62,6 +70,19 @@
       title="Reject the selected frames — they move to the Rejected tab and stay on disk"
     >
       Reject <kbd>x</kbd>
+    </button>
+  {/if}
+  {#if onsetpublic && publishable > 0 && !showRejected}
+    <button
+      class="sel-btn"
+      class:sel-public={!allPublic}
+      onclick={() => onsetpublic(!allPublic)}
+      disabled={busy}
+      title={allPublic
+        ? "Remove the selected images from the public gallery"
+        : "Show the selected processed images in the public gallery"}
+    >
+      {allPublic ? "☆ Unpublish" : "★ Public"} <kbd>p</kbd>
     </button>
   {/if}
   <span class="sel-spacer"></span>
@@ -130,6 +151,11 @@
   .sel-danger:hover:not(:disabled) {
     border-color: var(--danger);
     color: var(--danger);
+  }
+
+  .sel-public:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .sel-clear {

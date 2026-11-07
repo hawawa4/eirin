@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type { CtxEntry, CtxMenuState } from "../lib/types";
   import { FRAME_TYPE_META } from "../lib/types";
+  import { canBePublic } from "../lib/library/public";
 
   interface Props {
     menu: CtxMenuState;
@@ -16,6 +17,8 @@
     onrename?: (entry: CtxEntry) => void;
     oneditmeta?: (entry: CtxEntry) => void;
     oncreateproject?: () => void;
+    /** "Show in public gallery" — only offered for processed/image files when present. */
+    onsetpublic?: (entry: CtxEntry, value: boolean) => void;
     /** "Show in folder" — hidden when absent. */
     onreveal?: (entry: CtxEntry) => void;
     /** "Copy path" — hidden when absent. */
@@ -37,6 +40,7 @@
     onrename,
     oneditmeta,
     oncreateproject,
+    onsetpublic,
     onreveal,
     oncopypath,
     onopeninlibrary,
@@ -208,6 +212,20 @@
         Edit metadata…
       </button>
     {/if}
+  {/if}
+  {#if onsetpublic && canBePublic(menu.entry.frameType) && !menu.entry.isRejected}
+    <div class="ctx-sep" role="separator"></div>
+    <button
+      class="ctx-item"
+      role="menuitem"
+      onclick={() => run(() => onsetpublic?.(menu.entry, !menu.entry.isPublic))}
+    >
+      {#if menu.entry.isPublic}
+        {single ? "Remove from public gallery" : "Remove selected from public gallery"}
+      {:else}
+        {single ? "Show in public gallery" : "Show selected in public gallery"}
+      {/if}
+    </button>
   {/if}
   {#if onreject && onrestore}
     <div class="ctx-sep" role="separator"></div>
