@@ -35,6 +35,6 @@
     "vite": "^7.0.4"
   },
   "dependencies": {
-    "@wailsio/runtime": "^3.0.0-alpha.79"
+    "@wailsio/runtime": "^3.0.0"
   }
 }
