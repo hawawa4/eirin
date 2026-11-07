@@ -87,6 +87,9 @@ jobs:
           context: .
           file: landingpage/Dockerfile
           platforms: linux/amd64,linux/arm64
+          # The owner's gallery (an eirin-server instance) lives on its own domain.
+          build-args: |
+            GALLERY_URL=https://astrogallery.hawawa.org
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
