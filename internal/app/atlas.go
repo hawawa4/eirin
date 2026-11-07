@@ -51,10 +51,10 @@ func (a *App) GetCatalog() []CatalogObject {
 	return out
 }
 
-// GetAtlasIndex returns all stacked and processed frames under rootPath that
-// have WCS coordinates stored in the DB. No FITS files are read — this is a
-// fast DB-only query that returns immediately even for large libraries.
-// Light frames are never included in the Atlas.
+// GetAtlasIndex returns the frames under rootPath that the user marked public
+// and that have WCS coordinates stored in the DB. No FITS files are read — this
+// is a fast DB-only query that returns immediately even for large libraries.
+// Light frames and unmarked images are never included in the Atlas.
 func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 	frames, err := a.store().GetAtlasIndexFrames(rootPath)
 	if err != nil {
@@ -64,6 +64,9 @@ func (a *App) GetAtlasIndex(rootPath string) []AtlasIndexEntry {
 
 	var out []AtlasIndexEntry
 	for _, f := range frames {
+		if !f.Public {
+			continue // the Atlas only shows images marked public
+		}
 		ra := derefFloat(f.RA)
 		dec := derefFloat(f.Dec)
 		scale := derefFloat(f.PixelScale)

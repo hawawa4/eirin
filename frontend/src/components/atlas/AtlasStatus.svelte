@@ -40,7 +40,7 @@
   }: Props = $props();
 
   // With nothing to show, look at the library to say why (desktop only).
-  let lib = $state<{ total: number; lights: number; finals: number } | null>(null);
+  let lib = $state<{ total: number; lights: number; finals: number; pub: number } | null>(null);
   $effect(() => {
     lib = null;
     if (gallery || loading || error || !rootPath || indexed > 0 || scanning) return;
@@ -51,12 +51,14 @@
         if (stale) return;
         let lights = 0;
         let finals = 0;
+        let pub = 0;
         for (const f of frames ?? []) {
           if (f.isRejected) continue;
           if (f.frameType === "light") lights++;
           else if (!isProjectFrameType(f.frameType)) finals++;
+          if (f.isPublic) pub++;
         }
-        lib = { total: frames?.length ?? 0, lights, finals };
+        lib = { total: frames?.length ?? 0, lights, finals, pub };
       })
       .catch(() => {
         /* fall back to the generic card */
@@ -120,9 +122,9 @@
       {:else if lib && lib.total === 0}
         <p class="title">Welcome to Eirin</p>
         <p class="detail">
-          This is the Sky Atlas: your stacked and processed images, placed where they are on the
-          sky. Your library is empty so far — import from your Seestar, or scan the library folder
-          if it already holds data.
+          This is the Sky Atlas: the images you mark as public, placed where they are on the sky.
+          Your library is empty so far — import from your Seestar, or scan the library folder if it
+          already holds data.
         </p>
         <div class="actions">
           {#if onnavigate}<button class="btn primary" onclick={() => onnavigate("import")}
@@ -143,14 +145,24 @@
             <button class="btn" onclick={() => onnavigate("coverage")}>See Coverage</button>
           {/if}
         </div>
-      {:else if lib}
-        <p class="title">Your final images aren't plate-solved</p>
+      {:else if lib && lib.pub === 0}
+        <p class="title">No public images yet</p>
         <p class="detail">
-          {lib.finals.toLocaleString()} stacked or processed image{lib.finals === 1
-            ? " has"
-            : "s have"}
-          no sky coordinates. In the Library, pick the <strong>Stacked</strong> type, then
-          right-click a group and choose <strong>Analyze</strong> to plate-solve with Siril.
+          The atlas shows the images you mark as public. In the Library, select your processed
+          images and click <strong>★ Public</strong> (or press the P key). The same images are what the
+          public gallery shows.
+        </p>
+        <div class="actions">
+          {#if onnavigate}<button class="btn primary" onclick={() => onnavigate("library")}
+              >Open Library</button
+            >{/if}
+        </div>
+      {:else if lib}
+        <p class="title">Your public images aren't plate-solved</p>
+        <p class="detail">
+          {lib.pub.toLocaleString()} public image{lib.pub === 1 ? " has" : "s have"}
+          no sky coordinates. Plate-solve the matching FITS with <strong>Analyze</strong> in the Library
+          (right-click a group), or mark a plate-solved image public.
         </p>
         <div class="actions">
           {#if onnavigate}<button class="btn primary" onclick={() => onnavigate("library")}
@@ -159,9 +171,9 @@
           {#if onscan}<button class="btn" onclick={onscan}>Rescan</button>{/if}
         </div>
       {:else}
-        <p class="title">No final images with sky coordinates yet</p>
+        <p class="title">No public images with sky coordinates yet</p>
         <p class="detail">
-          The atlas shows your processed images that have WCS (plate-solve) coordinates. Scan your
+          The atlas shows your public images that have WCS (plate-solve) coordinates. Scan your
           library to pick them up — images without coordinates can be plate-solved with
           <strong>Analyze</strong> in the Library.
         </p>

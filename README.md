@@ -32,7 +32,7 @@ You pick a root folder. Eirin reads the FITS headers into a local SQLite databas
 | **Library** | Every frame under the root, grouped by object, date, filter or type, with filters and search. Preview the selected frame, blink through a set, reject frames (hidden, not deleted) or delete them for good. With Siril installed, *Analyze* measures star FWHM and plate-solves frames, and *Suggest rejects* flags frames whose FWHM is well above the rest of their group. |
 | **Import** | Copies files from a Seestar into the library. It shows what will be copied and where before it does anything, and skips files the library already has. It can delete from the device afterwards, but only once a full SHA-256 of the copy matches the original. |
 | **Projects** | A project is a local folder with `lights/`, `darks/`, `flats/` and `biases/`, with the frames symlinked from the NAS (or copied, if you prefer). Open it in Siril, then import the results back into the library. |
-| **Sky Atlas** | Your plate-solved images drawn where they really are on a chart of the sky, with bright stars and Messier/NGC objects for reference. Useful for seeing what you've covered and where the gaps are. It isn't a planetarium. |
+| **Sky Atlas** | Your plate-solved public images (the ones you marked ★ Public in the Library) drawn where they really are on a chart of the sky, with bright stars and Messier/NGC objects for reference. Useful for seeing what you've covered and where the gaps are. It isn't a planetarium. |
 | **Coverage** | Light frames grouped by framing and telescope, drawn as outlines on the sky. Good for finding data of the same target filed under different names, or the panels of a mosaic, and turning a selection into a project. |
 | **Storage** | A treemap of disk usage per target, broken down by night and frame type. |
 | **Browse** | The root folder as a plain folder tree, with the same preview, reject and delete actions. |
@@ -74,7 +74,7 @@ Needed for plate-solving, FWHM analysis and opening projects. Eirin finds it on 
 2. **Import** from the Seestar. The device shares its storage over SMB, so mount it and pick the mount point as the source (see below).
 3. **Go through the frames** in the Library and reject the bad ones.
 4. **Create a project** from the selected or filtered frames, open it in Siril and process as usual.
-5. **Import the results** back into the library. Once they're plate-solved, they appear on the Sky Atlas.
+5. **Import the results** back into the library. Once they're plate-solved and marked ★ Public in the Library, they appear on the Sky Atlas.
 
 <details>
 <summary>Mounting the Seestar on Linux</summary>

@@ -214,10 +214,10 @@ export function GetAtlasFrameSizes(nasPaths: string[]): $CancellablePromise<{ [_
 }
 
 /**
- * GetAtlasIndex returns all stacked and processed frames under rootPath that
- * have WCS coordinates stored in the DB. No FITS files are read — this is a
- * fast DB-only query that returns immediately even for large libraries.
- * Light frames are never included in the Atlas.
+ * GetAtlasIndex returns the frames under rootPath that the user marked public
+ * and that have WCS coordinates stored in the DB. No FITS files are read — this
+ * is a fast DB-only query that returns immediately even for large libraries.
+ * Light frames and unmarked images are never included in the Atlas.
  */
 export function GetAtlasIndex(rootPath: string): $CancellablePromise<$models.AtlasIndexEntry[]> {
     return $Call.ByID(2651540675, rootPath).then(($result: any) => {
